@@ -14,8 +14,24 @@ dirs = "6"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 rfd = "0.15"
 
+# Iteración diaria: optimizado como release pero sin LTO ni debug info.
+# Recompila solo el crate propio (~2-4 s por cambio) y corre a velocidad real.
+[profile.fast]
+inherits = "dev"
+opt-level = 2
+debug = false
+incremental = true
+
+# Binario de uso normal: LTO thin, buen equilibrio compilación/runtime.
 [profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
+opt-level = 3
+lto = "thin"
+codegen-units = 16
 strip = true
+
+# Artefacto a distribuir: más lento de compilar, ~10% más chico.
+[profile.dist]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1

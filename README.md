@@ -4,16 +4,29 @@ Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques.
 
-Binario release: **5.1 MB**, arranque instantáneo, sin webview ni motor HTML.
+Binario final (`dist`): **5.1 MB**, arranque instantáneo, sin webview ni motor HTML.
 
 ## Uso
 
 ```bash
-cargo run --release -- /ruta/libro.epub
-cargo run --release                 # abre el último libro o la pantalla de inicio
+cargo run --profile fast -- /ruta/libro.epub   # desarrollo: ~1 s por cambio
+cargo run --release -- /ruta/libro.epub        # uso diario
+cargo run --profile dist -- /ruta/libro.epub   # artefacto final, más chico
+cargo run --profile fast                       # abre el último libro o el inicio
 ```
 
 También se puede arrastrar un `.epub` sobre la ventana.
+
+### Perfiles de compilación
+
+`lto` es la razón por la que un cambio de una línea tardaba 26 s: obliga a
+re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
+
+| perfil | cuándo | cambio de una línea | binario |
+|---|---|---|---|
+| `fast` | iterar | ~1.3 s (incremental) | 9.9 MB |
+| `release` | uso diario | ~17 s (LTO thin) | 7.7 MB |
+| `dist` | distribuir | ~90 s (LTO fat, `opt-level="z"`) | 5.1 MB |
 
 ### Teclas
 

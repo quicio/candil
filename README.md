@@ -26,7 +26,7 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 |---|---|---|---|
 | `fast` | iterar | ~1.3 s (incremental) | 9.9 MB |
 | `release` | uso diario | ~17 s (LTO thin) | 7.7 MB |
-| `dist` | distribuir | ~90 s (LTO fat, `opt-level="z"`) | 5.1 MB |
+| `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 5.1 MB |
 
 ### Teclas
 

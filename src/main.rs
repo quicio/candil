@@ -1,11 +1,8 @@
-mod app;
-mod config;
-mod epub;
-mod fonts;
-mod theme;
-mod xhtml;
-
 use std::path::PathBuf;
+
+use lector::app;
+use lector::epub;
+use lector::xhtml;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();

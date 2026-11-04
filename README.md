@@ -6,6 +6,17 @@ traductor propio de XHTML a bloques.
 
 Binario final (`dist`): **5.1 MB**, arranque instantáneo, sin webview ni motor HTML.
 
+## Documentación
+
+| documento | contenido |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | comandos y reglas duras para agentes |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | estado, invariantes, verificación sin ojos |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M4 con criterios de salida |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | módulos, modelo `Block`, cómo extenderlo |
+| [`docs/specs/`](docs/specs/) | especificaciones por milestone |
+| [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
+
 ## Uso
 
 ```bash
@@ -77,8 +88,10 @@ para los EPUB que traen `text/html` mal formado — caso real y frecuente.
 ## Estado
 
 Probado contra 44 EPUB reales (Calibre, Sigil, OCR, Anna's Archive): todos
-abren, todas las imágenes referenciadas resuelven. `cargo test` cubre el parser,
-la resolución de rutas y el saneamiento de entidades.
+abren, 2168/2168 imágenes resueltas. `cargo test` corre 14 tests unitarios y 6 de
+integración sobre un fixture propio versionado (`tests/fixtures/mini.epub`,
+regenerable con `python3 scripts/make_fixture.py`), sin depender de libros
+externos.
 
 ## Limitaciones conocidas
 

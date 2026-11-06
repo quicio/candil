@@ -69,6 +69,7 @@ struct CardData {
     cover: Option<(egui::TextureId, Vec2)>,
     chapters: usize,
     chapter: usize,
+    ratio: f32,
     missing: bool,
     error: Option<String>,
 }
@@ -109,6 +110,8 @@ pub struct Lector {
     chapter_anchors: HashMap<String, f32>,
     pending_anchor: Option<String>,
     current_anchor: Option<String>,
+    block_positions: Vec<f32>,
+    pending_restore: Option<Progress>,
     status: Option<(String, Instant)>,
     applied_theme: Option<usize>,
     dirty: bool,
@@ -200,6 +203,8 @@ impl Lector {
             chapter_anchors: HashMap::new(),
             pending_anchor: None,
             current_anchor: None,
+            block_positions: Vec::new(),
+            pending_restore: None,
             status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
             dirty: false,
@@ -255,7 +260,7 @@ impl Lector {
                     .find(|b| b.path == key)
                     .map(|b| b.progress);
                 let prog = library_progress
-                    .filter(|p| p.chapter > 0 || p.offset > 0.0)
+                    .filter(|p| !p.is_empty())
                     .or_else(|| self.cfg.progress.get(&key).copied())
                     .unwrap_or_default();
                 let n = book.spine.len();
@@ -273,12 +278,12 @@ impl Lector {
                 if let Some(ch) = self.dev.chapter {
                     self.chapter = ch.min(n.saturating_sub(1));
                 }
-                let offset = if self.dev.chapter.is_some() || prog.chapter != self.chapter {
-                    0.0
+                let restore = if self.dev.chapter.is_some() || prog.chapter != self.chapter {
+                    None
                 } else {
-                    prog.offset
+                    Some(prog)
                 };
-                self.load_chapter(self.chapter, offset);
+                self.load_chapter(self.chapter, restore);
                 match self.dev.panel.as_deref() {
                     Some("toc") => self.show_toc = true,
                     Some("settings") => self.show_settings = true,
@@ -292,7 +297,7 @@ impl Lector {
         }
     }
 
-    fn load_chapter(&mut self, index: usize, offset: f32) {
+    fn load_chapter(&mut self, index: usize, restore: Option<Progress>) {
         let blocks = match self.book.as_mut() {
             Some(b) => b.chapter_blocks(index),
             None => Vec::new(),
@@ -303,7 +308,9 @@ impl Lector {
         self.chapter_anchors.clear();
         self.pending_anchor = None;
         self.current_anchor = None;
-        self.scroll = offset;
+        self.block_positions.clear();
+        self.pending_restore = restore;
+        self.scroll = 0.0;
         self.delta = 0.0;
         self.dirty = true;
     }
@@ -317,14 +324,15 @@ impl Lector {
         let last = n.saturating_sub(1) as i64;
         let next = (cur + index).clamp(0, last) as usize;
         if next != self.chapter {
-            self.load_chapter(next, 0.0);
+            self.load_chapter(next, None);
         }
     }
 
     fn jump_to(&mut self, spine: usize, anchor: Option<String>) {
         if spine != self.chapter {
-            self.load_chapter(spine, 0.0);
+            self.load_chapter(spine, None);
         }
+        self.pending_restore = None;
         if anchor.is_some() {
             self.pending_anchor = anchor;
         } else {
@@ -353,9 +361,17 @@ impl Lector {
     fn persist(&mut self) {
         if let Some(book) = &self.book {
             let key = book.path.to_string_lossy().to_string();
+            let ratio = if self.max_scroll > 1.0 {
+                (self.scroll / self.max_scroll).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let anchor = top_block(self.scroll, &self.block_positions);
             let progress = Progress {
                 chapter: self.chapter,
-                offset: self.scroll,
+                ratio,
+                anchor,
+                legacy_offset: None,
             };
             if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
                 entry.progress = progress;
@@ -416,6 +432,59 @@ impl Lector {
         self.textures.clear();
         self.show_toc = false;
         self.show_settings = false;
+        self.pending_restore = None;
+        self.block_positions.clear();
+    }
+
+    fn effective_settings(&self) -> Settings {
+        let Some(book) = &self.book else {
+            return self.cfg.settings;
+        };
+        let key = book.path.to_string_lossy();
+        self.library
+            .books
+            .iter()
+            .find(|entry| entry.path == key)
+            .map(|entry| entry.effective_settings(self.cfg.settings))
+            .unwrap_or(self.cfg.settings)
+    }
+
+    fn has_book_override(&self) -> bool {
+        let Some(book) = &self.book else {
+            return false;
+        };
+        let key = book.path.to_string_lossy();
+        self.library
+            .books
+            .iter()
+            .find(|entry| entry.path == key)
+            .and_then(|entry| entry.settings)
+            .is_some()
+    }
+
+    fn change_font_size(&mut self, delta: f32) {
+        let key = self
+            .book
+            .as_ref()
+            .map(|book| book.path.to_string_lossy().to_string());
+        if let Some(key) = key {
+            if let Some(entry) = self
+                .library
+                .books
+                .iter_mut()
+                .find(|entry| entry.path == key)
+            {
+                if let Some(settings) = entry.settings.as_mut() {
+                    settings.font_size += delta;
+                    settings.clamp();
+                    self.dirty = true;
+                    return;
+                }
+            }
+        }
+        self.cfg.settings.font_size += delta;
+        self.cfg.settings.clamp();
+        self.dirty = true;
     }
 
     // -- entrada -------------------------------------------------------------
@@ -522,14 +591,10 @@ impl Lector {
             self.goto_chapter(-1);
         }
         if plus {
-            self.cfg.settings.font_size += 1.0;
-            self.cfg.settings.clamp();
-            self.dirty = true;
+            self.change_font_size(1.0);
         }
         if minus {
-            self.cfg.settings.font_size -= 1.0;
-            self.cfg.settings.clamp();
-            self.dirty = true;
+            self.change_font_size(-1.0);
         }
         if key_t {
             self.show_toc = !self.show_toc;
@@ -874,8 +939,8 @@ impl Lector {
             .enumerate()
             .filter(|(_, b)| match self.library_filter {
                 LibraryFilter::All => true,
-                LibraryFilter::Reading => b.progress.chapter > 0 || b.progress.offset > 0.0,
-                LibraryFilter::Unread => b.progress.chapter == 0 && b.progress.offset <= 0.0,
+                LibraryFilter::Reading => b.progress.has_started(),
+                LibraryFilter::Unread => !b.progress.has_started(),
                 LibraryFilter::Missing => b.missing,
             })
             .filter(|(_, b)| {
@@ -933,6 +998,7 @@ impl Lector {
                     cover,
                     chapters: entry.chapters,
                     chapter: entry.progress.chapter,
+                    ratio: entry.progress.ratio.clamp(0.0, 1.0),
                     missing: entry.missing,
                     error: entry.error,
                 })
@@ -950,6 +1016,7 @@ impl Lector {
             .as_mut()
             .map(|b| b.chapter_title(self.chapter))
             .unwrap_or_default();
+        let book_override = self.has_book_override();
 
         egui::TopBottomPanel::top("bar")
             .show_separator_line(false)
@@ -969,8 +1036,12 @@ impl Lector {
                         self.show_toc = !self.show_toc;
                     }
                     if ui
-                        .button(RichText::new("Aa").size(13.0))
-                        .on_hover_text("Tipografía (S)")
+                        .button(RichText::new(if book_override { "Aa·" } else { "Aa" }).size(13.0))
+                        .on_hover_text(if book_override {
+                            "Tipografía (S) · este libro tiene ajustes propios"
+                        } else {
+                            "Tipografía (S)"
+                        })
                         .clicked()
                     {
                         self.show_settings = !self.show_settings;
@@ -1083,9 +1154,23 @@ impl Lector {
         if !self.show_settings {
             return;
         }
+        let book_key = self
+            .book
+            .as_ref()
+            .map(|book| book.path.to_string_lossy().to_string());
+        let has_book = book_key.is_some();
+        let book_index = book_key
+            .as_ref()
+            .and_then(|key| self.library.books.iter().position(|b| b.path == *key));
+        let mut only_book = book_index
+            .and_then(|index| self.library.books[index].settings)
+            .is_some();
+        let mut settings = book_index
+            .map(|index| self.library.books[index].effective_settings(self.cfg.settings))
+            .unwrap_or(self.cfg.settings);
         let mut open = self.show_settings;
         let mut changed = false;
-        let s = &mut self.cfg.settings;
+        let mut toggle_changed = false;
 
         egui::Window::new("Tipografía")
             .open(&mut open)
@@ -1094,10 +1179,35 @@ impl Lector {
             .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 8.0;
+                if let Some(_index) = book_index {
+                    if ui
+                        .checkbox(&mut only_book, "Solo para este libro")
+                        .on_hover_text("Guarda tema y tipografía en library.json para este libro")
+                        .changed()
+                    {
+                        toggle_changed = true;
+                    }
+                    if only_book {
+                        ui.label(
+                            RichText::new("Ajustes propios de este libro.")
+                                .size(10.5)
+                                .color(th.dim),
+                        );
+                    }
+                } else if has_book {
+                    ui.label(
+                        RichText::new(
+                            "El libro no está en la biblioteca; los ajustes son globales.",
+                        )
+                        .size(10.5)
+                        .color(th.dim),
+                    );
+                }
+
                 ui.label(RichText::new("Tema").size(12.5).color(th.dim));
                 ui.horizontal_wrapped(|ui| {
                     for (i, t) in THEMES.iter().enumerate() {
-                        let selected = i == s.theme;
+                        let selected = i == settings.theme;
                         let (rect, resp) =
                             ui.allocate_exact_size(Vec2::new(50.0, 32.0), Sense::click());
                         ui.painter().rect_filled(rect, 5.0, t.bg);
@@ -1118,7 +1228,7 @@ impl Lector {
                             t.fg,
                         );
                         if resp.on_hover_text(t.name).clicked() {
-                            s.theme = i;
+                            settings.theme = i;
                             changed = true;
                         }
                     }
@@ -1127,22 +1237,28 @@ impl Lector {
                 ui.add_space(4.0);
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut s.font_size, config::FONT_MIN..=config::FONT_MAX)
-                            .text("tamaño")
-                            .step_by(0.5),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut s.line_height, config::LINE_MIN..=config::LINE_MAX)
-                            .text("interlineado")
-                            .step_by(0.02),
+                        egui::Slider::new(
+                            &mut settings.font_size,
+                            config::FONT_MIN..=config::FONT_MAX,
+                        )
+                        .text("tamaño")
+                        .step_by(0.5),
                     )
                     .changed();
                 changed |= ui
                     .add(
                         egui::Slider::new(
-                            &mut s.column_width,
+                            &mut settings.line_height,
+                            config::LINE_MIN..=config::LINE_MAX,
+                        )
+                        .text("interlineado")
+                        .step_by(0.02),
+                    )
+                    .changed();
+                changed |= ui
+                    .add(
+                        egui::Slider::new(
+                            &mut settings.column_width,
                             config::COLUMN_MIN..=config::COLUMN_MAX,
                         )
                         .text("ancho de columna")
@@ -1152,7 +1268,7 @@ impl Lector {
                 changed |= ui
                     .add(
                         egui::Slider::new(
-                            &mut s.paragraph_space,
+                            &mut settings.paragraph_space,
                             config::PARAGRAPH_MIN..=config::PARAGRAPH_MAX,
                         )
                         .text("espacio entre párrafos")
@@ -1163,9 +1279,9 @@ impl Lector {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if ui.button("Restablecer").clicked() {
-                        let theme_keep = s.theme;
-                        *s = Settings::default();
-                        s.theme = theme_keep;
+                        let theme_keep = settings.theme;
+                        settings = Settings::default();
+                        settings.theme = theme_keep;
                         changed = true;
                     }
                     ui.label(
@@ -1177,7 +1293,28 @@ impl Lector {
             });
 
         self.show_settings = open;
+        settings.clamp();
+
+        if toggle_changed {
+            if let Some(index) = book_index {
+                if only_book {
+                    self.library.books[index].settings = Some(settings);
+                } else {
+                    self.library.books[index].settings = None;
+                    settings = self.cfg.settings;
+                }
+                changed = true;
+            }
+        }
+
         if changed {
+            if only_book {
+                if let Some(index) = book_index {
+                    self.library.books[index].settings = Some(settings);
+                }
+            } else {
+                self.cfg.settings = settings;
+            }
             self.dirty = true;
         }
     }
@@ -1235,7 +1372,7 @@ impl Lector {
         self.delta = 0.0;
 
         let mut colw = 660.0;
-        let s = self.cfg.settings;
+        let s = self.effective_settings();
         let mut link_target: Option<(usize, Option<String>)> = None;
 
         egui::CentralPanel::default()
@@ -1257,10 +1394,13 @@ impl Lector {
                     chapter_anchors,
                     pending_anchor,
                     current_anchor,
+                    block_positions,
+                    pending_restore,
                     ..
                 } = self;
                 let dirty_scroll = dirty;
                 chapter_anchors.clear();
+                block_positions.clear();
 
                 let so = ScrollArea::vertical()
                     .id_salt("reader")
@@ -1276,6 +1416,7 @@ impl Lector {
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for b in blocks.iter() {
                                     let y = ui.cursor().top();
+                                    block_positions.push(y);
                                     if let Some(anchor) = &b.anchor {
                                         chapter_anchors.entry(anchor.clone()).or_insert(y);
                                     }
@@ -1297,6 +1438,17 @@ impl Lector {
                         ui.add_space(140.0);
                     });
 
+                // `ui.cursor()` dentro del ScrollArea da coordenadas de pantalla;
+                // el offset de scroll vive en coordenadas del contenido. Sin esta
+                // normalización el ancla se guardaba con ~un viewport de error.
+                let shift = so.state.offset.y - so.inner_rect.top();
+                for y in block_positions.iter_mut() {
+                    *y += shift;
+                }
+                for y in chapter_anchors.values_mut() {
+                    *y += shift;
+                }
+
                 if (so.state.offset.y - *scroll).abs() > 0.5 {
                     *dirty_scroll = true;
                 }
@@ -1304,9 +1456,20 @@ impl Lector {
                 *viewport_h = so.inner_rect.height();
                 *max_scroll = (so.content_size.y - so.inner_rect.height()).max(0.0);
 
+                if let Some(restore) = pending_restore.take() {
+                    // El ancla manda; el ratio solo ajusta dentro del bloque
+                    // para recuperar la posición exacta si el layout no cambió.
+                    // Sin restar píxeles: así el ancla persistida sigue siendo
+                    // el mismo bloque y reabrir no deriva.
+                    if let Some(y) = restore_target(&restore, block_positions, *max_scroll) {
+                        *scroll = y;
+                        ctx.request_repaint();
+                    }
+                }
+
                 if let Some(anchor) = pending_anchor.take() {
                     if let Some(y) = chapter_anchors.get(&anchor) {
-                        *scroll = (*y - 48.0).max(0.0);
+                        *scroll = *y;
                         *current_anchor = Some(anchor);
                         ctx.request_repaint();
                     }
@@ -1359,12 +1522,39 @@ impl Lector {
     }
 }
 
+/// Índice del bloque cuyo tope queda en o por encima del scroll.
+fn top_block(scroll: f32, positions: &[f32]) -> Option<usize> {
+    positions.iter().rposition(|y| *y <= scroll + 1.0)
+}
+
+/// Destino de restauración: el ancla manda y el ratio ajusta dentro del bloque.
+/// Si el ratio se sale del bloque (layout muy distinto) se recorta a sus bordes,
+/// de modo que reabrir nunca se aleje más de un bloque del punto guardado.
+fn restore_target(restore: &Progress, positions: &[f32], max_scroll: f32) -> Option<f32> {
+    if let Some(index) = restore.anchor {
+        if let Some(&y) = positions.get(index) {
+            let approx = restore.ratio * max_scroll;
+            let next = positions
+                .get(index + 1)
+                .copied()
+                .unwrap_or(max_scroll)
+                .max(y);
+            return Some(approx.clamp(y, next));
+        }
+    }
+    restore
+        .legacy_offset
+        .map(|offset| offset.max(0.0))
+        .or_else(|| (restore.ratio > 0.0).then_some(restore.ratio * max_scroll))
+}
+
 impl eframe::App for Lector {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let th = theme::theme(self.cfg.settings.theme);
-        if self.applied_theme != Some(self.cfg.settings.theme) {
+        let theme_index = self.effective_settings().theme;
+        let th = theme::theme(theme_index);
+        if self.applied_theme != Some(theme_index) {
             th.apply(ctx);
-            self.applied_theme = Some(self.cfg.settings.theme);
+            self.applied_theme = Some(theme_index);
         }
 
         let title = match self.screen {
@@ -1632,7 +1822,8 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                                 .color(Color32::from_rgb(190, 92, 82)),
                         );
                     } else if card.chapters > 0 {
-                        let fraction = (card.chapter as f32 / card.chapters as f32).clamp(0.0, 1.0);
+                        let fraction = ((card.chapter as f32 + card.ratio) / card.chapters as f32)
+                            .clamp(0.0, 1.0);
                         let (bar, _) =
                             ui.allocate_exact_size(Vec2::new(CARD_W, 2.0), Sense::hover());
                         ui.painter()
@@ -1918,4 +2109,58 @@ fn ensure_texture(
     let handle = ctx.load_texture(src.clone(), color_image, egui::TextureOptions::LINEAR);
     textures.insert(src.clone(), handle);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn prog(ratio: f32, anchor: Option<usize>) -> Progress {
+        Progress {
+            chapter: 3,
+            ratio,
+            anchor,
+            legacy_offset: None,
+        }
+    }
+
+    #[test]
+    fn ancla_no_deriva_al_reabrir() {
+        let positions = [34.0, 120.0, 300.0, 700.0];
+        let p = prog(0.3, Some(2));
+        let target = restore_target(&p, &positions, 1000.0).unwrap();
+        assert!((target - 300.0).abs() < 0.01);
+        assert_eq!(top_block(target, &positions), Some(2));
+    }
+
+    #[test]
+    fn ratio_ajusta_dentro_del_ancla() {
+        let positions = [34.0, 120.0, 300.0, 700.0];
+        let dentro = restore_target(&prog(0.5, Some(2)), &positions, 1000.0).unwrap();
+        assert!((dentro - 500.0).abs() < 0.01);
+
+        let debajo = restore_target(&prog(1.0, Some(2)), &positions, 1000.0).unwrap();
+        assert!((debajo - 700.0).abs() < 0.01);
+
+        let encima = restore_target(&prog(0.05, Some(2)), &positions, 1000.0).unwrap();
+        assert!((encima - 300.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn sin_ancla_cae_a_ratio_o_al_offset_viejo() {
+        let positions = [34.0, 120.0];
+        let ratio = restore_target(&prog(0.25, None), &positions, 800.0).unwrap();
+        assert!((ratio - 200.0).abs() < 0.01);
+
+        let viejo = Progress {
+            chapter: 1,
+            ratio: 0.0,
+            anchor: None,
+            legacy_offset: Some(42.0),
+        };
+        assert_eq!(restore_target(&viejo, &positions, 800.0), Some(42.0));
+
+        let fuera = restore_target(&prog(0.1, Some(99)), &positions, 800.0).unwrap();
+        assert!((fuera - 80.0).abs() < 0.01);
+    }
 }

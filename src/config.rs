@@ -51,9 +51,30 @@ impl Settings {
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Progress {
     pub chapter: usize,
-    pub offset: f32,
+    /// Fracción de scroll dentro del capítulo (0..1).
+    pub ratio: f32,
+    /// Índice del bloque visible superior; sobrevive cambios de fuente.
+    pub anchor: Option<usize>,
+    /// Compatibilidad con `{chapter, offset}` de M2; se usa una vez al abrir
+    /// el libro y se descarta al volver a guardar.
+    #[serde(alias = "offset", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_offset: Option<f32>,
+}
+
+impl Progress {
+    pub fn is_empty(&self) -> bool {
+        self.chapter == 0
+            && self.ratio <= 0.0
+            && self.anchor.is_none()
+            && self.legacy_offset.is_none_or(|offset| offset <= 0.0)
+    }
+
+    pub fn has_started(&self) -> bool {
+        !self.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -136,7 +157,9 @@ mod tests {
             "/libro.epub".into(),
             Progress {
                 chapter: 7,
-                offset: 42.0,
+                ratio: 0.5,
+                anchor: Some(3),
+                legacy_offset: None,
             },
         );
         cfg.save_to(&path).expect("guardar");
@@ -144,7 +167,10 @@ mod tests {
         assert!(!dir.join("config.json.tmp").exists());
         let loaded = Config::load_from(&path);
         assert!((loaded.settings.font_size - 21.5).abs() < f32::EPSILON);
-        assert_eq!(loaded.progress.get("/libro.epub").unwrap().chapter, 7);
+        let progress = loaded.progress.get("/libro.epub").unwrap();
+        assert_eq!(progress.chapter, 7);
+        assert!((progress.ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(progress.anchor, Some(3));
 
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -200,5 +226,27 @@ mod tests {
         assert_eq!(cfg.settings.paragraph_space, PARAGRAPH_MAX);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn progress_viejo_con_offset_se_migra_al_leer() {
+        let old: Progress = serde_json::from_str(r#"{"chapter":3,"offset":42.5}"#).unwrap();
+        assert_eq!(old.chapter, 3);
+        assert_eq!(old.legacy_offset, Some(42.5));
+        assert_eq!(old.ratio, 0.0);
+        assert!(!old.is_empty());
+
+        let new = Progress {
+            chapter: 2,
+            ratio: 0.25,
+            anchor: Some(7),
+            legacy_offset: None,
+        };
+        let json = serde_json::to_string(&new).unwrap();
+        assert!(!json.contains("\"offset\""), "{json}");
+        assert!(json.contains("\"ratio\""), "{json}");
+        let back: Progress = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.anchor, Some(7));
+        assert!((back.ratio - 0.25).abs() < f32::EPSILON);
     }
 }

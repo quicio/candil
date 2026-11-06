@@ -1,7 +1,7 @@
 ---
 id: adr-0007
 status: aceptada
-version: 1.1.0
+version: 1.2.0
 updated: 2026-11-06
 ---
 
@@ -82,3 +82,11 @@ Malas:
 incremental por `size` + `mtime`. Medido sobre 43 EPUB: 1.57 s la primera vez y
 0.02 s con caché. `missing` se marca al reescanear una carpeta. La portada y la
 pantalla quedan en ADR-0008 y spec 20.
+
+## Enmienda (2026-11-06) — `progress` y `settings` por entrada
+
+La spec 35 reemplaza el ejemplo de `progress` por
+`{"chapter": 13, "ratio": 0.42, "anchor": 87}` (el ancla es el índice del bloque
+visible superior) y agrega `settings` opcional con tema/tipografía solo para ese
+libro. `offset` se acepta como alias legado al leer y no se vuelve a escribir.
+El resto del contrato de este ADR no cambia.

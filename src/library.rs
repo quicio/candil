@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{Config, Progress};
+use crate::config::{Config, Progress, Settings};
 use crate::covers;
 use crate::epub::Book;
 use crate::store;
@@ -47,6 +47,9 @@ pub struct BookEntry {
     pub mtime: i64,
     pub chapters: usize,
     pub progress: Progress,
+    /// Overrides de tipografía/tema solo para este libro.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<Settings>,
     pub added: i64,
     pub last_opened: Option<i64>,
     pub missing: bool,
@@ -144,6 +147,12 @@ impl BookEntry {
         }
         entry
     }
+
+    pub fn effective_settings(&self, global: Settings) -> Settings {
+        let mut settings = self.settings.unwrap_or(global);
+        settings.clamp();
+        settings
+    }
 }
 
 impl Library {
@@ -220,7 +229,7 @@ impl Library {
                 continue;
             };
             let entry = &mut self.books[index];
-            if entry.progress.chapter == 0 && entry.progress.offset <= 0.0 {
+            if entry.progress.is_empty() {
                 entry.progress = progress;
                 migrated += 1;
             }
@@ -262,7 +271,7 @@ impl Library {
             let (size, mtime) = file_stamp(&canonical);
 
             if let Some(index) = self.books.iter().position(|b| b.path == key) {
-                let (progress, added, last_opened, old_cover, unchanged) = {
+                let (progress, added, last_opened, old_cover, old_settings, unchanged) = {
                     let old = &self.books[index];
                     let cover_ok = old
                         .cover
@@ -274,6 +283,7 @@ impl Library {
                         old.added,
                         old.last_opened,
                         old.cover.clone(),
+                        old.settings,
                         old.size == size
                             && old.mtime == mtime
                             && old.chapters > 0
@@ -293,6 +303,7 @@ impl Library {
                 entry.progress = progress;
                 entry.added = added;
                 entry.last_opened = last_opened;
+                entry.settings = old_settings;
                 if entry.cover.is_none() {
                     entry.cover = old_cover;
                 }
@@ -422,6 +433,34 @@ mod tests {
         assert!(entry.size > 0);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn escaneo_conserva_settings_por_libro() {
+        let data = temp_dir("scan-settings");
+        let mut lib = Library::with_data_dir(data.clone());
+        lib.scan_folder(&fixtures());
+        let key = lib.books[0].path.clone();
+        lib.books[0].settings = Some(Settings {
+            font_size: 25.0,
+            theme: 1,
+            ..Settings::default()
+        });
+
+        // Camino sin cambios.
+        lib.scan_folder(&fixtures());
+        let entry = lib.books.iter().find(|b| b.path == key).unwrap();
+        assert_eq!(entry.settings.map(|s| s.font_size), Some(25.0));
+
+        // Camino de actualización: borrar la portada fuerza a reabrir el EPUB.
+        if let Some(cover) = lib.books[0].cover.clone() {
+            let _ = std::fs::remove_file(data.join(cover));
+        }
+        lib.scan_folder(&fixtures());
+        let entry = lib.books.iter().find(|b| b.path == key).unwrap();
+        assert_eq!(entry.settings.map(|s| s.theme), Some(1));
+
+        let _ = std::fs::remove_dir_all(data);
     }
 
     #[test]
@@ -596,14 +635,17 @@ mod tests {
             "/libro.epub".into(),
             Progress {
                 chapter: 7,
-                offset: 42.0,
+                ratio: 0.5,
+                anchor: Some(3),
+                legacy_offset: None,
             },
         );
 
         assert_eq!(lib.migrate_progress_from(&mut cfg), 1);
         assert!(cfg.progress.is_empty());
         assert_eq!(lib.books[0].progress.chapter, 7);
-        assert_eq!(lib.books[0].progress.offset, 42.0);
+        assert!((lib.books[0].progress.ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(lib.books[0].progress.anchor, Some(3));
     }
 
     #[test]
@@ -613,7 +655,9 @@ mod tests {
             path: "/a.epub".into(),
             progress: Progress {
                 chapter: 3,
-                offset: 10.0,
+                ratio: 0.2,
+                anchor: Some(2),
+                legacy_offset: None,
             },
             ..BookEntry::default()
         });
@@ -622,14 +666,18 @@ mod tests {
             "/a.epub".into(),
             Progress {
                 chapter: 9,
-                offset: 99.0,
+                ratio: 0.9,
+                anchor: None,
+                legacy_offset: None,
             },
         );
         cfg.progress.insert(
             "/b.epub".into(),
             Progress {
                 chapter: 1,
-                offset: 1.0,
+                ratio: 0.1,
+                anchor: None,
+                legacy_offset: None,
             },
         );
 
@@ -637,6 +685,7 @@ mod tests {
         assert!(!cfg.progress.contains_key("/a.epub"));
         assert!(cfg.progress.contains_key("/b.epub"));
         assert_eq!(lib.books[0].progress.chapter, 3);
+        assert!((lib.books[0].progress.ratio - 0.2).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -651,5 +700,30 @@ mod tests {
         lib.unwatch_folder("/x");
         assert!(lib.folders.is_empty());
         assert_eq!(lib.books.len(), 1);
+    }
+
+    #[test]
+    fn settings_por_libro_tienen_precedencia() {
+        let global = Settings {
+            font_size: 20.0,
+            ..Settings::default()
+        };
+        let mut entry = BookEntry::default();
+        assert_eq!(entry.effective_settings(global).font_size, 20.0);
+
+        entry.settings = Some(Settings {
+            font_size: 26.0,
+            ..Settings::default()
+        });
+        assert_eq!(entry.effective_settings(global).font_size, 26.0);
+
+        entry.settings = Some(Settings {
+            font_size: 999.0,
+            ..Settings::default()
+        });
+        assert_eq!(
+            entry.effective_settings(global).font_size,
+            crate::config::FONT_MAX
+        );
     }
 }

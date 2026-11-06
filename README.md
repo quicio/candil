@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.3 MiB** (5.532.688 B), arranque instantáneo, sin
+Binario final (`dist`): **5.3 MiB** (5.532.752 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -101,7 +101,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 46
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 52
 tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -113,6 +113,12 @@ La biblioteca (M2, cerrada) indexa `~/Libros` en **1.57 s** la primera vez y
 y los 40 con portada. Pantalla con grilla, búsqueda, orden, filtros, gestión de
 carpetas y vuelta con `Esc`.
 
+M3 (lectura fina) también está cerrada: el índice salta por `#ancla` dentro y
+entre capítulos, los enlaces internos son clicables y la posición se guarda como
+`chapter + ratio + bloque`, así que cambiar fuente o ventana no descoloca la
+lectura. Tema y tipografía se pueden fijar **solo para un libro** con el checkbox
+del panel `Aa`; el indicador `Aa·` avisa que ese libro tiene ajustes propios.
+
 ## Capturas
 
 | Vacía | Poblada |
@@ -120,6 +126,10 @@ carpetas y vuelta con `Esc`.
 | ![Biblioteca vacía](docs/img/library-empty.png) | ![Biblioteca poblada](docs/img/library-full.png) |
 | **Búsqueda** | **Error de importación** |
 | ![Búsqueda](docs/img/library-search.png) | ![Error](docs/img/library-error.png) |
+
+| **Tipografía por libro** |
+|---|
+| ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
 
 ## Limitaciones conocidas
 
@@ -131,15 +141,19 @@ carpetas y vuelta con `Esc`.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher: se refresca a mano.
-- El filtro “Terminados” y el progreso por fracción llegan con M3.
+- El progreso por fracción y las preferencias por libro están desde M3; el
+  filtro “Terminados” del roadmap original quedó fuera de alcance.
+- Sin salto a porcentaje exacto ni por número de capítulo: se navega con las
+  flechas y el índice.
 
 ## Roadmap
 
 - **M2 — Biblioteca (cerrada):** índice, portadas, grilla, búsqueda, orden,
   filtros, carpetas y migración de progreso.
-- **M3 — Anclas (en curso):** anclas, saltos y enlaces internos hechos; faltan
-  progreso por fracción y preferencias por libro.
-- **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
+- **M3 — Lectura fina (cerrada):** anclas, saltos, enlaces internos, progreso
+  por fracción con ancla de bloque y ajustes por libro.
+- **M4 — Extras (siguiente):** búsqueda dentro del libro, destacados, notas,
+  índice de anotaciones y exportar citas.
 
 ## Modo diagnóstico
 

@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.4.0
+version: 1.5.0
 updated: 2026-11-06
 ---
 
@@ -45,7 +45,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
-| `config.rs` | settings en `config.json`; conserva `progress` legado para migrar | no conoce el contenido |
+| `config.rs` | settings globales en `config.json`; `Progress` con ratio/ancla y compatibilidad con el offset legado | no conoce el contenido |
 | `fonts.rs` | registra Literata en 4 familias + monoespaciada | no decide tamaños |
 | `lib.rs` | expone módulos para tests de integración | — |
 
@@ -112,13 +112,13 @@ invisible para no perder el destino (ADR-0010).
 
 `app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.
 Como la grilla es responsiva (`ancho / 180`), con portada cacheada, título, autor y
-progreso por capítulo. Las portadas se cargan como texturas la primera vez y se
-cachean en `library_textures`; el escaneo y la lista se hacen en el hilo de UI
-(43 libros ≈ 1.6 s la primera vez, aceptado en M2). Click abre el libro; `Esc` en
-el lector vuelve y persiste progreso. La búsqueda/orden/filtro se calculan en
-memoria sobre `Library::books`. Una fila de chips muestra las carpetas vigiladas
-con `×` para dejar de vigilarlas (sin borrar sus libros) y la barra muestra el
-contador de errores con tooltip.
+progreso por fracción (capítulo + ratio + ancla). Las portadas se cargan como
+texturas la primera vez y se cachean en `library_textures`; el escaneo y la lista
+se hacen en el hilo de UI (43 libros ≈ 1.6 s la primera vez, aceptado en M2).
+Click abre el libro; `Esc` en el lector vuelve y persiste progreso. La
+búsqueda/orden/filtro se calculan en memoria sobre `Library::books`. Una fila de
+chips muestra las carpetas vigiladas con `×` para dejar de vigilarlas (sin borrar
+sus libros) y la barra muestra el contador de errores con tooltip.
 
 ## Estado de la app
 
@@ -128,8 +128,11 @@ portadas, `Config`, offset de scroll, altura del viewport, flags de panel y esta
 de guardado diferido.
 
 Regla de oro: **el scroll es del lector, no del EPUB**. Se guarda por libro como
-`{chapter, offset}` en píxeles; si cambia el tamaño de fuente, el offset es
-aproximado (limitación aceptada, ver M3).
+`{chapter, ratio, anchor}`: el ancla es el índice del bloque visible superior y
+manda al restaurar; el ratio (`scroll / max_scroll`) ajusta la posición dentro de
+ese bloque. Así cambiar fuente, interlineado, ancho o tamaño de ventana no
+descoloca la lectura. Las posiciones de bloque se registran en coordenadas del
+contenido (`cursor + scroll − inner_rect.top()`), no de pantalla.
 
 ## Persistencia
 
@@ -142,11 +145,17 @@ avisa en un toast: nunca se bloquea el arranque.
 
 `library.json` vive en el mismo directorio y usa el mismo helper. Guarda
 `schema_version`, carpetas vigiladas y una entrada por libro con ruta canónica,
-metadatos, `size`/`mtime`, progreso y estado `missing`. Las portadas van a
+metadatos, `size`/`mtime`, progreso, estado `missing` y `settings` opcional
+(tema/tipografía solo para ese libro). Las portadas van a
 `covers/<fnv1a>.png` (ADR-0007/0008). El progreso de los libros indexados se
 escribe solo acá; `config.progress` se conserva para leer archivos viejos y se
 vacía a medida que `migrate_progress_from` encuentra sus libros. El arranque
 normal muestra la biblioteca; `--resume` reabre el último libro.
+
+Precedencia de ajustes: `BookEntry.settings` → `Config.settings` → `Default`.
+`+/-` y el panel Tipografía editan el override cuando existe; desmarcar "Solo
+para este libro" lo borra y vuelve al global. El indicador `Aa·` de la barra
+avisa que el libro tiene ajustes propios.
 
 ## Errores
 

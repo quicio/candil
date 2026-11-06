@@ -1,7 +1,7 @@
 ---
 id: docs-index
 status: vigente
-version: 1.2.0
+version: 1.3.0
 updated: 2026-11-06
 ---
 
@@ -23,7 +23,7 @@ Orden de lectura para un agente nuevo:
 |---|---|---|
 | [10](specs/10-lector-mvp.md) | Lector — contrato del MVP | implementada |
 | [15](specs/15-endurecimiento-lector.md) | Endurecimiento del lector | **implementada** |
-| [20](specs/20-biblioteca.md) | Biblioteca — índice, estantería y apertura | **aprobada; T1–T9 hechas, faltan T10–T11** |
+| [20](specs/20-biblioteca.md) | Biblioteca — índice, estantería y apertura | **implementada** |
 | [21](specs/21-metadatos-y-portadas.md) | Metadatos y portadas | **implementada** |
 | [30](specs/30-indice-por-ancla.md) | Índice por ancla | draft |
 | [35](specs/35-preferencias-por-libro.md) | Preferencias por libro y progreso estable | draft |

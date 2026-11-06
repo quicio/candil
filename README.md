@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.516.080 B), arranque instantáneo, sin
+Binario final (`dist`): **5.2 MiB** (5.516.112 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -106,11 +106,20 @@ tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
 
-La biblioteca (M2, casi cerrada) indexa `~/Libros` en **1.57 s** la primera vez y
+La biblioteca (M2, cerrada) indexa `~/Libros` en **1.57 s** la primera vez y
 **0.02 s** con caché; en la medición de 43 EPUB mostró **41 portadas (95,3 %)** y
-**4,2 MB** en `covers/`. Hoy `~/Libros` tiene 40 libros y los 40 con portada.
-Pantalla con grilla, búsqueda, orden, filtros, gestión de carpetas y vuelta con
-`Esc`.
+**4,2 MB** en `covers/`. El cierre con **50 EPUB** (43 reales + 7 copias) dio
+**1.65 s**, **48/50 portadas (96 %)** y **5,4 MB**. Hoy `~/Libros` tiene 40 libros
+y los 40 con portada. Pantalla con grilla, búsqueda, orden, filtros, gestión de
+carpetas y vuelta con `Esc`.
+
+## Capturas
+
+| Vacía | Poblada |
+|---|---|
+| ![Biblioteca vacía](docs/img/library-empty.png) | ![Biblioteca poblada](docs/img/library-full.png) |
+| **Búsqueda** | **Error de importación** |
+| ![Búsqueda](docs/img/library-search.png) | ![Error](docs/img/library-error.png) |
 
 ## Limitaciones conocidas
 
@@ -126,10 +135,10 @@ Pantalla con grilla, búsqueda, orden, filtros, gestión de carpetas y vuelta co
 
 ## Roadmap
 
-- **M2 — Biblioteca (casi cerrada):** índice, portadas, pantalla, migración de
-  progreso y gestión de carpetas hechos; faltan T10/T11 (verificación y medición
-  con 50 libros).
-- **M3 — Anclas:** índice por fragmento, saltos dentro del capítulo.
+- **M2 — Biblioteca (cerrada):** índice, portadas, grilla, búsqueda, orden,
+  filtros, carpetas y migración de progreso.
+- **M3 — Anclas (siguiente):** índice por fragmento, saltos dentro del capítulo,
+  progreso por fracción y preferencias por libro.
 - **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
 
 ## Modo diagnóstico
@@ -138,7 +147,9 @@ Pantalla con grilla, búsqueda, orden, filtros, gestión de carpetas y vuelta co
 cargo run --release -- --inspect /ruta/libro.epub     # metadatos, spine, bloques, imágenes
 cargo run --release -- --inspect tests/fixtures/edge.epub   # bordes del parser
 cargo run --release -- --scan ~/Libros                # índice + portadas sin UI
-cargo run --release -- --shot out.png                 # captura de la biblioteca
+cargo run --release -- --shot out.png --screen library
+cargo run --release -- --shot out.png --screen library --search flores
+cargo run --release -- --shot out.png --screen library --library-path /tmp/library.json
 cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del lector
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```

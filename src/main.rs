@@ -42,6 +42,18 @@ fn main() -> eframe::Result<()> {
                 dev.resume = true;
                 i += 1;
             }
+            "--screen" => {
+                dev.screen = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--library-path" => {
+                dev.library_path = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--search" => {
+                dev.search = args.get(i + 1).cloned();
+                i += 2;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

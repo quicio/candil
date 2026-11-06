@@ -21,6 +21,7 @@ cargo run --profile fast                    # biblioteca
 cargo run --profile fast -- --resume        # reabrir el último libro
 cargo run --profile fast -- --scan ~/Libros # índice + portadas sin UI
 cargo run --profile fast -- --inspect <libro.epub>          # diagnóstico de parseo
+cargo run --profile fast -- --shot out.png --screen library  # captura de biblioteca
 cargo run --profile fast -- --shot out.png --chapter 13 <libro.epub>   # captura visual
 ```
 

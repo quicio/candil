@@ -123,13 +123,23 @@ pub struct DevOpts {
     pub panel: Option<String>,
     /// Reabre el último libro en vez de arrancar en la biblioteca.
     pub resume: bool,
+    /// `library` fuerza la pantalla de biblioteca aunque se pase un EPUB.
+    pub screen: Option<String>,
+    /// Carga `library.json` desde una ruta alternativa (capturas/tests).
+    pub library_path: Option<PathBuf>,
+    /// Precarga el buscador (capturas).
+    pub search: Option<String>,
 }
 
 impl Lector {
     pub fn new(cc: &eframe::CreationContext<'_>, path: Option<PathBuf>, dev: DevOpts) -> Self {
         fonts::install(&cc.egui_ctx);
         let (mut cfg, cfg_warning) = Config::load_with_report();
-        let (mut library, library_warning) = Library::load_with_report();
+        let (mut library, library_warning) = if let Some(path) = dev.library_path.as_ref() {
+            Library::load_with_report_from(path)
+        } else {
+            Library::load_with_report()
+        };
         let migrated = library.migrate_progress_from(&mut cfg);
         let mut warning = cfg_warning.or(library_warning);
         if migrated > 0 {
@@ -163,6 +173,7 @@ impl Lector {
         cc.egui_ctx.set_style(style);
 
         let theme_idx = cfg.settings.theme;
+        let initial_search = dev.search.clone().unwrap_or_default();
         let mut app = Self {
             screen: Screen::Library,
             book: None,
@@ -171,7 +182,7 @@ impl Lector {
             textures: HashMap::new(),
             library,
             library_textures: HashMap::new(),
-            library_search: String::new(),
+            library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
             cfg,
@@ -191,13 +202,18 @@ impl Lector {
         };
         app.applied_theme = Some(app.cfg.settings.theme);
 
-        let target = path.or_else(|| {
-            if app.dev.resume {
-                app.cfg.last_book.clone().map(PathBuf::from)
-            } else {
-                None
-            }
-        });
+        let force_library = app.dev.screen.as_deref() == Some("library");
+        let target = if force_library {
+            None
+        } else {
+            path.or_else(|| {
+                if app.dev.resume {
+                    app.cfg.last_book.clone().map(PathBuf::from)
+                } else {
+                    None
+                }
+            })
+        };
         if let Some(p) = target {
             if p.exists() {
                 app.open(p);

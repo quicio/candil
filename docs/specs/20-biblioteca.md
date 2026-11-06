@@ -1,8 +1,8 @@
 ---
 id: spec-20
 title: Biblioteca — índice, estantería y apertura
-status: aprobada
-version: 1.2.0
+status: implementada
+version: 1.3.0
 updated: 2026-11-06
 milestone: M2
 depends_on: [adr-0007, adr-0008, spec-10, spec-15, spec-21]
@@ -11,10 +11,9 @@ blocks: []
 
 # Spec 20 — Biblioteca (M2)
 
-> **Estado: aprobada e implementada parcialmente.** T1–T9 están hechas y
-> probadas contra `~/Libros` (43 EPUB). Faltan T10 (`--screen
-> library`/`--library-path` y las 4 capturas) y T11 (medir 50 EPUB y cerrar
-> métricas).
+> **Estado: implementada.** T1–T11 cerradas el 2026-11-06 y verificadas con 50
+> EPUB (43 reales + 7 copias): 1.65 s, 48/50 portadas (96 %), 41+8 tests y 4
+> capturas en `docs/img/`. El corpus real de 43 también quedó sin regresiones.
 > Tareas diseñadas para que un agente las ejecute sin contexto previo.
 
 ## Objetivo
@@ -81,8 +80,8 @@ renombra a `library.json.corrupt-<epoch>` antes de arrancar vacío.
 | T7 navegación | hecha | `Esc` vuelve, `last_opened`, título de ventana, `--resume` |
 | T8 migración de progreso | hecha | `config.progress` se vuelca a `library.json` al arrancar y tras escanear; solo quedan huérfanos de libros no indexados |
 | T9 carpetas/estados | hecha | chips de carpetas con `×`, contador `N errores` con tooltip, faltantes y estados vacíos |
-| T10 verificación visual | parcial | `--shot` sin path captura la biblioteca; falta `--screen`/`--library-path` |
-| T11 cierre | pendiente | falta medir 50 EPUB y actualizar criterios finales |
+| T10 verificación visual | hecha | `--screen library`, `--library-path`, `--search`; 4 capturas en `docs/img/` |
+| T11 cierre | hecha | 50 EPUB en 1.65 s; 0.01 s cached; 48/50 portadas; 4.2→5.4 MB |
 
 Notas de implementación: `Library::load_from(path)` recibe el archivo (no el
 directorio); `with_data_dir` permite inyectar `covers/` en tests. `from_path` no
@@ -319,3 +318,8 @@ mostrar con un comando cada uno.
 3. Reabrir la app no reescanea.
 4. `cargo test` verde + 4 capturas.
 5. `--inspect` sin regresiones sobre el corpus.
+
+Cumplido el 2026-11-06: 50 EPUB en **1.65 s** (0.01 s con caché), **48/50
+portadas (96 %)**, reapertura instantánea, **41 + 8 tests** y capturas en
+`docs/img/`; `--inspect` de los 43 reales: 0 fallos, 0 capítulos vacíos,
+2279/2279 imágenes.

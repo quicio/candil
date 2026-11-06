@@ -14,8 +14,8 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 |---|---|---|---|---|
 | M1 | Lector | **Hecho** | [10](specs/10-lector-mvp.md) | 43 EPUB abren sin capítulos vacíos; 2279/2279 imágenes; temas y progreso persistentes |
 | M1.1 | Endurecimiento | **Hecho** | [15](specs/15-endurecimiento-lector.md) | Espacios, entidades, pre/tablas, SVG raster y config atómica verificados sobre el corpus |
-| M2 | Biblioteca | **Casi cerrada** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
-| M3 | Lectura fina | Después | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
+| M2 | Biblioteca | **Hecho** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
+| M3 | Lectura fina | Siguiente | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | Futuro | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 
 ## M1 — Lector (terminado)
@@ -39,7 +39,7 @@ Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
-## M2 — Biblioteca (casi cerrada)
+## M2 — Biblioteca (terminado)
 
 Implementado y medido el 2026-11-06 sobre `~/Libros` (43 EPUB en la medición; hoy
 quedaron 40 tras limpiar duplicados):
@@ -58,9 +58,14 @@ quedaron 40 tras limpiar duplicados):
   posiciones y las viejas se vuelcan al arrancar/después de escanear.
 - Gestión de carpetas y errores (T9): chips con `×` para dejar de vigilar,
   contador de errores con tooltip y estados vacíos diferenciados.
+- Verificación reproducible (T10): `--screen library`, `--library-path` y
+  `--search`; 4 capturas en `docs/img/` (vacía, poblada, búsqueda, error).
 
-Pendiente para cerrar: T10 (`--screen library`/`--library-path` y captura
-filtrada) y T11 (medir 50 libros y cerrar métricas).
+Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
+**1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
+**5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
+dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
+2279/2279 imágenes. `cargo test`: 41 + 8.
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -98,12 +103,11 @@ Criterio de salida, medible:
 
 ## Orden de ataque recomendado
 
-0. M1.1 cerrado (spec 15): no construir la biblioteca sobre texto pegado o SVG
-   vacío.
-1. M2 tareas 1–3 (modelo + escaneo + portadas) sin UI: se prueban con `cargo test`.
-2. M2 tareas 4–6 (pantalla, orden/filtro, apertura): primeras capturas.
-3. M2 tareas 7–9 (migración, carpetas vigiladas, estados vacíos): cierre.
-4. Recién entonces M3.
+1. M2 cerrado (T1–T11): 50 EPUB en 1.65 s, 96 % de portadas, capturas y tests.
+2. M3: ADR del modelo `Block` con ancla, anclas en ambos parsers, salto
+   intra/intercapítulo y enlaces internos.
+3. M3: `Progress` por fracción + ancla de bloque y preferencias por libro.
+4. M4: búsqueda dentro del libro y citas.
 
 Regla: **una spec, un milestone, un PR lógico**. Si una tarea no encaja en la
 spec, se discute antes de codear (flujo spec → código, nunca al revés).

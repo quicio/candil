@@ -14,7 +14,8 @@ Detalle de la tarea T4 de la spec 20. Se puede implementar y testear sin UI.
 
 > Implementada el 2026-11-06. Resultados sobre `~/Libros`: **41/43 portadas
 > (95,3 %)**, **4,2 MB** en `covers/`, primera extracción incluida en un escaneo
-> de 1,57 s. `series`/`publisher` quedan para M3.
+> de 1,57 s. En la prueba de cierre de 50 EPUB: **48/50 (96 %)** y 5,4 MB.
+> `series`/`publisher` quedan para M3.
 
 ## Resolución de la portada
 

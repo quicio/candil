@@ -14,9 +14,8 @@ propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
 **M1 (lector) y M1.1 (endurecimiento, spec 15) están terminados y verificados.**
-**M2 (biblioteca) está casi cerrada:** núcleo, pantalla, migración de progreso y
-gestión de carpetas/errores funcionan; faltan la verificación T10/T11 (flags y
-capturas reproducibles, medición con 50 EPUB y cierre de métricas).
+**M1, M1.1 y M2 están cerrados y verificados.** Sigue **M3 (lectura fina):
+anclas y progreso por fracción**.
 
 ## Estado medido (no estimado)
 
@@ -29,11 +28,13 @@ el mismo):
 | capítulos vacíos | 0 | ídem (M1.1 corrigió SVG y nav en spine) |
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
+| cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
+| capturas | 4 en `docs/img/` (vacía, llena, búsqueda, error) | `--shot --screen library` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 41 unit + 8 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.516.080 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.516.112 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -77,7 +78,9 @@ pantalla. Combinaciones útiles:
 cargo run --profile fast -- --scan "$HOME/Libros"
 
 # capturas: sin path = biblioteca; con path = lector
-cargo run --profile fast -- --shot /tmp/biblioteca.png
+cargo run --profile fast -- --shot /tmp/biblioteca.png --screen library
+cargo run --profile fast -- --shot /tmp/busqueda.png --screen library --search flores
+cargo run --profile fast -- --shot /tmp/otra.png --library-path /tmp/library.json
 cargo run --profile fast -- --shot /tmp/libro.png --chapter 13 libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel toc libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel settings libro.epub

@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.516.128 B), arranque instantáneo, sin
+Binario final (`dist`): **5.2 MiB** (5.516.160 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -124,8 +124,8 @@ carpetas y vuelta con `Esc`.
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
-- Índice con anclas: ya se conservan los `#fragmento`, pero el salto al bloque
-  exacto dentro del capítulo todavía no está (T3/T4 de M3).
+- Índice con anclas: los `#fragmento` se conservan y el salto intra/intercapítulo
+  funciona. Los enlaces internos (`<a href="#…">`) todavía no son clicables.
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - Sin búsqueda dentro del libro ni anotaciones.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
@@ -137,9 +137,9 @@ carpetas y vuelta con `Esc`.
 
 - **M2 — Biblioteca (cerrada):** índice, portadas, grilla, búsqueda, orden,
   filtros, carpetas y migración de progreso.
-- **M3 — Anclas (en curso):** anclas en el modelo y fragmentos del índice ya
-  hechos; faltan saltos dentro del capítulo, enlaces internos, progreso por
-  fracción y preferencias por libro.
+- **M3 — Anclas (en curso):** anclas, fragmentos del índice y saltos intra/
+  intercapítulo hechos; faltan enlaces internos, progreso por fracción y
+  preferencias por libro.
 - **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
 
 ## Modo diagnóstico
@@ -152,6 +152,7 @@ cargo run --release -- --shot out.png --screen library
 cargo run --release -- --shot out.png --screen library --search flores
 cargo run --release -- --shot out.png --screen library --library-path /tmp/library.json
 cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del lector
+cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un ancla
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```
 

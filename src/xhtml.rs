@@ -515,6 +515,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
         }
     }
     let ctx = &local_ctx;
+    let before = out.len();
     match tag.as_str() {
         "head" | "title" | "script" | "style" | "meta" | "link" => {}
         "body" | "html" => {
@@ -709,6 +710,29 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
         }
 
         _ => visit(child, out, ctx, buf),
+    }
+
+    // Un `id` en un elemento sin bloque propio (típico: `<a id="6"></a>`
+    // antes de un título) se conserva como bloque-ancla invisible. El lector
+    // lo usa para el mapa de saltos y no lo dibuja.
+    if let Some(id) = child.attribute("id") {
+        if !id.trim().is_empty()
+            && !matches!(
+                tag.as_str(),
+                "head" | "title" | "script" | "style" | "meta" | "link"
+            )
+            && !out[before..]
+                .iter()
+                .any(|b| b.anchor.as_deref() == Some(id))
+        {
+            out.push(Block {
+                kind: Kind::Para,
+                runs: Vec::new(),
+                src: None,
+                alt: String::new(),
+                anchor: Some(id.to_string()),
+            });
+        }
     }
 }
 
@@ -1328,5 +1352,9 @@ mod tests {
 
         let lenient = parse("<html><body><h2 id=cap>Cap</h2><p>Texto</p></body></html>");
         assert_eq!(lenient[0].anchor.as_deref(), Some("cap"));
+
+        // Un ancla vacía antes del texto no se pierde.
+        let empty = parse(r#"<p><a id="marca"></a>Texto</p>"#);
+        assert!(empty.iter().any(|b| b.anchor.as_deref() == Some("marca")));
     }
 }

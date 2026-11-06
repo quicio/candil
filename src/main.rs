@@ -54,6 +54,12 @@ fn main() -> eframe::Result<()> {
                 dev.search = args.get(i + 1).cloned();
                 i += 2;
             }
+            "--anchor" => {
+                dev.anchor = args
+                    .get(i + 1)
+                    .map(|a| a.trim_start_matches('#').to_string());
+                i += 2;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

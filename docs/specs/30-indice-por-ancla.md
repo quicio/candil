@@ -10,10 +10,10 @@ depends_on: [spec-10, adr-0002, adr-0010]
 
 # Spec 30 — Índice por ancla (M3)
 
-> **Estado: T1–T2 implementadas (2026-11-06).** `Block.anchor` y
-> `TocEntry.anchor` existen; `flores-del-mal` pasó de 1 a 8 entradas con
-> `#2`, `#6`, etc. Faltan T3–T4 (salto al bloque y `pending_anchor`) y T5
-> (enlaces internos clicables).
+> **Estado: T1–T4 implementadas (2026-11-06).** `Block.anchor` y
+> `TocEntry.anchor` existen; el mapa por capítulo resuelve saltos intra e
+> intercapítulo. `flores-del-mal` pasó de 1 a 8 entradas y `#6` aterriza en
+> “Parte 2”. Falta T5 (enlaces internos clicables).
 
 ## Problema
 
@@ -88,16 +88,22 @@ Implementado: `parse_nav`/`parse_ncx` separan y percent-decodean el fragmento;
 dedupe. Sobre `flores-del-mal`, `--inspect` pasó de 1 a 8 entradas (`#2`, `#6`,
 `#101`, …).
 
-### T3 — Salto dentro del capítulo
+### T3 — Salto dentro del capítulo (hecha)
 - Mapa de anclas por frame + `pending_anchor`; test manual con `flores-del-mal`
   (una entrada por poema) y captura `--shot --anchor <id>`.
 - Criterio: tras el salto, la línea del ancla queda en el tercio superior.
 
-### T4 — Salto entre capítulos
+### T4 — Salto entre capítulos (hecha)
 - Resolver `(spine, anchor)`; si el capítulo cambia, cargar y saltar en el frame
   siguiente.
 - Criterio: click en la entrada 40 de un índice de 101 lleva al párrafo exacto,
   no al inicio del archivo.
+
+Implementado: `chapter_anchors` por frame, `pending_anchor`/`current_anchor`,
+`jump_to`, `--anchor <id>` y marcado de la entrada actual en el índice. El parser
+estricto emite un bloque-ancla invisible para `<a id="…"></a>` vacíos (el caso de
+`flores`); el render lo saltea. Verificado `#6` → “Parte 2” y `#final` desde otro
+capítulo en `mini.epub`.
 
 ### T5 — Enlaces internos clicables
 - Las `Run` con `link` guardan el `href`; click en la palabra salta.

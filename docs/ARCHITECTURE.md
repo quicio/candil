@@ -97,6 +97,15 @@ aparecen; el caché (`HashMap<ruta, TextureHandle>`) se vacía al cambiar de
 capítulo. Las que venían envueltas en `<svg><image>` llegan como `Kind::Image` y
 siguen el mismo camino. Presupuesto: un capítulo a la vez.
 
+## Anclas
+
+Al dibujar un capítulo, cada `Block.anchor` registra su `y` en un mapa por
+capítulo. Al elegir una entrada del índice se resuelve `(spine, anchor)`: si es
+otro capítulo, se carga y se deja `pending_anchor` para el frame siguiente; si es
+el actual, se ajusta el scroll. `current_anchor` marca la entrada activa. Un
+`id` en un elemento vacío (`<a id="6"></a>`) se conserva como bloque-ancla
+invisible para no perder el destino (ADR-0010).
+
 ## Biblioteca
 
 `app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.

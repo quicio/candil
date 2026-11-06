@@ -1,7 +1,7 @@
 ---
 id: docs-index
 status: vigente
-version: 1.4.0
+version: 1.5.0
 updated: 2026-11-06
 ---
 
@@ -25,7 +25,7 @@ Orden de lectura para un agente nuevo:
 | [15](specs/15-endurecimiento-lector.md) | Endurecimiento del lector | **implementada** |
 | [20](specs/20-biblioteca.md) | Biblioteca — índice, estantería y apertura | **implementada** |
 | [21](specs/21-metadatos-y-portadas.md) | Metadatos y portadas | **implementada** |
-| [30](specs/30-indice-por-ancla.md) | Índice por ancla | **aprobada (T1/T2 hechas)** |
+| [30](specs/30-indice-por-ancla.md) | Índice por ancla | **aprobada (T1–T4 hechas; falta T5)** |
 | [35](specs/35-preferencias-por-libro.md) | Preferencias por libro y progreso estable | draft |
 | [40](specs/40-busqueda.md) | Búsqueda dentro del libro | borrador inicial |
 | [45](specs/45-citas-y-marcadores.md) | Citas y marcadores | **borrador (MVP definido; después de M3)** |

@@ -92,10 +92,11 @@ Criterio de salida, medible:
 
 ## M3 — Lectura fina (en curso)
 
-Estado 2026-11-06: T1/T2 de spec 30 hechas — `Block.anchor`, fragmentos en
-`TocEntry` y dedupe por `(spine, anchor)`; `flores-del-mal` ya lista 8 entradas.
-Pendiente: salto intra/intercapítulo (T3/T4), enlaces internos (T5) y
-`Progress`/preferencias por libro (spec 35).
+Estado 2026-11-06: T1–T4 de spec 30 hechas — `Block.anchor`, fragmentos en
+`TocEntry`, dedupe por `(spine, anchor)`, mapa por capítulo y saltos
+intra/intercapítulo. `flores-del-mal` ya lista 8 entradas y `#6` aterriza en
+“Parte 2”. Pendiente: enlaces internos (T5) y `Progress`/preferencias por libro
+(spec 35).
 
 - Índice por ancla: entradas con `#fragmento`, salto al bloque con ese `id`.
 - Preferencias por libro (tema, tamaño, interlineado) sin perder las globales.

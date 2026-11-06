@@ -106,6 +106,9 @@ pub struct Lector {
     viewport_h: f32,
     show_toc: bool,
     show_settings: bool,
+    chapter_anchors: HashMap<String, f32>,
+    pending_anchor: Option<String>,
+    current_anchor: Option<String>,
     status: Option<(String, Instant)>,
     applied_theme: Option<usize>,
     dirty: bool,
@@ -129,6 +132,8 @@ pub struct DevOpts {
     pub library_path: Option<PathBuf>,
     /// Precarga el buscador (capturas).
     pub search: Option<String>,
+    /// Salta a un ancla del libro al abrir (capturas/dev).
+    pub anchor: Option<String>,
 }
 
 impl Lector {
@@ -192,6 +197,9 @@ impl Lector {
             viewport_h: 600.0,
             show_toc: false,
             show_settings: false,
+            chapter_anchors: HashMap::new(),
+            pending_anchor: None,
+            current_anchor: None,
             status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
             dirty: false,
@@ -217,6 +225,17 @@ impl Lector {
         if let Some(p) = target {
             if p.exists() {
                 app.open(p);
+            }
+        }
+        if app.book.is_some() {
+            if let Some(anchor) = app.dev.anchor.clone() {
+                let spine = app.book.as_ref().and_then(|book| {
+                    book.toc
+                        .iter()
+                        .find(|entry| entry.anchor.as_deref() == Some(anchor.as_str()))
+                        .map(|entry| entry.spine)
+                });
+                app.jump_to(spine.unwrap_or(app.chapter), Some(anchor));
             }
         }
         app
@@ -281,6 +300,9 @@ impl Lector {
         self.blocks = blocks;
         self.chapter = index;
         self.textures.clear();
+        self.chapter_anchors.clear();
+        self.pending_anchor = None;
+        self.current_anchor = None;
         self.scroll = offset;
         self.delta = 0.0;
         self.dirty = true;
@@ -297,6 +319,20 @@ impl Lector {
         if next != self.chapter {
             self.load_chapter(next, 0.0);
         }
+    }
+
+    fn jump_to(&mut self, spine: usize, anchor: Option<String>) {
+        if spine != self.chapter {
+            self.load_chapter(spine, 0.0);
+        }
+        if anchor.is_some() {
+            self.pending_anchor = anchor;
+        } else {
+            self.scroll = 0.0;
+            self.pending_anchor = None;
+        }
+        self.current_anchor = None;
+        self.delta = 0.0;
     }
 
     fn progress(&self) -> f32 {
@@ -1005,7 +1041,7 @@ impl Lector {
             None => return,
         };
         let mut open = self.show_toc;
-        let mut jump: Option<usize> = None;
+        let mut jump: Option<(usize, Option<String>)> = None;
         egui::Window::new("Índice")
             .open(&mut open)
             .resizable(true)
@@ -1015,11 +1051,12 @@ impl Lector {
                 ScrollArea::vertical().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
                     let mut chapter_marked = false;
-                    for (title, spine, _anchor) in &entries {
-                        // Hasta T3 no hay ancla actual: marcamos solo la primera
-                        // entrada del capítulo para no resaltar todas las de un
-                        // libro con todo el texto en un XHTML.
-                        let selected = *spine == self.chapter && !chapter_marked;
+                    for (title, spine, anchor) in &entries {
+                        let selected = if let Some(current) = &self.current_anchor {
+                            *spine == self.chapter && anchor.as_deref() == Some(current.as_str())
+                        } else {
+                            *spine == self.chapter && !chapter_marked
+                        };
                         if *spine == self.chapter {
                             chapter_marked = true;
                         }
@@ -1029,15 +1066,16 @@ impl Lector {
                             th.fg
                         });
                         if ui.selectable_label(selected, text).clicked() {
-                            jump = Some(*spine);
+                            jump = Some((*spine, anchor.clone()));
                         }
                     }
                 });
             });
         self.show_toc = open;
-        if let Some(i) = jump {
-            self.load_chapter(i, 0.0);
+        if let Some((spine, anchor)) = jump {
+            self.jump_to(spine, anchor);
             self.show_toc = false;
+            ctx.request_repaint();
         }
     }
 
@@ -1214,9 +1252,13 @@ impl Lector {
                     max_scroll,
                     viewport_h,
                     dirty,
+                    chapter_anchors,
+                    pending_anchor,
+                    current_anchor,
                     ..
                 } = self;
                 let dirty_scroll = dirty;
+                chapter_anchors.clear();
 
                 let so = ScrollArea::vertical()
                     .id_salt("reader")
@@ -1231,6 +1273,10 @@ impl Lector {
                                 ui.set_max_width(colw);
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for b in blocks.iter() {
+                                    let y = ui.cursor().top();
+                                    if let Some(anchor) = &b.anchor {
+                                        chapter_anchors.entry(anchor.clone()).or_insert(y);
+                                    }
                                     draw_block(ui, b, colw, &s, th, textures, book, ctx);
                                 }
                             });
@@ -1244,6 +1290,14 @@ impl Lector {
                 *scroll = so.state.offset.y;
                 *viewport_h = so.inner_rect.height();
                 *max_scroll = (so.content_size.y - so.inner_rect.height()).max(0.0);
+
+                if let Some(anchor) = pending_anchor.take() {
+                    if let Some(y) = chapter_anchors.get(&anchor) {
+                        *scroll = (*y - 48.0).max(0.0);
+                        *current_anchor = Some(anchor);
+                        ctx.request_repaint();
+                    }
+                }
             });
 
         // Evita que el layout de la barra se desplace cuando cambia el ancho.
@@ -1605,6 +1659,11 @@ fn draw_block(
 ) {
     let base = s.font_size;
     let lh = s.line_height;
+
+    // Bloques-ancla invisibles (`<a id="…"></a>`): no ocupan espacio.
+    if b.runs.is_empty() && b.src.is_none() && !matches!(b.kind, Kind::Rule | Kind::Image) {
+        return;
+    }
 
     match b.kind {
         Kind::Rule => {

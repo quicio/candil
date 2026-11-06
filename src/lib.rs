@@ -8,6 +8,7 @@ pub mod covers;
 pub mod epub;
 pub mod fonts;
 pub mod library;
+pub mod search;
 pub mod store;
 pub mod theme;
 pub mod xhtml;

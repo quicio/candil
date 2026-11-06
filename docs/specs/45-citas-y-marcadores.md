@@ -182,7 +182,7 @@ barra del lector:  ☰  Aa  ✎  …
 
 ### T6 — Verificación y docs (hecha)
 - Tests de modelo (`annotations.rs`), reanclaje por cita, selección con prefijo y
-  `locate_quote` en `app.rs`. Total: **64 unit + 8 integración**.
+  `locate_quote` en `app.rs`. Total: **69 unit + 9 integración**.
 - Capturas en `docs/img/reader-highlight.jpg`, `reader-notes.jpg` y
   `reader-note.jpg` (lector con destacado, panel y editor).
 - Rendimiento del caso grande: `flores-del-mal` (1895 bloques en un capítulo),

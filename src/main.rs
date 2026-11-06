@@ -54,6 +54,14 @@ fn main() -> eframe::Result<()> {
                 dev.search = args.get(i + 1).cloned();
                 i += 2;
             }
+            "--book-search" => {
+                dev.book_search = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--search-jump" => {
+                dev.search_jump = true;
+                i += 1;
+            }
             "--anchor" => {
                 dev.anchor = args
                     .get(i + 1)

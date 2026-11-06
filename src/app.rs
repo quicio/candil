@@ -15,6 +15,7 @@ use crate::config::{self, Config, Progress, Settings};
 use crate::epub::Book;
 use crate::fonts;
 use crate::library::Library;
+use crate::search;
 use crate::theme::{self, Theme, THEMES};
 use crate::xhtml::{Block, Kind};
 
@@ -142,6 +143,18 @@ pub struct Lector {
     selection: Option<Selection>,
     note: Option<NoteEditor>,
     show_annotations: bool,
+    show_search: bool,
+    search_query: String,
+    search_results: Vec<search::Hit>,
+    search_truncated: bool,
+    search_active: usize,
+    search_index: Option<search::SearchIndex>,
+    search_focus: bool,
+    search_dirty: bool,
+    /// Rango del resultado activo: (capítulo, bloque, inicio, fin).
+    search_highlight: Option<(usize, usize, usize, usize)>,
+    /// Salto único al bloque/offset de un resultado.
+    pending_search_jump: Option<(usize, usize)>,
     /// Último `TextEdit` del lector con foco (para salir de la selección con Esc).
     reader_focus: Option<egui::Id>,
     status: Option<(String, Instant)>,
@@ -167,6 +180,10 @@ pub struct DevOpts {
     pub library_path: Option<PathBuf>,
     /// Precarga el buscador (capturas).
     pub search: Option<String>,
+    /// Precarga la búsqueda dentro del libro (capturas).
+    pub book_search: Option<String>,
+    /// Salta al primer resultado de la búsqueda (capturas).
+    pub search_jump: bool,
     /// Salta a un ancla del libro al abrir (capturas/dev).
     pub anchor: Option<String>,
 }
@@ -215,6 +232,7 @@ impl Lector {
 
         let theme_idx = cfg.settings.theme;
         let initial_search = dev.search.clone().unwrap_or_default();
+        let initial_book_search = dev.book_search.clone().unwrap_or_default();
         let mut app = Self {
             screen: Screen::Library,
             book: None,
@@ -243,6 +261,16 @@ impl Lector {
             selection: None,
             note: None,
             show_annotations: false,
+            show_search: false,
+            search_query: initial_book_search.clone(),
+            search_results: Vec::new(),
+            search_truncated: false,
+            search_active: 0,
+            search_index: None,
+            search_focus: false,
+            search_dirty: !initial_book_search.is_empty(),
+            search_highlight: None,
+            pending_search_jump: None,
             reader_focus: None,
             status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
@@ -311,6 +339,16 @@ impl Lector {
                 self.show_annotations = false;
                 self.pending_block_jump = None;
                 self.reader_focus = None;
+                self.search_index = None;
+                self.search_results.clear();
+                self.search_truncated = false;
+                self.search_active = 0;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+                self.search_query = self.dev.book_search.clone().unwrap_or_default();
+                self.search_dirty = !self.search_query.is_empty();
+                self.show_search = self.dev.book_search.is_some();
+                self.search_focus = self.show_search;
                 self.cfg.last_book = Some(key.clone());
                 self.cfg.touch_recent(&key);
                 if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
@@ -332,6 +370,11 @@ impl Lector {
                     Some("toc") => self.show_toc = true,
                     Some("settings") => self.show_settings = true,
                     Some("notes") => self.show_annotations = true,
+                    Some("search") => {
+                        self.show_search = true;
+                        self.search_focus = true;
+                        self.search_dirty = !self.search_query.is_empty();
+                    }
                     Some("note") => {
                         if let Some(a) = self
                             .annotations
@@ -372,6 +415,8 @@ impl Lector {
         self.block_positions.clear();
         self.pending_restore = restore;
         self.pending_block_jump = None;
+        self.pending_search_jump = None;
+        self.search_highlight = None;
         self.selection = None;
         self.note = None;
         self.reader_focus = None;
@@ -508,6 +553,13 @@ impl Lector {
         self.note = None;
         self.show_annotations = false;
         self.reader_focus = None;
+        self.show_search = false;
+        self.search_index = None;
+        self.search_results.clear();
+        self.search_truncated = false;
+        self.search_active = 0;
+        self.search_highlight = None;
+        self.pending_search_jump = None;
     }
 
     fn effective_settings(&self) -> Settings {
@@ -621,6 +673,9 @@ impl Lector {
             draft: String::new(),
             focus: true,
         });
+        self.show_search = false;
+        self.search_highlight = None;
+        self.pending_search_jump = None;
         self.reader_focus = Some(selection.edit_id);
         self.surrender_reader_focus(ctx);
         ctx.request_repaint();
@@ -670,6 +725,182 @@ impl Lector {
         self.reader_focus = None;
     }
 
+    fn cycle_search(&mut self, delta: i32, ctx: &egui::Context) {
+        let len = self.search_results.len();
+        if len == 0 {
+            return;
+        }
+        let next = (self.search_active as i32 + delta).rem_euclid(len as i32) as usize;
+        self.activate_search_result(next, ctx);
+    }
+
+    fn activate_search_result(&mut self, index: usize, ctx: &egui::Context) {
+        let Some(hit) = self.search_results.get(index).cloned() else {
+            return;
+        };
+        self.search_active = index;
+        if hit.chapter != self.chapter {
+            self.load_chapter(hit.chapter, None);
+        }
+        self.pending_restore = None;
+        self.pending_anchor = None;
+        self.pending_block_jump = Some((hit.block, hit.matched.clone()));
+        self.pending_search_jump = Some((hit.block, hit.start));
+        self.search_highlight = Some((hit.chapter, hit.block, hit.start, hit.end));
+        self.selection = None;
+        self.note = None;
+        self.reader_focus = None;
+        ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("book-search")));
+        ctx.request_repaint();
+    }
+
+    fn search_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.show_search {
+            return;
+        }
+
+        let query_len = self.search_query.trim().chars().count();
+        if query_len >= 2 && self.search_index.is_none() {
+            if let Some(book) = self.book.as_mut() {
+                self.search_index = Some(search::build(book));
+                self.search_dirty = true;
+            }
+        }
+        if self.search_dirty {
+            self.search_dirty = false;
+            if let Some(index) = self.search_index.as_ref() {
+                let (hits, truncated) =
+                    search::search(index, &self.search_query, search::MAX_RESULTS);
+                self.search_results = hits;
+                self.search_truncated = truncated;
+                if self.search_active >= self.search_results.len() {
+                    self.search_active = 0;
+                }
+            }
+        }
+
+        if self.dev.search_jump && !self.search_results.is_empty() {
+            self.dev.search_jump = false;
+            let index = self.search_active.min(self.search_results.len() - 1);
+            self.activate_search_result(index, ctx);
+        }
+
+        let titles: Vec<String> = self
+            .search_results
+            .iter()
+            .map(|hit| {
+                self.search_index
+                    .as_ref()
+                    .and_then(|index| index.chapters.get(hit.chapter))
+                    .map(|chapter| chapter.title.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        let mut open = self.show_search;
+        let mut jump = None;
+        egui::Window::new("Buscar en el libro")
+            .open(&mut open)
+            .default_width(460.0)
+            .min_width(320.0)
+            .resizable(true)
+            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.search_query)
+                        .id(egui::Id::new("book-search"))
+                        .hint_text("Buscar en el libro…")
+                        .desired_width(f32::INFINITY),
+                );
+                if self.search_focus {
+                    response.request_focus();
+                    self.search_focus = false;
+                }
+                if response.changed() {
+                    self.search_dirty = true;
+                    self.search_highlight = None;
+                    self.pending_search_jump = None;
+                }
+
+                let query_len = self.search_query.trim().chars().count();
+                if query_len < 2 {
+                    ui.label(
+                        RichText::new("Escribí al menos 2 letras.")
+                            .size(11.0)
+                            .color(th.dim),
+                    );
+                    return;
+                }
+
+                let total = self.search_results.len();
+                if total == 0 {
+                    ui.label(RichText::new("Sin coincidencias.").size(12.0).color(th.dim));
+                    return;
+                }
+
+                let count = if self.search_truncated {
+                    format!("Mostrando los primeros {total}; afiná la búsqueda.",)
+                } else {
+                    format!("{total} resultado(s)")
+                };
+                ui.label(RichText::new(count).size(11.0).color(th.dim));
+
+                let dim = TextFormat {
+                    font_id: FontId::new(12.5, fonts::family(false, false)),
+                    color: th.dim,
+                    ..Default::default()
+                };
+                let mut accent = dim.clone();
+                accent.color = th.accent;
+
+                egui::ScrollArea::vertical()
+                    .max_height(380.0)
+                    .show(ui, |ui| {
+                        for (index, hit) in self.search_results.iter().enumerate() {
+                            let mut job = LayoutJob::default();
+                            job.wrap.max_width = ui.available_width();
+                            job.append(&hit.before, 0.0, dim.clone());
+                            job.append(&hit.matched, 0.0, accent.clone());
+                            job.append(&hit.after, 0.0, dim.clone());
+                            let row = ui.add(egui::Label::new(job).wrap().sense(Sense::click()));
+                            if row.clicked() {
+                                jump = Some(index);
+                            }
+                            ui.label(
+                                RichText::new(format!(
+                                    "Cap. {} · {}",
+                                    hit.chapter + 1,
+                                    truncate(
+                                        titles.get(index).map(String::as_str).unwrap_or(""),
+                                        44
+                                    )
+                                ))
+                                .size(10.5)
+                                .color(th.dim),
+                            );
+                            ui.separator();
+                        }
+                    });
+
+                ui.add_space(2.0);
+                ui.label(
+                    RichText::new("Enter: ir · n/N: siguiente/anterior · Esc: cerrar")
+                        .size(10.5)
+                        .color(th.dim),
+                );
+            });
+
+        self.show_search = open;
+        if !open {
+            self.search_highlight = None;
+            self.pending_search_jump = None;
+        }
+        if let Some(index) = jump {
+            self.activate_search_result(index, ctx);
+        }
+    }
+
     // -- entrada -------------------------------------------------------------
 
     fn handle_input(&mut self, ctx: &egui::Context) {
@@ -709,6 +940,9 @@ impl Lector {
             key_d,
             key_h,
             key_n,
+            key_enter,
+            shift,
+            key_f,
         ) = ctx.input(|i| {
             (
                 i.key_pressed(Key::Space),
@@ -729,6 +963,9 @@ impl Lector {
                 i.key_pressed(Key::D),
                 i.key_pressed(Key::H),
                 i.key_pressed(Key::N),
+                i.key_pressed(Key::Enter),
+                i.modifiers.shift,
+                i.key_pressed(Key::F),
             )
         });
 
@@ -741,11 +978,27 @@ impl Lector {
             }
         }
 
+        if ctrl && key_f && self.book.is_some() {
+            self.show_search = true;
+            self.search_focus = true;
+            self.show_toc = false;
+            self.show_settings = false;
+            self.show_annotations = false;
+            self.selection = None;
+            self.note = None;
+            ctx.request_repaint();
+        }
+
         if key_esc {
             if self.note.is_some() {
                 self.note = None;
                 ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
                 self.surrender_reader_focus(ctx);
+            } else if self.show_search {
+                self.show_search = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+                ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("book-search")));
             } else if self.show_annotations {
                 self.show_annotations = false;
             } else if self.selection.is_some() || self.reader_focus.is_some() {
@@ -765,6 +1018,11 @@ impl Lector {
                 self.show_annotations = !self.show_annotations;
                 self.show_toc = false;
                 self.show_settings = false;
+                if self.show_annotations {
+                    self.show_search = false;
+                    self.search_highlight = None;
+                    self.pending_search_jump = None;
+                }
             }
             if self.selection.is_some() {
                 if key_h {
@@ -773,6 +1031,17 @@ impl Lector {
                 if key_n {
                     self.open_note_for_selection(ctx);
                 }
+            } else if key_n && !typing && self.show_search && !self.search_results.is_empty() {
+                self.cycle_search(if shift { -1 } else { 1 }, ctx);
+            }
+
+            if key_enter
+                && self.show_search
+                && self.note.is_none()
+                && !self.search_results.is_empty()
+            {
+                let index = self.search_active.min(self.search_results.len() - 1);
+                self.activate_search_result(index, ctx);
             }
         }
 
@@ -812,10 +1081,20 @@ impl Lector {
         if key_t {
             self.show_toc = !self.show_toc;
             self.show_settings = false;
+            if self.show_toc {
+                self.show_search = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+            }
         }
         if key_s {
             self.show_settings = !self.show_settings;
             self.show_toc = false;
+            if self.show_settings {
+                self.show_search = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+            }
         }
     }
 
@@ -1247,6 +1526,11 @@ impl Lector {
                         .clicked()
                     {
                         self.show_toc = !self.show_toc;
+                        if self.show_toc {
+                            self.show_search = false;
+                            self.search_highlight = None;
+                            self.pending_search_jump = None;
+                        }
                     }
                     if ui
                         .button(RichText::new(if book_override { "Aa·" } else { "Aa" }).size(13.0))
@@ -1258,6 +1542,11 @@ impl Lector {
                         .clicked()
                     {
                         self.show_settings = !self.show_settings;
+                        if self.show_settings {
+                            self.show_search = false;
+                            self.search_highlight = None;
+                            self.pending_search_jump = None;
+                        }
                     }
                     if ui
                         .button(RichText::new("Notas").size(12.0))
@@ -1267,6 +1556,24 @@ impl Lector {
                         self.show_annotations = !self.show_annotations;
                         self.show_toc = false;
                         self.show_settings = false;
+                        if self.show_annotations {
+                            self.show_search = false;
+                            self.search_highlight = None;
+                            self.pending_search_jump = None;
+                        }
+                    }
+                    if ui
+                        .button(RichText::new("Buscar").size(12.0))
+                        .on_hover_text("Buscar en el libro (⌘F)")
+                        .clicked()
+                    {
+                        self.show_search = true;
+                        self.search_focus = true;
+                        self.show_toc = false;
+                        self.show_settings = false;
+                        self.show_annotations = false;
+                        self.selection = None;
+                        self.note = None;
                     }
                     ui.add_space(6.0);
                     let shown = if chapter_title.is_empty() {
@@ -1722,6 +2029,9 @@ impl Lector {
                     draft: a.note.clone(),
                     focus: true,
                 });
+                self.show_search = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
             }
         }
         if let Some(id) = jump {
@@ -1840,10 +2150,15 @@ impl Lector {
         let offset = (self.scroll + self.delta).max(0.0);
         self.delta = 0.0;
 
-        let highlights = match self.book_key() {
+        let mut highlights = match self.book_key() {
             Some(key) => resolve_highlights(&self.annotations, &key, self.chapter, &self.blocks),
             None => HashMap::new(),
         };
+        if let Some((chapter, block, start, end)) = self.search_highlight {
+            if chapter == self.chapter {
+                highlights.entry(block).or_default().push((start, end));
+            }
+        }
 
         let mut colw = 660.0;
         let s = self.effective_settings();
@@ -1871,6 +2186,7 @@ impl Lector {
                     block_positions,
                     pending_restore,
                     pending_block_jump,
+                    pending_search_jump,
                     selection,
                     reader_focus,
                     ..
@@ -1969,6 +2285,24 @@ impl Lector {
                         }
                     }
                 }
+
+                if let Some((block, start)) = pending_search_jump.take() {
+                    if let Some(&y) = block_positions.get(block) {
+                        let next = block_positions
+                            .get(block + 1)
+                            .copied()
+                            .unwrap_or(*max_scroll)
+                            .max(y);
+                        let len = blocks
+                            .get(block)
+                            .map(|b| b.text().chars().count())
+                            .unwrap_or(0)
+                            .max(1);
+                        let fraction = (start as f32 / len as f32).clamp(0.0, 1.0);
+                        *scroll = (y + fraction * (next - y) - 40.0).clamp(0.0, *max_scroll);
+                        ctx.request_repaint();
+                    }
+                }
             });
 
         if (self.scroll - offset).abs() > 0.5 {
@@ -1985,6 +2319,7 @@ impl Lector {
         let _ = colw;
         self.toc_window(ctx, th);
         self.settings_window(ctx, th);
+        self.search_window(ctx, th);
         self.selection_bar(ctx, th);
         self.annotations_window(ctx, th);
         self.note_window(ctx, th);

@@ -3,10 +3,10 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, anclas internas, progreso estable por bloque y
-destacados/notas por libro.
+sin copiar los libros, anclas internas, progreso estable por bloque,
+destacados/notas y búsqueda dentro del libro.
 
-Binario final (`dist`): **5.3 MiB** (5.566.032 B), arranque instantáneo, sin
+Binario final (`dist`): **5.3 MiB** (5.582.640 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -61,7 +61,9 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
 | `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
-| `⌘F` | buscar en la biblioteca |
+| `⌘F` | buscar en la biblioteca / en el libro abierto |
+| `Enter` (búsqueda) | ir al resultado |
+| `n` / `N` (búsqueda) | siguiente / anterior resultado |
 | `⌘O` | abrir archivo |
 
 ## Temas y tipografía
@@ -87,6 +89,7 @@ src/
   xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre, tablas, SVG, anclas)
   library.rs índice de carpetas, escaneo incremental y BookEntry
   annotations.rs destacados/notas por libro (offsets de texto + cita)
+  search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
   theme.rs   presets de color
@@ -108,8 +111,8 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 64
-tests unitarios y 8 de integración sobre fixtures propios versionados
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 69
+tests unitarios y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
 
@@ -127,12 +130,13 @@ ventana no descoloca la lectura. Tema y tipografía se pueden fijar **solo para 
 libro** con el checkbox del panel `Aa`; el indicador `Aa·` avisa que ese libro
 tiene ajustes propios.
 
-M4 (extras) tiene implementado el MVP de destacados y notas (spec 45): seleccioná
-una frase dentro de un párrafo, `Destacar` o `H`, agregá una nota con `N`, y
-administrala desde “Destacados y notas” (`D`). Se guardan en
-`annotations.json` como offsets de caracteres + cita, así que sobreviven cambios
-de tipografía y se reanclan por texto si el bloque cambió. Falta la búsqueda
-dentro del libro (spec 40).
+M4 (extras) está cerrado con el MVP de destacados/notas y la búsqueda dentro
+del libro. Seleccioná una frase y usá `Destacar`/`H` o `Nota`/`N`; el panel
+`D` lista, edita y borra. Se guardan en `annotations.json` como offsets de
+caracteres + cita, así que sobreviven cambios de tipografía y se reanclan por
+texto si el bloque cambió. `⌘F` abre “Buscar en el libro”: índice efímero,
+búsqueda sin acentos/mayúsculas, resultados con contexto, salto al match y
+`n`/`N` para recorrerlos.
 
 ## Capturas
 
@@ -150,14 +154,18 @@ dentro del libro (spec 40).
 |---|---|---|
 | ![Frase destacada en el lector](docs/img/reader-highlight.jpg) | ![Panel de destacados y notas](docs/img/reader-notes.jpg) | ![Editor de nota](docs/img/reader-note.jpg) |
 
+| **Búsqueda en el libro** |
+|---|
+| ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
+
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
 - Índice con anclas y enlaces internos: el salto intra/intercapítulo y los
   enlaces `<a href="#…">` funcionan; los enlaces externos todavía se ignoran.
 - Sin paginado por columnas ni sinónimos/hyphenation.
-- Sin búsqueda dentro del libro (spec 40). Los destacados/notas están desde M4,
-  pero la selección no cruza párrafos (MVP).
+- La búsqueda dentro del libro es substring sin regex/stemming y resalta solo la
+  coincidencia activa; la selección de destacados no cruza párrafos (MVP).
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher: se refresca a mano.
@@ -174,8 +182,9 @@ dentro del libro (spec 40).
   filtros, carpetas y migración de progreso.
 - **M3 — Lectura fina (cerrada):** anclas, saltos, enlaces internos, progreso
   por fracción con ancla de bloque y ajustes por libro.
-- **M4 — Extras (en curso):** destacados y notas listos (spec 45); falta la
-  búsqueda dentro del libro (spec 40), el índice global y exportar citas.
+- **M4 — Extras (cerrado):** destacados/notas (spec 45) y búsqueda dentro del
+  libro (spec 40). Quedan para una segunda etapa el índice global de
+  anotaciones, varios colores y la exportación a Markdown.
 
 ## Modo diagnóstico
 

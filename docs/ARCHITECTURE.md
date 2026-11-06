@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.6.0
+version: 1.7.0
 updated: 2026-11-06
 ---
 
@@ -42,6 +42,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
 | `annotations.rs` | destacados/notas por libro: offsets de texto, cita y nota; `annotations.json` atómico | no conoce píxeles ni la UI |
+| `search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
@@ -132,6 +133,26 @@ El panel “Destacados y notas” lista las del libro ordenadas por capítulo/bl
 `Editar` abre la nota y `×` borra. `H`/`N`/`D` son los atajos; `Esc` sale de la
 selección o cierra la ventana activa.
 
+## Búsqueda
+
+`search.rs` construye un `SearchIndex` la primera vez que se busca en el libro:
+recorre todos los capítulos con `Book::chapter_blocks`, guarda el texto original
+y su versión normalizada por bloque (minúsculas + sin acentos, un carácter por
+carácter) y conserva el índice real dentro de `Vec<Block>`. La búsqueda es
+substring sobre el texto normalizado, con hasta `MAX_RESULTS` coincidencias y 60
+caracteres de contexto a cada lado.
+
+La normalización 1:1 es el contrato: los offsets del texto normalizado se usan
+directamente para resaltar y saltar en el original, sin mapas auxiliares. El
+índice vive solo en memoria y se libera al volver a la biblioteca; no se escribe
+en `library.json`.
+
+La ventana “Buscar en el libro” muestra los resultados con la coincidencia en
+acento. Al activar uno, `activate_search_result` carga el capítulo si hace falta,
+deja `pending_block_jump` para ubicar el bloque y `pending_search_jump` para
+refinar el scroll a la fracción de caracteres del match. El rango activo se pinta
+con el mismo mecanismo de `TextFormat::background` que los destacados.
+
 ## Biblioteca
 
 `app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.
@@ -148,7 +169,8 @@ sus libros) y la barra muestra el contador de errores con tooltip.
 
 `Lector` guarda: pantalla (`Library`/`Reader`), biblioteca, libro abierto
 (`Book`), capítulo actual, bloques del capítulo, texturas del lector y de
-portadas, `Config`, `Annotations`, selección/nota activas, offset de scroll,
+portadas, `Config`, `Annotations`, selección/nota activas, índice de búsqueda y
+resultados, offset de scroll,
 altura del viewport, flags de panel y estado de guardado diferido.
 
 Regla de oro: **el scroll es del lector, no del EPUB**. Se guarda por libro como

@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.5.0
+version: 1.6.0
 updated: 2026-11-06
 ---
 
@@ -13,12 +13,13 @@ Lector de EPUB de escritorio en Rust: una columna, scroll continuo, tipografía
 propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
-**M1 (lector), M1.1 (endurecimiento), M2 (biblioteca) y M3 (lectura fina)
-están cerrados.** M3 incluye anclas/saltos (spec 30) y progreso por fracción con
-ancla de bloque más preferencias por libro (spec 35).
+**M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina) y
+M4 (extras) están cerrados.** M3 incluye anclas/saltos (spec 30) y progreso por
+fracción con ancla de bloque más preferencias por libro (spec 35). M4 incluye
+destacados/notas (spec 45) y búsqueda dentro del libro (spec 40).
 
-**M4 está en curso:** el MVP de destacados y notas (spec 45) ya está
-implementado y verificado; falta la búsqueda dentro del libro (spec 40).
+Quedan para una segunda etapa de M4, fuera del MVP: índice global de
+anotaciones, varios colores, export Markdown y salto a porcentaje exacto.
 
 ## Estado medido (no estimado)
 
@@ -32,12 +33,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 8 en `docs/img/` (biblioteca ×4, tipografía, destacado, panel y nota) | `--shot --screen library` / `--panel settings/notes/note` |
+| capturas | 9 en `docs/img/` (biblioteca ×4, tipografía, destacado, panel, nota y búsqueda) | `--shot --screen library` / `--panel settings/notes/note/search` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 64 unit + 8 integración | `cargo test` |
+| tests | 69 unit + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.566.032 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.582.640 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -64,6 +65,7 @@ src/epub.rs    zip → container.xml → OPF → spine + índice + portada decla
 src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
+src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
@@ -91,6 +93,8 @@ cargo run --profile fast -- --shot /tmp/p.png --panel toc libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel settings libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel notes libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel note libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase --search-jump libro.epub
 
 # diagnóstico de parser
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub
@@ -144,6 +148,9 @@ flotante tapando texto) solo aparecieron así.
 13. **Los destacados son offsets de caracteres + cita**, no píxeles ni índices
     de byte. Si el bloque cambió, se reanclan buscando la cita en el capítulo; si
     no aparece, no se dibujan. Borrar una anotación nunca toca el EPUB.
+14. **El índice de búsqueda es efímero**: vive en memoria mientras el libro está
+    abierto y se libera al volver a la biblioteca. No se persiste en
+    `library.json`. La normalización es 1:1 para que los offsets coincidan.
 
 ## Definición de terminado (por tarea)
 

@@ -112,3 +112,24 @@ fn portada_declarada_y_fallback_de_imagen() {
         "edge no declara portada: debe caer al <svg><image>"
     );
 }
+
+#[test]
+fn busqueda_encuentra_con_acentos_y_mapea_al_bloque_real() {
+    let mut book = abrir();
+    let index = lector::search::build(&mut book);
+    let (hits, truncated) = lector::search::search(&index, "enfasis", 10);
+    assert!(!truncated);
+    assert!(!hits.is_empty(), "el fixture contiene «énfasis»");
+
+    let hit = &hits[0];
+    assert_eq!(hit.chapter, 0);
+    let blocks = book.chapter_blocks(hit.chapter);
+    let text = blocks[hit.block].text();
+    let slice: String = text
+        .chars()
+        .skip(hit.start)
+        .take(hit.end - hit.start)
+        .collect();
+    assert_eq!(slice.to_lowercase(), "énfasis");
+    assert_eq!(hit.matched.to_lowercase(), "énfasis");
+}

@@ -77,7 +77,7 @@ libro obliga a ir a ajustes cada vez.
   `fraccion_del_bloque_sobrevive_al_cambio_de_layout`,
   `fraccion_cero_fija_el_tope_del_bloque` y
   `fraccion_se_calcula_dentro_del_bloque` (matemática de restore).
-- Total al cerrar M3: **52 unit + 8 integración**; tras el MVP de M4, **64 + 8**.
+- Total al cerrar M3: **52 unit + 8 integración**; al cerrar M4, **69 + 9**.
   Clippy sin warnings.
 
 ## Tareas

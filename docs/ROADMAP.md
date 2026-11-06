@@ -1,7 +1,7 @@
 ---
 id: roadmap
 status: vigente
-version: 1.5.0
+version: 1.6.0
 updated: 2026-11-06
 ---
 
@@ -16,7 +16,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M1.1 | Endurecimiento | **Hecho** | [15](specs/15-endurecimiento-lector.md) | Espacios, entidades, pre/tablas, SVG raster y config atómica verificados sobre el corpus |
 | M2 | Biblioteca | **Hecho** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
 | M3 | Lectura fina | **Hecho** | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
-| M4 | Extras | **En curso** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
+| M4 | Extras | **Hecho** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 
 ## M1 — Lector (terminado)
 
@@ -35,7 +35,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 64 + 8 con M2/M3/M4); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 69 + 9 con M2/M3/M4); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -65,7 +65,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 64 + 8.
+2279/2279 imágenes. `cargo test`: 69 + 9.
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -101,24 +101,29 @@ Cerrado el 2026-11-06 con specs 30 y 35:
 - Preferencias de tema/tipografía por libro con precedencia
   `entry.settings → config.settings`, checkbox "Solo para este libro" e
   indicador `Aa·`.
-- Verificación: 52 unit + 8 integración al cerrar (hoy 64 + 8); capturas de tema propio, panel de
+- Verificación: 52 unit + 8 integración al cerrar (hoy 69 + 9); capturas de tema propio, panel de
   tipografía y mismo párrafo con fuente 27 → 17. `flores-del-mal` lista 8
   entradas y el ancla `#sigil_toc_*` de *Marco Aurelio* aterriza en su sección.
 
 Queda como deuda menor (no bloquea M3): salto a porcentaje exacto desde la barra
 y salto por número de capítulo; hoy se navega con las flechas y el índice.
 
-## M4 — Extras (en curso)
+## M4 — Extras (terminado)
 
-Estado 2026-11-06: **spec 45 (destacados y notas) implementada y verificada**.
-Selección dentro de un párrafo, barra `Destacar`/`Nota`, `annotations.json` con
-offsets de caracteres + cita, panel por libro con salto/edición/borrado y
-reanclaje por cita. Capturas y tests en la spec. Falta:
+Cerrado el 2026-11-06 con specs 40 y 45:
 
-- Búsqueda dentro del libro con contexto y resaltado (spec 40).
-- Índice global de anotaciones, varios colores y export Markdown (segunda etapa
-  de spec 45).
-- Citas exportables (texto + posición + título del libro).
+- **Destacados y notas (spec 45):** selección dentro de un párrafo, barra
+  `Destacar`/`Nota`, `annotations.json` con offsets de caracteres + cita, panel
+  por libro con salto/edición/borrado y reanclaje por cita.
+- **Búsqueda en el libro (spec 40):** índice efímero por bloques, normalización
+  1:1 (sin acentos/mayúsculas), resultados con contexto, salto al match, `n`/`N`
+  y resaltado en el texto. Índice caliente < 300 ms; construcción inicial
+  medida en 0.65 s para GEB (14 MB) incluyendo captura.
+- Verificación: **69 unit + 9 integración**, clippy sin warnings, capturas de
+  destacado/panel/nota/búsqueda.
+
+Fuera del MVP y para una segunda etapa: índice global de anotaciones, varios
+colores, export Markdown, citas exportables y búsqueda con regex/stemming.
 
 ## Orden de ataque recomendado
 
@@ -126,8 +131,9 @@ reanclaje por cita. Capturas y tests en la spec. Falta:
 2. M3 cerrado: anclas, saltos, enlaces internos, progreso por fracción y
    preferencias por libro.
 3. M4: destacados y notas (spec 45) — **hecho**.
-4. M4: búsqueda dentro del libro (spec 40), índice global y export de citas.
-5. M4: salto a porcentaje/capítulo por número como extra de navegación.
+4. M4: búsqueda dentro del libro (spec 40) — **hecho**.
+5. Segunda etapa: índice global de anotaciones, export de citas, búsqueda con
+   regex/stemming y salto a porcentaje/capítulo por número.
 
 Regla: **una spec, un milestone, un PR lógico**. Si una tarea no encaja en la
 spec, se discute antes de codear (flujo spec → código, nunca al revés).

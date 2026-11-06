@@ -1,8 +1,8 @@
 ---
 id: spec-30
 title: Índice por ancla
-status: aprobada
-version: 1.1.0
+status: implementada
+version: 1.2.0
 updated: 2026-11-06
 milestone: M3
 depends_on: [spec-10, adr-0002, adr-0010]
@@ -10,10 +10,10 @@ depends_on: [spec-10, adr-0002, adr-0010]
 
 # Spec 30 — Índice por ancla (M3)
 
-> **Estado: T1–T4 implementadas (2026-11-06).** `Block.anchor` y
+> **Estado: T1–T5 implementadas (2026-11-06).** `Block.anchor` y
 > `TocEntry.anchor` existen; el mapa por capítulo resuelve saltos intra e
 > intercapítulo. `flores-del-mal` pasó de 1 a 8 entradas y `#6` aterriza en
-> “Parte 2”. Falta T5 (enlaces internos clicables).
+> “Parte 2”. Los enlaces internos guardan `Run.href` y son clicables.
 
 ## Problema
 
@@ -105,9 +105,14 @@ estricto emite un bloque-ancla invisible para `<a id="…"></a>` vacíos (el cas
 `flores`); el render lo saltea. Verificado `#6` → “Parte 2” y `#final` desde otro
 capítulo en `mini.epub`.
 
-### T5 — Enlaces internos clicables
+### T5 — Enlaces internos clicables (hecha)
 - Las `Run` con `link` guardan el `href`; click en la palabra salta.
 - Fuera de alcance: enlaces externos, notas al pie flotantes.
+
+Implementado: `Run.href`, captura en ambos parsers y resolución
+`href → (spine, ancla)` con `Book::link_target`. El click se mapea con
+`Galley::cursor_from_pos` sobre el `LayoutJob`; `#nota`, `cap3.xhtml#final` y
+rutas relativas funcionan. Los enlaces externos se ignoran por ahora.
 
 ## Criterio de salida
 

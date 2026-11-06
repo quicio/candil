@@ -35,7 +35,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 44 + 8 con M2/M3); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 46 + 8 con M2/M3); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -65,7 +65,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 44 + 8.
+2279/2279 imágenes. `cargo test`: 46 + 8.
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -92,11 +92,11 @@ Criterio de salida, medible:
 
 ## M3 — Lectura fina (en curso)
 
-Estado 2026-11-06: T1–T4 de spec 30 hechas — `Block.anchor`, fragmentos en
-`TocEntry`, dedupe por `(spine, anchor)`, mapa por capítulo y saltos
-intra/intercapítulo. `flores-del-mal` ya lista 8 entradas y `#6` aterriza en
-“Parte 2”. Pendiente: enlaces internos (T5) y `Progress`/preferencias por libro
-(spec 35).
+Estado 2026-11-06: T1–T5 de spec 30 hechas — `Block.anchor`, fragmentos en
+`TocEntry`, dedupe por `(spine, anchor)`, mapa por capítulo, saltos
+intra/intercapítulo y enlaces internos clicables. `flores-del-mal` ya lista 8
+entradas y `#6` aterriza en “Parte 2”. Pendiente: `Progress` por fracción y
+preferencias por libro (spec 35).
 
 - Índice por ancla: entradas con `#fragmento`, salto al bloque con ese `id`.
 - Preferencias por libro (tema, tamaño, interlineado) sin perder las globales.

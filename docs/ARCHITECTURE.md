@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.3.0
+version: 1.4.0
 updated: 2026-11-06
 ---
 
@@ -67,6 +67,8 @@ Decisiones que lo sostienen:
 - **`anchor`** guarda el `id` del elemento que originó el bloque (o el del
   contenedor heredado). `TocEntry.anchor` conserva el `#fragmento`; el salto
   exacto se resuelve con un mapa por capítulo (ADR-0010).
+- **Enlaces internos:** `Run.link` + `Run.href`; el click se mapea con
+  `Galley::cursor_from_pos` y `Book::link_target` resuelve `(spine, ancla)`.
 - **SVG raster** (`<svg><image href|xlink:href>`): se mapea a `Kind::Image`; el
   SVG vectorial no se rasteriza (ADR-0009).
 - **Tablas y `<dl>`**: no hay `Kind::Table`; cada celda/entrada es un `Para`

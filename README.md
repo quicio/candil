@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.516.160 B), arranque instantáneo, sin
+Binario final (`dist`): **5.3 MiB** (5.532.688 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -101,7 +101,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 44
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 46
 tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -124,8 +124,8 @@ carpetas y vuelta con `Esc`.
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
-- Índice con anclas: los `#fragmento` se conservan y el salto intra/intercapítulo
-  funciona. Los enlaces internos (`<a href="#…">`) todavía no son clicables.
+- Índice con anclas y enlaces internos: el salto intra/intercapítulo y los
+  enlaces `<a href="#…">` funcionan; los enlaces externos todavía se ignoran.
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - Sin búsqueda dentro del libro ni anotaciones.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
@@ -137,9 +137,8 @@ carpetas y vuelta con `Esc`.
 
 - **M2 — Biblioteca (cerrada):** índice, portadas, grilla, búsqueda, orden,
   filtros, carpetas y migración de progreso.
-- **M3 — Anclas (en curso):** anclas, fragmentos del índice y saltos intra/
-  intercapítulo hechos; faltan enlaces internos, progreso por fracción y
-  preferencias por libro.
+- **M3 — Anclas (en curso):** anclas, saltos y enlaces internos hechos; faltan
+  progreso por fracción y preferencias por libro.
 - **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
 
 ## Modo diagnóstico

@@ -284,6 +284,42 @@ impl Book {
         read_entry(&mut self.archive, path)
     }
 
+    /// Resuelve un enlace interno a `(spine, ancla)`. Devuelve `None` para
+    /// enlaces externos o destinos que no están en el spine.
+    pub fn link_target(&self, href: &str, current: usize) -> Option<(usize, Option<String>)> {
+        let href = href.trim();
+        if href.is_empty() {
+            return None;
+        }
+        let lower = href.to_ascii_lowercase();
+        if lower.starts_with("http:")
+            || lower.starts_with("https:")
+            || lower.starts_with("mailto:")
+            || lower.starts_with("tel:")
+            || lower.starts_with("data:")
+            || lower.starts_with("javascript:")
+            || href.starts_with("//")
+        {
+            return None;
+        }
+        let (path, anchor) = split_fragment(href);
+        let spine = if path.is_empty() {
+            current
+        } else {
+            let base = self
+                .spine
+                .get(current)
+                .map(|p| dir_of(p))
+                .unwrap_or_default();
+            let target = resolve(&base, path);
+            spine_index(&self.spine, &target)?
+        };
+        if spine >= self.spine.len() {
+            return None;
+        }
+        Some((spine, anchor))
+    }
+
     /// Primer candidato de portada que decodifica y tiene aspecto de portada.
     ///
     /// Orden: declarada en el OPF; si no hay, la primera imagen de los primeros
@@ -616,5 +652,28 @@ mod tests {
         assert_eq!(entries[0].anchor.as_deref(), Some("a"));
         assert_eq!(entries[1].anchor.as_deref(), Some("b"));
         assert_eq!(entries[2].anchor, None);
+    }
+
+    #[test]
+    fn resolve_internal_links() {
+        let book = Book::open(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/mini.epub"
+        ))
+        .unwrap();
+        assert_eq!(
+            book.link_target("cap3.xhtml#final", 0),
+            Some((2, Some("final".to_string())))
+        );
+        assert_eq!(
+            book.link_target("#nota", 1),
+            Some((1, Some("nota".to_string())))
+        );
+        assert_eq!(
+            book.link_target("../Text/cap2.xhtml", 0)
+                .map(|(spine, _)| spine),
+            Some(1)
+        );
+        assert!(book.link_target("https://example.com", 0).is_none());
     }
 }

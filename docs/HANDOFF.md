@@ -14,9 +14,9 @@ propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
 **M1 (lector) y M1.1 (endurecimiento, spec 15) están terminados y verificados.**
-**M1, M1.1 y M2 están cerrados y verificados. M3 está en curso:** T1–T4 de
-anclas están hechas (modelo, fragmentos del índice, mapa por capítulo y saltos
-intra/intercapítulo); faltan enlaces internos y progreso por fracción.
+**M1, M1.1 y M2 están cerrados y verificados. M3 está en curso:** T1–T5 de
+anclas están hechas (modelo, índice, saltos intra/intercapítulo y enlaces
+internos); falta el progreso por fracción y las preferencias por libro.
 
 ## Estado medido (no estimado)
 
@@ -33,9 +33,9 @@ el mismo):
 | capturas | 4 en `docs/img/` (vacía, llena, búsqueda, error) | `--shot --screen library` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 44 unit + 8 integración | `cargo test` |
+| tests | 46 unit + 8 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.516.160 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.532.688 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 

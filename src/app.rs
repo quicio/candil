@@ -1236,6 +1236,7 @@ impl Lector {
 
         let mut colw = 660.0;
         let s = self.cfg.settings;
+        let mut link_target: Option<(usize, Option<String>)> = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
@@ -1243,6 +1244,7 @@ impl Lector {
                 let avail = ui.available_width();
                 colw = s.column_width.min(avail - 48.0).max(240.0);
                 let pad = ((avail - colw) * 0.5).max(0.0);
+                let current_chapter = self.chapter;
 
                 let Self {
                     blocks,
@@ -1277,7 +1279,18 @@ impl Lector {
                                     if let Some(anchor) = &b.anchor {
                                         chapter_anchors.entry(anchor.clone()).or_insert(y);
                                     }
-                                    draw_block(ui, b, colw, &s, th, textures, book, ctx);
+                                    draw_block(
+                                        ui,
+                                        b,
+                                        colw,
+                                        &s,
+                                        th,
+                                        textures,
+                                        book,
+                                        current_chapter,
+                                        &mut link_target,
+                                        ctx,
+                                    );
                                 }
                             });
                         });
@@ -1299,6 +1312,11 @@ impl Lector {
                     }
                 }
             });
+
+        if let Some((spine, anchor)) = link_target {
+            self.jump_to(spine, anchor);
+            ctx.request_repaint();
+        }
 
         // Evita que el layout de la barra se desplace cuando cambia el ancho.
         let _ = colw;
@@ -1427,6 +1445,41 @@ fn pad_to(ui: &mut Ui, top: f32, height: f32) {
     if used < height {
         ui.add_space(height - used);
     }
+}
+
+fn add_text_job(
+    ui: &mut Ui,
+    job: LayoutJob,
+    links: &[(std::ops::Range<usize>, String)],
+    chapter: usize,
+    book: Option<&Book>,
+    link_target: &mut Option<(usize, Option<String>)>,
+) -> egui::Response {
+    let sense = if links.is_empty() {
+        Sense::hover()
+    } else {
+        Sense::click()
+    };
+    let response = ui.add(
+        egui::Label::new(job.clone())
+            .wrap()
+            .selectable(false)
+            .sense(sense),
+    );
+    if !links.is_empty() && response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let galley = ui.fonts(|fonts| fonts.layout_job(job));
+            let index = galley.cursor_from_pos(pos - response.rect.min).index;
+            if let Some((_, href)) = links.iter().find(|(range, _)| range.contains(&index)) {
+                if let Some(book) = book {
+                    if let Some(target) = book.link_target(href, chapter) {
+                        *link_target = Some(target);
+                    }
+                }
+            }
+        }
+    }
+    response
 }
 
 fn cover_texture(
@@ -1655,6 +1708,8 @@ fn draw_block(
     th: &Theme,
     textures: &mut HashMap<String, egui::TextureHandle>,
     book: &mut Option<Book>,
+    chapter: usize,
+    link_target: &mut Option<(usize, Option<String>)>,
     ctx: &egui::Context,
 ) {
     let base = s.font_size;
@@ -1755,6 +1810,9 @@ fn draw_block(
     );
     job.halign = halign;
 
+    let mut cursor = 0usize;
+    let mut link_spans: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+
     let section =
         |job: &mut LayoutJob, text: &str, bold: bool, italic: bool, size: f32, color: Color32| {
             let fam = if matches!(b.kind, Kind::Pre) {
@@ -1775,28 +1833,26 @@ fn draw_block(
         };
 
     match b.kind {
-        Kind::Bullet => section(
-            &mut job,
-            "•\u{a0}\u{a0}\u{a0}",
-            false,
-            false,
-            size,
-            th.accent,
-        ),
-        Kind::Numbered(n) => section(
-            &mut job,
-            &format!("{n}.\u{a0}\u{a0}\u{a0}"),
-            false,
-            false,
-            size,
-            th.accent,
-        ),
+        Kind::Bullet => {
+            let prefix = "•\u{a0}\u{a0}\u{a0}";
+            section(&mut job, prefix, false, false, size, th.accent);
+            cursor += prefix.chars().count();
+        }
+        Kind::Numbered(n) => {
+            let prefix = format!("{n}.\u{a0}\u{a0}\u{a0}");
+            section(&mut job, &prefix, false, false, size, th.accent);
+            cursor += prefix.chars().count();
+        }
         _ => {}
     }
 
     for run in &b.runs {
         let rs = if run.small { size * 0.86 } else { size };
         let rc = if run.link { th.accent } else { color };
+        let len = run.text.chars().count();
+        if let Some(href) = &run.href {
+            link_spans.push((cursor..cursor + len, href.clone()));
+        }
         section(
             &mut job,
             &run.text,
@@ -1805,6 +1861,7 @@ fn draw_block(
             rs,
             rc,
         );
+        cursor += len;
     }
     match b.kind {
         Kind::Quote => {
@@ -1813,7 +1870,7 @@ fn draw_block(
                 ui.add_space(16.0);
                 let mut j2 = job.clone();
                 j2.wrap.max_width = (colw - 16.0).max(120.0);
-                let resp = ui.add(egui::Label::new(j2).wrap().selectable(false));
+                let resp = add_text_job(ui, j2, &link_spans, chapter, book.as_ref(), link_target);
                 ui.painter().vline(
                     x + 3.0,
                     resp.rect.y_range(),
@@ -1822,7 +1879,7 @@ fn draw_block(
             });
         }
         _ => {
-            ui.add(egui::Label::new(job).wrap().selectable(false));
+            add_text_job(ui, job, &link_spans, chapter, book.as_ref(), link_target);
         }
     }
 

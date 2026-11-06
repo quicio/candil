@@ -23,6 +23,8 @@ pub struct Run {
     pub italic: bool,
     pub small: bool,
     pub link: bool,
+    /// Destino del enlace (`#ancla` o ruta relativa), si es un `<a>`.
+    pub href: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +61,7 @@ struct Ctx {
     italic: bool,
     small: bool,
     link: bool,
+    href: Option<String>,
     anchor: Option<String>,
 }
 
@@ -70,6 +73,7 @@ impl Default for Ctx {
             italic: false,
             small: false,
             link: false,
+            href: None,
             anchor: None,
         }
     }
@@ -118,14 +122,22 @@ fn parse_lenient(src: &str) -> Vec<Block> {
     let mut link = 0i32;
     let mut kinds: Vec<Kind> = vec![Kind::Para];
     let mut anchors: Vec<Option<String>> = vec![None];
+    let mut current_href: Option<String> = None;
     let mut lists: Vec<(bool, u32)> = Vec::new();
 
-    let ctx = |kinds: &Vec<Kind>, b: i32, i: i32, s: i32, l: i32, anchor: Option<String>| Ctx {
+    let ctx = |kinds: &Vec<Kind>,
+               b: i32,
+               i: i32,
+               s: i32,
+               l: i32,
+               anchor: Option<String>,
+               href: Option<String>| Ctx {
         kind: *kinds.last().unwrap_or(&Kind::Para),
         bold: b > 0,
         italic: i > 0,
         small: s > 0,
         link: l > 0,
+        href,
         anchor,
     };
 
@@ -150,6 +162,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         small,
                         link,
                         anchors.last().cloned().flatten(),
+                        current_href.clone(),
                     );
                     push_text(&mut buf, &rest[..e], &c);
                     i += 9 + e + 3;
@@ -189,6 +202,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     small,
                     link,
                     anchors.last().cloned().flatten(),
+                    current_href.clone(),
                 );
                 push_text(&mut buf, "<", &c);
                 continue;
@@ -235,6 +249,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         small,
                         link,
                         anchors.last().cloned().flatten(),
+                        current_href.clone(),
                     );
                     flush(&mut out, &c, &mut buf);
                     if kinds.len() > 1 {
@@ -254,7 +269,12 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     "b" | "strong" => bold = (bold - 1).max(0),
                     "i" | "em" | "cite" => italic = (italic - 1).max(0),
                     "small" | "sup" | "sub" => small = (small - 1).max(0),
-                    "a" => link = (link - 1).max(0),
+                    "a" => {
+                        link = (link - 1).max(0);
+                        if link == 0 {
+                            current_href = None;
+                        }
+                    }
                     "th" | "dt" => bold = (bold - 1).max(0),
                     _ => {}
                 }
@@ -270,6 +290,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     small,
                     link,
                     anchors.last().cloned().flatten(),
+                    current_href.clone(),
                 );
                 flush(&mut out, &c, &mut buf);
                 let inherited = anchors.last().cloned().flatten();
@@ -291,6 +312,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         small,
                         link,
                         anchors.last().cloned().flatten(),
+                        current_href.clone(),
                     );
                     flush(&mut out, &c, &mut buf);
                     out.push(Block {
@@ -309,6 +331,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         small,
                         link,
                         anchors.last().cloned().flatten(),
+                        current_href.clone(),
                     );
                     flush(&mut out, &c, &mut buf);
                     let src = if name.as_str() == "img" {
@@ -369,7 +392,10 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                 "b" | "strong" => bold += 1,
                 "i" | "em" | "cite" => italic += 1,
                 "small" | "sup" | "sub" => small += 1,
-                "a" => link += 1,
+                "a" => {
+                    link += 1;
+                    current_href = attr(body, "href");
+                }
                 _ => {}
             }
 
@@ -390,6 +416,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
             small,
             link,
             anchors.last().cloned().flatten(),
+            current_href.clone(),
         );
         push_text(&mut buf, &src[i..next], &c);
         i = next;
@@ -402,6 +429,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
         small,
         link,
         anchors.last().cloned().flatten(),
+        current_href.clone(),
     );
     flush(&mut out, &c, &mut buf);
     out
@@ -706,6 +734,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
         "a" => {
             let mut c = ctx.clone();
             c.link = true;
+            c.href = child.attribute("href").map(|href| href.to_string());
             visit(child, out, &c, buf);
         }
 
@@ -760,6 +789,7 @@ fn push_text(buf: &mut Vec<Run>, raw: &str, ctx: &Ctx) {
             && last.italic == ctx.italic
             && last.small == ctx.small
             && last.link == ctx.link
+            && last.href == ctx.href
         {
             last.text.push_str(&text);
             return;
@@ -771,6 +801,7 @@ fn push_text(buf: &mut Vec<Run>, raw: &str, ctx: &Ctx) {
         italic: ctx.italic,
         small: ctx.small,
         link: ctx.link,
+        href: ctx.href.clone(),
     });
 }
 
@@ -1356,5 +1387,25 @@ mod tests {
         // Un ancla vacía antes del texto no se pierde.
         let empty = parse(r#"<p><a id="marca"></a>Texto</p>"#);
         assert!(empty.iter().any(|b| b.anchor.as_deref() == Some("marca")));
+    }
+
+    #[test]
+    fn link_href_is_captured() {
+        let strict = parse(r##"<p>ver <a href="#nota">nota</a></p>"##);
+        let run = strict[0]
+            .runs
+            .iter()
+            .find(|run| run.href.is_some())
+            .expect("href estricto");
+        assert_eq!(run.href.as_deref(), Some("#nota"));
+        assert!(run.link);
+
+        let lenient = parse("<p>ver <a href=#n>nota</a></p>");
+        let run = lenient[0]
+            .runs
+            .iter()
+            .find(|run| run.href.is_some())
+            .expect("href tolerante");
+        assert_eq!(run.href.as_deref(), Some("#n"));
     }
 }

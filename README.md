@@ -7,7 +7,7 @@ sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
 del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
 
-Binario final (`dist`): **6.4 MiB** (6.664.128 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.664.160 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -18,6 +18,7 @@ webview ni motor HTML.
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | estado, invariantes, verificación sin ojos |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M6 con criterios de salida |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | módulos, modelo `Block`, cómo extenderlo |
+| [`docs/BUILD.md`](docs/BUILD.md) | compilar en macOS, Linux y Windows; cross-compiling y CI |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
 
@@ -46,6 +47,29 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 | `fast` | iterar | ~3–6 s (incremental, 2026-11-05) | 10.1 MB |
 | `release` | uso diario | ~17 s (LTO thin) | 7.7 MB |
 | `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 5.5 MB |
+
+### Compilar en otros sistemas
+
+La vía recomendada es compilar nativo en cada SO. Guía completa:
+[`docs/BUILD.md`](docs/BUILD.md).
+
+```bash
+# macOS (Xcode Command Line Tools)
+cargo build --profile dist
+
+# Ubuntu/Debian (X11/Wayland/GL)
+sudo apt install build-essential pkg-config libx11-dev libxi-dev \
+  libxcursor-dev libxrandr-dev libxkbcommon-dev libwayland-dev \
+  libgl1-mesa-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+cargo build --profile dist
+
+# Windows (Rust MSVC + VS Build Tools "Desktop development with C++")
+cargo build --profile dist
+```
+
+El binario queda en `target/dist/lector` (o `lector.exe`). La matriz
+`.github/workflows/build.yml` compila y sube artefactos en macOS, Linux y
+Windows. Para build universal de macOS hay instrucciones con `lipo` en la guía.
 
 ### Teclas
 
@@ -116,7 +140,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 91
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 92
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -152,7 +176,8 @@ M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar
 (o `K`) para Wiktionary, MyMemory o **OpenCode Go**. El panel tiene
 Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
 defecto y la clave de IA vive solo en `OPENCODE_API_KEY`. El historial se guarda
-en `consultas.json` (local, con límite y borrado). El centro **Configuración**
+en `consultas.json` (local, con límite y borrado); desde el detalle del historial
+podés **Ir al texto** y volver a la frase. El centro **Configuración**
 (`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
 avanzado.
 

@@ -133,6 +133,8 @@ pub struct ConsultaEntry {
     pub kind: ConsultaKind,
     pub provider: String,
     pub model: Option<String>,
+    /// Prompt predefinido usado en una consulta de IA.
+    pub prompt: Option<String>,
     pub source_lang: String,
     pub target_lang: String,
     pub book: String,

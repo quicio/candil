@@ -60,8 +60,8 @@ Usar **`ureq` 3.5** con **rustls** (`default-features = false, features =
 ## Medición (2026-11-06)
 
 - `dist` antes de integrar consultas (M5): **5.599.328 B**.
-- `dist` con `ureq`/rustls y la UI de consultas: **6.664.128 B**.
-- Delta: **+1.064.800 B**; sigue por debajo del presupuesto de 8 MB.
+- `dist` con `ureq`/rustls y la UI de consultas: **6.664.160 B**.
+- Delta: **+1.064.832 B**; sigue por debajo del presupuesto de 8 MB.
 
 La medición se hizo con `cargo build --profile dist` después de que
 `src/consulta.rs` usara la librería (antes el linker la eliminaba). El live test

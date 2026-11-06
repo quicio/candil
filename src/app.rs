@@ -199,6 +199,7 @@ pub struct Lector {
     consulta_id: u64,
     consulta_prompt: AiPrompt,
     consulta_pending_request: Option<ConsultaRequest>,
+    consulta_pending_prompt: Option<AiPrompt>,
     consulta_history_view: Option<ConsultaEntry>,
     consulta_confirm_clear: bool,
     show_config: bool,
@@ -357,6 +358,7 @@ impl Lector {
             consulta_id: 0,
             consulta_prompt: AiPrompt::Explicar,
             consulta_pending_request: None,
+            consulta_pending_prompt: None,
             consulta_history_view: None,
             consulta_confirm_clear: false,
             show_config: false,
@@ -456,6 +458,7 @@ impl Lector {
                 self.consulta_rx = None;
                 self.consulta_busy = false;
                 self.consulta_pending_request = None;
+                self.consulta_pending_prompt = None;
                 self.consulta_history_view = None;
                 self.pending_block_jump = None;
                 self.reader_focus = None;
@@ -570,12 +573,20 @@ impl Lector {
                     self.show_consulta = true;
                     self.config_tab = ConfigTab::Consultas;
                     if self.dev.consulta_demo {
-                        let kind = match self.consulta_tab {
-                            ConsultaTab::Traduccion => ConsultaKind::Traduccion,
-                            ConsultaTab::Ia => ConsultaKind::Ia,
-                            _ => ConsultaKind::Diccionario,
-                        };
-                        self.consulta_result = Some(demo_response(kind));
+                        if self.consulta_tab == ConsultaTab::Historial {
+                            self.consulta_history_view = self
+                                .consulta_history
+                                .newest_first()
+                                .first()
+                                .map(|entry| (*entry).clone());
+                        } else {
+                            let kind = match self.consulta_tab {
+                                ConsultaTab::Traduccion => ConsultaKind::Traduccion,
+                                ConsultaTab::Ia => ConsultaKind::Ia,
+                                _ => ConsultaKind::Diccionario,
+                            };
+                            self.consulta_result = Some(demo_response(kind));
+                        }
                     } else if self.dev.consulta_run {
                         let kind = match self.consulta_tab {
                             ConsultaTab::Traduccion => ConsultaKind::Traduccion,
@@ -753,6 +764,7 @@ impl Lector {
         self.consulta_rx = None;
         self.consulta_busy = false;
         self.consulta_pending_request = None;
+        self.consulta_pending_prompt = None;
         self.consulta_history_view = None;
         self.reader_focus = None;
         self.show_search = false;
@@ -945,6 +957,7 @@ impl Lector {
         self.consulta_rx = None;
         self.consulta_busy = false;
         self.consulta_pending_request = None;
+        self.consulta_pending_prompt = None;
         self.consulta_id = self.consulta_id.wrapping_add(1);
         let block_text = self
             .blocks
@@ -998,6 +1011,7 @@ impl Lector {
         self.consulta_rx = None;
         self.consulta_busy = false;
         self.consulta_pending_request = None;
+        self.consulta_pending_prompt = None;
         self.selection = None;
         self.note = None;
         ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
@@ -1526,6 +1540,7 @@ impl Lector {
             self.consulta_rx = None;
             self.consulta_busy = false;
             self.consulta_pending_request = None;
+            self.consulta_pending_prompt = None;
         }
         if add_folder {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
@@ -1647,6 +1662,7 @@ impl Lector {
         self.consulta_result = None;
         self.consulta_error = None;
         self.consulta_pending_request = Some(request.clone());
+        self.consulta_pending_prompt = Some(prompt);
         std::thread::spawn(move || {
             let transport = consulta::HttpTransport::new(settings.ai_timeout_secs);
             let result = consulta::run(
@@ -1674,6 +1690,7 @@ impl Lector {
                 self.consulta_rx = None;
                 self.consulta_busy = false;
                 let target = self.consulta_target.clone();
+                let prompt = self.consulta_pending_prompt.take();
                 match result {
                     Ok(response) => {
                         if let Some(request) = self.consulta_pending_request.take() {
@@ -1681,6 +1698,9 @@ impl Lector {
                             if let Some(target) = &target {
                                 entry.chapter = target.chapter;
                                 entry.block = target.block;
+                            }
+                            if let Some(prompt) = prompt {
+                                entry.prompt = Some(prompt.label().into());
                             }
                             self.push_history(entry);
                         }
@@ -1699,6 +1719,9 @@ impl Lector {
                                 entry.chapter = target.chapter;
                                 entry.block = target.block;
                             }
+                            if let Some(prompt) = prompt {
+                                entry.prompt = Some(prompt.label().into());
+                            }
                             self.push_history(entry);
                         }
                         self.consulta_error = Some(error);
@@ -1710,6 +1733,7 @@ impl Lector {
                 self.consulta_rx = None;
                 self.consulta_busy = false;
                 self.consulta_pending_request = None;
+                self.consulta_pending_prompt = None;
             }
             Err(TryRecvError::Empty) => {}
         }
@@ -1749,6 +1773,7 @@ impl Lector {
         let mut clear_history = false;
         let mut open_history: Option<ConsultaEntry> = None;
         let mut back_history = false;
+        let mut jump_history: Option<ConsultaEntry> = None;
         let history_entries: Vec<ConsultaEntry> = self
             .consulta_history
             .newest_first()
@@ -1765,7 +1790,18 @@ impl Lector {
             .default_width(440.0)
             .min_width(330.0)
             .resizable(true)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
+            .frame(
+                egui::Frame::new()
+                    .fill(consulta_window_fill(th))
+                    .stroke(egui::Stroke::new(1.0, th.dim.gamma_multiply(0.45)))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 6],
+                        blur: 18,
+                        spread: 0,
+                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 70),
+                    })
+                    .inner_margin(14),
+            )
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let Some(target) = &target else {
@@ -1947,11 +1983,18 @@ impl Lector {
                     }
                     ConsultaTab::Historial => {
                         if let Some(view) = &self.consulta_history_view {
-                            ui.label(
-                                RichText::new(format!("{} · {}", view.kind.label(), view.provider))
-                                    .size(11.0)
-                                    .color(th.dim),
+                            let mut meta = format!(
+                                "{} · {} · {} · Cap. {}",
+                                view.kind.label(),
+                                view.provider,
+                                truncate(&view.book_title, 32),
+                                view.chapter + 1
                             );
+                            if let Some(prompt) = &view.prompt {
+                                meta.push_str(" · ");
+                                meta.push_str(prompt);
+                            }
+                            ui.label(RichText::new(meta).size(11.0).color(th.dim));
                             ui.label(
                                 RichText::new(format!("“{}”", truncate(&view.quote, 220)))
                                     .size(13.0)
@@ -1972,9 +2015,17 @@ impl Lector {
                                         );
                                     });
                             }
-                            if ui.button("Volver").clicked() {
-                                back_history = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if ui.button("Ir al texto").clicked() {
+                                    jump_history = Some(view.clone());
+                                }
+                                if ui.button("Copiar").clicked() {
+                                    ctx.copy_text(view.response.clone());
+                                }
+                                if ui.button("Volver").clicked() {
+                                    back_history = true;
+                                }
+                            });
                         } else if history_entries.is_empty() {
                             ui.label(
                                 RichText::new("Sin consultas guardadas.")
@@ -2099,6 +2150,9 @@ impl Lector {
         if back_history {
             self.consulta_history_view = None;
         }
+        if let Some(entry) = jump_history {
+            self.jump_to_consulta_history(&entry, ctx);
+        }
         if clear_history {
             self.consulta_history.clear();
             if let Err(e) = self.consulta_history.save() {
@@ -2120,6 +2174,53 @@ impl Lector {
             self.consulta_busy = false;
             self.consulta_confirm_clear = false;
         }
+    }
+
+    fn jump_to_consulta_history(&mut self, entry: &ConsultaEntry, ctx: &egui::Context) {
+        let target =
+            std::fs::canonicalize(&entry.book).unwrap_or_else(|_| PathBuf::from(&entry.book));
+        let target_key = target.to_string_lossy().to_string();
+        if self.book_key().as_deref() != Some(target_key.as_str()) {
+            if !target.is_file() {
+                self.status = Some((
+                    format!("No encuentro el libro: {}", target.display()),
+                    Instant::now(),
+                ));
+                return;
+            }
+            self.open(target);
+            if self.book_key().as_deref() != Some(target_key.as_str()) {
+                return;
+            }
+        }
+        if entry.chapter != self.chapter {
+            self.load_chapter(entry.chapter, None);
+        }
+        let Some((index, start, end)) =
+            resolve_history_range(&self.blocks, entry.block, &entry.quote)
+        else {
+            self.status = Some((
+                format!(
+                    "No encontré «{}» en este capítulo.",
+                    truncate(&entry.quote, 50)
+                ),
+                Instant::now(),
+            ));
+            return;
+        };
+        self.pending_restore = None;
+        self.pending_block_jump = Some((index, entry.quote.clone()));
+        self.pending_search_jump = Some((index, start));
+        self.search_highlight = Some((entry.chapter, index, start, end));
+        self.show_consulta = false;
+        self.consulta_rx = None;
+        self.consulta_busy = false;
+        self.consulta_pending_request = None;
+        self.consulta_pending_prompt = None;
+        self.show_config = false;
+        self.selection = None;
+        self.note = None;
+        ctx.request_repaint();
     }
 
     fn open_annotation(&mut self, annotation: &Annotation) {
@@ -4275,6 +4376,29 @@ fn highlight_swatch(theme: &Theme, index: u8) -> Color32 {
     }
 }
 
+fn mix_white(color: Color32, amount: f32) -> Color32 {
+    let mix =
+        |value: u8| (value as f32 + (255.0 - value as f32) * amount.clamp(0.0, 1.0)).round() as u8;
+    Color32::from_rgb(mix(color.r()), mix(color.g()), mix(color.b()))
+}
+
+/// La consulta flota sobre el libro: un tono más claro que el panel y una
+/// sombra suave para que se lea como una capa aparte.
+fn consulta_window_fill(theme: &Theme) -> Color32 {
+    mix_white(theme.panel, if theme.is_dark() { 0.14 } else { 0.80 })
+}
+
+fn resolve_history_range(
+    blocks: &[Block],
+    block: usize,
+    quote: &str,
+) -> Option<(usize, usize, usize)> {
+    let index = locate_quote(blocks, block, quote)?;
+    let text = blocks[index].text();
+    let (start, end) = find_quote(&text, quote)?;
+    Some((index, start, end))
+}
+
 fn locate_quote(blocks: &[Block], block: usize, quote: &str) -> Option<usize> {
     if quote.is_empty() {
         return (block < blocks.len()).then_some(block);
@@ -5372,6 +5496,17 @@ mod tests {
         assert_eq!(locate_quote(&blocks, 9, "mundo"), Some(0));
         assert_eq!(locate_quote(&blocks, 0, "zzz"), None);
         assert_eq!(locate_quote(&blocks, 1, ""), Some(1));
+    }
+
+    #[test]
+    fn historial_resuelve_bloque_y_rango_por_cita() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("the sleep of reason")];
+        assert_eq!(
+            resolve_history_range(&blocks, 0, "the sleep of reason"),
+            Some((1, 0, 19))
+        );
+        assert_eq!(resolve_history_range(&blocks, 0, "mundo"), Some((0, 5, 10)));
+        assert_eq!(resolve_history_range(&blocks, 0, "zzz"), None);
     }
 
     #[test]

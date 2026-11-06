@@ -184,6 +184,7 @@ pub struct ConsultaEntry {
     pub kind: ConsultaKind,
     pub provider: String,      // "Wiktionary", "MyMemory", "OpenCode Go"
     pub model: Option<String>, // solo IA
+    pub prompt: Option<String>, // prompt predefinido, solo IA
     pub source_lang: String,
     pub target_lang: String,
     pub book: String,          // ruta canónica
@@ -329,11 +330,13 @@ requiere que el usuario configure `OPENCODE_API_KEY`.
   Prompt con `<pasaje>`/`<contexto>` delimitados y prompts predefinidos.
 - Historial: `consultas.json` atómico, límite configurable (200 por defecto),
   borrado con confirmación, sin contexto ni claves; se guardan también errores.
+  El detalle permite **Ir al texto** (abre el libro/capítulo y resalta la cita)
+  y copiar la respuesta.
 - Configuración: el centro de la spec 65 edita online, proveedores, idioma,
   modelo, timeout, tokens e historial. `online_enabled=false` por defecto.
-- **Medición**: `dist` pasó de 5.599.328 B a **6.664.128 B** (+1.064.800 B por
+- **Medición**: `dist` pasó de 5.599.328 B a **6.664.160 B** (+1.064.832 B por
   ureq/rustls), dentro del presupuesto < 8 MB.
-- **Verificación**: 91 unit (1 live ignorado) + 9 integración. Se probaron en
+- **Verificación**: 92 unit (1 live ignorado) + 9 integración. Se probaron en
   vivo Wiktionary y MyMemory; con `wiktionary` real el panel muestra
   definiciones. OpenCode Go se probó con una clave inválida y mostró el 401 sin
   congelar la UI; falta la prueba de una respuesta exitosa con la clave real del

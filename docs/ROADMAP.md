@@ -37,7 +37,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 91 + 9 (1 live ignorado) con M2–M6); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 92 + 9 (1 live ignorado) con M2–M6); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -67,7 +67,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 91 + 9 (1 live ignorado).
+2279/2279 imágenes. `cargo test`: 92 + 9 (1 live ignorado).
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -156,8 +156,8 @@ Cerrado el 2026-11-06 con specs 60 y 65:
   consultas y errores, no claves ni el párrafo completo.
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
-- Medición: `dist` **6.664.128 B** (ureq+rustls sumó 1.064.800 B; < 8 MB).
-- Verificación: **91 unit (1 live ignorado) + 9 integración**, clippy limpio,
+- Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
+- Verificación: **92 unit (1 live ignorado) + 9 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda

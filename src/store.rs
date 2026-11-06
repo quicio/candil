@@ -2,16 +2,40 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-/// Directorio de datos del lector (`.../lector`), donde viven `config.json`,
-/// `library.json` y `covers/`.
+/// Directorio de datos de Candil (`.../candil`), donde viven `config.json`,
+/// `library.json`, `annotations.json`, `consultas.json` y `covers/`.
 pub fn data_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("lector")
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        resolve_data_dir(&base)
+    })
+    .clone()
+}
+
+/// Migra una instalación previa llamada `lector` a `candil` sin perder datos.
+/// Si el rename falla (otro disco, permisos), seguimos usando `lector` para no
+/// arrancar con una biblioteca vacía.
+fn resolve_data_dir(base: &Path) -> PathBuf {
+    let new = base.join("candil");
+    let old = base.join("lector");
+    if !new.exists() && old.is_dir() {
+        if std::fs::rename(&old, &new).is_ok() {
+            return new;
+        }
+        eprintln!(
+            "no pude migrar {} a {}; sigo usando el directorio viejo",
+            old.display(),
+            new.display()
+        );
+        return old;
+    }
+    new
 }
 
 /// Escribe `<archivo>.tmp`, sincroniza y reemplaza: un corte no deja el JSON a
@@ -78,5 +102,55 @@ pub fn load_json_with_report<T: DeserializeOwned + Default>(
             };
             (T::default(), Some(report))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp(tag: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("candil-store-{tag}-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn migra_lector_a_candil_sin_perder_datos() {
+        let base = temp("migrate");
+        let old = base.join("lector");
+        std::fs::create_dir_all(old.join("covers")).unwrap();
+        std::fs::write(old.join("config.json"), "{}").unwrap();
+        std::fs::write(old.join("covers").join("a.png"), b"png").unwrap();
+
+        let resolved = resolve_data_dir(&base);
+        assert_eq!(resolved, base.join("candil"));
+        assert!(!old.exists());
+        assert!(base.join("candil/config.json").is_file());
+        assert!(base.join("candil/covers/a.png").is_file());
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn si_ya_existe_candil_no_pisa_nada() {
+        let base = temp("both");
+        std::fs::create_dir_all(base.join("lector")).unwrap();
+        std::fs::create_dir_all(base.join("candil")).unwrap();
+        std::fs::write(base.join("candil/config.json"), "new").unwrap();
+        std::fs::write(base.join("lector/config.json"), "old").unwrap();
+
+        let resolved = resolve_data_dir(&base);
+        assert_eq!(resolved, base.join("candil"));
+        assert_eq!(
+            std::fs::read_to_string(base.join("candil/config.json")).unwrap(),
+            "new"
+        );
+        assert!(base.join("lector").is_dir());
+        let _ = std::fs::remove_dir_all(base);
     }
 }

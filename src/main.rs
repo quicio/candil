@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use lector::app;
-use lector::epub;
-use lector::library::Library;
-use lector::xhtml;
+use candil::app;
+use candil::epub;
+use candil::library::Library;
+use candil::xhtml;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -103,12 +103,12 @@ fn main() -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([980.0, 780.0])
             .with_min_inner_size([420.0, 360.0])
-            .with_app_id("lector"),
+            .with_app_id("candil"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "lector",
+        "Candil",
         options,
         Box::new(move |cc| Ok(Box::new(app::Lector::new(cc, path, dev)))),
     )
@@ -118,7 +118,7 @@ fn main() -> eframe::Result<()> {
 /// pruebas de M2 antes de que exista la pantalla de biblioteca.
 fn scan_library(dir: &str) {
     if dir.is_empty() {
-        eprintln!("uso: lector --scan <carpeta>");
+        eprintln!("uso: candil --scan <carpeta>");
         return;
     }
     let start = Instant::now();
@@ -161,7 +161,7 @@ fn scan_library(dir: &str) {
 /// Modo diagnóstico: valida el parseo sin abrir ventana.
 fn inspect(path: &str) {
     if path.is_empty() {
-        eprintln!("uso: lector --inspect <libro.epub>");
+        eprintln!("uso: candil --inspect <libro.epub>");
         return;
     }
     match epub::Book::open(path) {

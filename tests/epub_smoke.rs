@@ -5,8 +5,8 @@
 
 use std::path::PathBuf;
 
-use lector::epub::Book;
-use lector::xhtml::Kind;
+use candil::epub::Book;
+use candil::xhtml::Kind;
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mini.epub")
@@ -116,8 +116,8 @@ fn portada_declarada_y_fallback_de_imagen() {
 #[test]
 fn busqueda_encuentra_con_acentos_y_mapea_al_bloque_real() {
     let mut book = abrir();
-    let index = lector::search::build(&mut book);
-    let (hits, truncated) = lector::search::search(&index, "enfasis", 10);
+    let index = candil::search::build(&mut book);
+    let (hits, truncated) = candil::search::search(&index, "enfasis", 10);
     assert!(!truncated);
     assert!(!hits.is_empty(), "el fixture contiene «énfasis»");
 

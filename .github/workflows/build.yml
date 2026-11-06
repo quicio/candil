@@ -15,13 +15,13 @@ jobs:
         include:
           - name: linux
             os: ubuntu-latest
-            artifact: lector-linux
+            artifact: candil-linux
           - name: macos
             os: macos-latest
-            artifact: lector-macos
+            artifact: candil-macos
           - name: windows
             os: windows-latest
-            artifact: lector-windows
+            artifact: candil-windows
 
     steps:
       - uses: actions/checkout@v4
@@ -52,10 +52,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          if [ -f target/dist/lector.exe ]; then
-            cp target/dist/lector.exe out/
+          if [ -f target/dist/candil.exe ]; then
+            cp target/dist/candil.exe out/
           else
-            cp target/dist/lector out/
+            cp target/dist/candil out/
           fi
 
       - name: Subir binario

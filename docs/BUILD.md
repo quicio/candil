@@ -1,4 +1,4 @@
-# Compilar `lector` en macOS, Linux y Windows
+# Compilar `candil` en macOS, Linux y Windows
 
 La vía recomendada es **compilar nativo en cada sistema**. Es una app de escritorio
 con OpenGL (egui/eframe), diálogos nativos (`rfd`) y TLS (`rustls`); el
@@ -21,8 +21,8 @@ cargo build --profile release # uso diario, LTO thin
 cargo build --profile dist    # distribuir, LTO fat, ~6.4 MB
 ```
 
-El binario queda en `target/<perfil>/lector` (macOS/Linux) o
-`target\<perfil>\lector.exe` (Windows). Con `dist`, en `target/dist/`.
+El binario queda en `target/<perfil>/candil` (macOS/Linux) o
+`target\<perfil>\candil.exe` (Windows). Con `dist`, en `target/dist/`.
 
 ## macOS
 
@@ -37,7 +37,7 @@ Build:
 
 ```bash
 cargo build --profile dist
-./target/dist/lector
+./target/dist/candil
 ```
 
 Binario universal (Apple Silicon + Intel):
@@ -47,13 +47,13 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 cargo build --profile dist --target aarch64-apple-darwin
 cargo build --profile dist --target x86_64-apple-darwin
 lipo -create \
-  target/aarch64-apple-darwin/dist/lector \
-  target/x86_64-apple-darwin/dist/lector \
-  -output lector-universal
+  target/aarch64-apple-darwin/dist/candil \
+  target/x86_64-apple-darwin/dist/candil \
+  -output candil-universal
 ```
 
 La app no está empaquetada como `.app`; para distribuirla como aplicación de
-Finder hay que crear el bundle (`Contents/MacOS/lector`, `Info.plist`, icono).
+Finder hay que crear el bundle (`Contents/MacOS/candil`, `Info.plist`, icono).
 
 ## Linux
 
@@ -87,7 +87,7 @@ Build:
 
 ```bash
 cargo build --profile dist
-./target/dist/lector
+./target/dist/candil
 ```
 
 Notas:
@@ -96,7 +96,7 @@ Notas:
   archivos, instalá `xdg-desktop-portal` y el backend de tu escritorio
   (`xdg-desktop-portal-gtk`, `-kde`, etc.).
 - Necesitás drivers OpenGL funcionando. Como último recurso:
-  `LIBGL_ALWAYS_SOFTWARE=1 ./target/dist/lector`.
+  `LIBGL_ALWAYS_SOFTWARE=1 ./target/dist/candil`.
 - Funciona con X11 y Wayland; si el backend falla, probá desde una sesión X11.
 - El binario no incluye un `.desktop` ni un AppImage; se puede agregar después.
 
@@ -114,7 +114,7 @@ Build (PowerShell o CMD):
 
 ```powershell
 cargo build --profile dist
-.\target\dist\lector.exe
+.\target\dist\candil.exe
 ```
 
 La app usa diálogos nativos de Windows y no necesita webview. El binario de
@@ -165,9 +165,9 @@ tag o descargá el artefacto del job.
 
 | sistema | directorio |
 |---|---|
-| macOS | `~/Library/Application Support/lector/` |
-| Linux | `~/.config/lector/` (o `$XDG_CONFIG_HOME/lector/`) |
-| Windows | `%APPDATA%\lector\` |
+| macOS | `~/Library/Application Support/candil/` |
+| Linux | `~/.config/candil/` (o `$XDG_CONFIG_HOME/candil/`) |
+| Windows | `%APPDATA%\candil\` |
 
 Ahí viven `config.json`, `library.json`, `annotations.json`, `consultas.json` y
 `covers/`.

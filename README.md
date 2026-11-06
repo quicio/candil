@@ -1,4 +1,6 @@
-# lector
+# Candil
+
+**Leer despacio, sin ruido.**
 
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
@@ -67,7 +69,7 @@ cargo build --profile dist
 cargo build --profile dist
 ```
 
-El binario queda en `target/dist/lector` (o `lector.exe`). La matriz
+El binario queda en `target/dist/candil` (o `candil.exe`). La matriz
 `.github/workflows/build.yml` compila y sube artefactos en macOS, Linux y
 Windows. Para build universal de macOS hay instrucciones con `lipo` en la guía.
 
@@ -98,7 +100,7 @@ Windows. Para build universal de macOS hay instrucciones con `lipo` en la guía.
 
 Cinco presets prearmados (Papel, Noche, Claro, Ámbar, Contraste) y ajustes de
 tamaño, interlineado, ancho de columna y espacio entre párrafos. Los ajustes se
-guardan en `~/Library/Application Support/lector/config.json`; el progreso de los
+guardan en `~/Library/Application Support/candil/config.json`; el progreso de los
 libros indexados vive en `library.json`, junto a las portadas. Con el checkbox
 “Solo para este libro” del panel `Aa` se fija tema/tipografía por libro; el
 indicador `Aa·` avisa que ese libro tiene ajustes propios.
@@ -138,7 +140,8 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 ## Estado
 
-Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
+Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
+2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
 las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 92
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
@@ -259,6 +262,18 @@ cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un 
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```
 
-## Licencia de las fuentes
+## Privacidad
 
-Literata © TypeTogether, SIL Open Font License 1.1 (`assets/fonts/Literata-OFL.txt`).
+- Sin telemetría ni cuentas. La biblioteca, el progreso, las anotaciones y el
+  historial de consultas viven en tu disco.
+- Las consultas online están **apagadas por defecto** y solo salen con una acción
+  explícita.
+- La clave de IA se lee de `OPENCODE_API_KEY`; nunca se escribe en
+  `config.json`, `consultas.json`, logs ni URLs.
+- El historial guarda la consulta y la respuesta, no el párrafo de contexto.
+
+## Licencia
+
+Código bajo **MIT** ([`LICENSE`](LICENSE)). Literata © TypeTogether se
+distribuye aparte bajo SIL Open Font License 1.1
+(`assets/fonts/Literata-OFL.txt`).

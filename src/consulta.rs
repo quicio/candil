@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub const MAX_TEXT_CHARS: usize = 2_000;
 pub const MAX_CONTEXT_CHARS: usize = 3_000;
 pub const MAX_RESPONSE_CHARS: usize = 8_000;
-pub const USER_AGENT: &str = concat!("lector/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("candil/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1083,7 +1083,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir =
-            std::env::temp_dir().join(format!("lector-consultas-{}-{stamp}", std::process::id()));
+            std::env::temp_dir().join(format!("candil-consultas-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("consultas.json");
         let mut history = ConsultaHistory::default();

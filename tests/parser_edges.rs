@@ -6,8 +6,8 @@
 
 use std::path::PathBuf;
 
-use lector::epub::Book;
-use lector::xhtml::Kind;
+use candil::epub::Book;
+use candil::xhtml::Kind;
 
 fn edge() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edge.epub")

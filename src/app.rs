@@ -386,7 +386,7 @@ impl Lector {
             dev,
             shot_frames: 0,
             shot_requested: false,
-            window_title: "lector".into(),
+            window_title: "Candil".into(),
         };
         app.applied_theme = Some(app.cfg.settings.theme);
 
@@ -1488,7 +1488,7 @@ impl Lector {
                                     ui.add_space(6.0);
                                     ui.label(
                                         RichText::new(format!(
-                                            "lector {}",
+                                            "Candil {}",
                                             env!("CARGO_PKG_VERSION")
                                         ))
                                         .size(10.5)
@@ -2772,7 +2772,7 @@ impl Lector {
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.label(RichText::new("lector").size(16.0).strong().color(th.fg));
+                    ui.label(RichText::new("Candil").size(16.0).strong().color(th.fg));
                     ui.add_space(2.0);
                     ui.label(
                         RichText::new(format!("{book_count} libros"))
@@ -4446,12 +4446,12 @@ impl eframe::App for Lector {
         }
 
         let title = match self.screen {
-            Screen::Library => "lector — biblioteca".to_string(),
+            Screen::Library => "Candil — biblioteca".to_string(),
             Screen::Reader => self
                 .book
                 .as_ref()
-                .map(|book| format!("lector — {}", book.title))
-                .unwrap_or_else(|| "lector".to_string()),
+                .map(|book| format!("Candil — {}", book.title))
+                .unwrap_or_else(|| "Candil".to_string()),
         };
         if self.window_title != title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
@@ -4566,7 +4566,7 @@ fn new_session_id() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    format!("lector-{}-{nanos:x}", std::process::id())
+    format!("candil-{}-{nanos:x}", std::process::id())
 }
 
 fn open_path(path: &str) {

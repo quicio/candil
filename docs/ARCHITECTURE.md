@@ -229,7 +229,7 @@ no de pantalla.
 
 ## Persistencia
 
-`~/Library/Application Support/lector/config.json` (macOS; `dirs::config_dir()`
+`~/Library/Application Support/candil/config.json` (macOS; `dirs::config_dir()`
 en el resto). Se guarda con debounce de 700 ms cuando hay cambios, y en
 `on_exit`. `src/store.rs` centraliza la escritura atómica: temporal → `sync_all` →
 `rename`, de modo que un corte no deja el JSON a medias. Si el JSON está corrupto,

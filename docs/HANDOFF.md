@@ -9,9 +9,16 @@ updated: 2026-11-06
 
 ## Qué es
 
-Lector de EPUB de escritorio en Rust: una columna, scroll continuo, tipografía
-propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
-el contenido. Sin webview, sin motor CSS.
+**Candil** es un lector de EPUB de escritorio en Rust: una columna, scroll
+continuo, tipografía propia, temas prearmados. egui/eframe para la ventana,
+parser XHTML propio para el contenido. Sin webview, sin motor CSS. El repo es
+`quicio/candil` y el binario se llama `candil`.
+
+Los datos viven en `~/Library/Application Support/candil/` (macOS),
+`~/.config/candil/` (Linux) o `%APPDATA%\candil\` (Windows). Al arrancar por
+primera vez, Candil migra automáticamente el directorio viejo `lector` si existe;
+si el rename falla, sigue usando `lector` para no arrancar con la biblioteca
+vacía.
 
 **M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina),
 M4 (extras), M5 (segunda etapa) y M6 (consultas) están cerrados.** M3 incluye
@@ -41,7 +48,7 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial) | `--shot --screen library` / `--panel settings/notes/note/search/goto/config` |
+| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 92 unit (1 live ignorado) + 9 integración | `cargo test` |
@@ -95,6 +102,9 @@ pantalla. Combinaciones útiles:
 # biblioteca: índice + portadas sin abrir la UI
 cargo run --profile fast -- --scan "$HOME/Libros"
 
+# capturas del README en un sandbox aislado (no toca ~/Libros ni los datos reales)
+scripts/captures.sh
+
 # capturas: sin path = biblioteca; con path = lector
 cargo run --profile fast -- --shot /tmp/biblioteca.png --screen library
 cargo run --profile fast -- --shot /tmp/busqueda.png --screen library --search flores
@@ -129,8 +139,14 @@ Para probar sin tocar la configuración real, compilar y ejecutar el binario con
 
 ```bash
 cargo build --profile fast
-HOME=$(mktemp -d) ./target/fast/lector --shot /tmp/p.png libro.epub
+HOME=$(mktemp -d) ./target/fast/candil --shot /tmp/p.png libro.epub
 ```
+
+`scripts/captures.sh` descarga cinco EPUB de Project Gutenberg en
+`target/captures-sandbox/Libros` (P&P, Don Quijote, Dracula, Frankenstein y The
+Yellow Wallpaper), arma un `HOME` falso, siembra destacados/historial de ejemplo
+y regenera `docs/img/`. Nunca lee `~/Libros` ni `~/Library/Application Support`.
+Para reutilizar un sandbox: `CANDIL_CAPTURE_SANDBOX=/ruta scripts/captures.sh`.
 
 Para leer una captura: sí, hay que mirarla (herramienta de visión). No alcanza
 con que el build pase: dos bugs reales (entidades `&quot;` en el OPF, aviso

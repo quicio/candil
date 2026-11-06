@@ -11,7 +11,7 @@ cargo run --profile fast -- --inspect tests/fixtures/mini.epub >/dev/null
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub >/dev/null
 
 TMPHOME=$(mktemp -d)
-HOME="$TMPHOME" ./target/fast/lector --scan tests/fixtures >/dev/null
+HOME="$TMPHOME" ./target/fast/candil --scan tests/fixtures >/dev/null
 rm -rf "$TMPHOME"
 
 echo "ok: fmt + clippy + tests + fixtures + scan"

@@ -1,0 +1,99 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: candil-linux-x86_64
+            os: ubuntu-latest
+          - name: candil-macos-arm64
+            os: macos-latest
+          - name: candil-windows-x86_64
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias de Linux (X11/Wayland/GL)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxkbcommon-dev libwayland-dev libgl1-mesa-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Rust estable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Tests (sin red; el live está ignorado)
+        run: cargo test
+
+      - name: Build dist
+        run: cargo build --profile dist
+
+      - name: Preparar artefacto
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ -f target/dist/candil.exe ]; then
+            cp target/dist/candil.exe out/
+          else
+            cp target/dist/candil out/
+          fi
+
+      - name: Subir binario
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: out/
+          if-no-files-found: error
+
+  publish:
+    name: Publicar release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar binarios
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Renombrar y checksums
+        shell: bash
+        run: |
+          mkdir -p dist
+          for dir in artifacts/*; do
+            name=$(basename "$dir")
+            if [ -f "$dir/candil.exe" ]; then
+              cp "$dir/candil.exe" "dist/$name.exe"
+            else
+              cp "$dir/candil" "dist/$name"
+            fi
+          done
+          chmod +x dist/candil-* 2>/dev/null || true
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Crear release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

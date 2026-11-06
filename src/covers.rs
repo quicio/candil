@@ -58,7 +58,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "lector-covers-{tag}-{}-{stamp}",
+            "candil-covers-{tag}-{}-{stamp}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();

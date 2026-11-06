@@ -398,7 +398,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir =
-            std::env::temp_dir().join(format!("lector-lib-{tag}-{}-{stamp}", std::process::id()));
+            std::env::temp_dir().join(format!("candil-lib-{tag}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

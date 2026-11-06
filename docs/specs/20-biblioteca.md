@@ -113,8 +113,13 @@ pruebas sin abrir la UI.
   Faltantes`; "Terminados" queda para M3).
 - Estados vacíos: sin carpetas ("Añadí una carpeta"), carpeta sin EPUB ("No hay
   libros acá"), búsqueda sin resultados ("Nada coincide con «x»").
-- Progreso a la vista: barra fina bajo el título + % (por capítulo; el ratio
-  exacto llega con M3).
+- Progreso a la vista: barra fina bajo el autor; el % aparece solo si el libro
+  empezó (el ratio exacto llega con M3).
+
+Implementación (2026-11-06): grilla centrada con 24 px de margen, separación de
+20 px y tarjetas de 160×240 con altura fija (portada enmarcada, título a dos
+líneas, autor y progreso). La barra superior muestra el conteo
+`N libros · M faltas`, buscador redondeado, orden y filtro con etiqueta.
 
 ## Tareas
 

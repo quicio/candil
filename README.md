@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.499.488 B), arranque instantáneo, sin
+Binario final (`dist`): **5.2 MiB** (5.499.504 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación

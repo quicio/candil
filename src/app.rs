@@ -79,8 +79,14 @@ enum CardAction {
     Remove,
 }
 
-const CARD_W: f32 = 168.0;
-const CARD_COVER_H: f32 = 232.0;
+const CARD_W: f32 = 160.0;
+const CARD_COVER_H: f32 = 240.0;
+const CARD_GAP: f32 = 20.0;
+const PAGE_PAD: f32 = 24.0;
+const CARD_TEXT_H: f32 = 36.0;
+const CARD_AUTHOR_H: f32 = 16.0;
+const CARD_STATUS_H: f32 = 24.0;
+const CARD_H: f32 = CARD_COVER_H + 8.0 + CARD_TEXT_H + CARD_AUTHOR_H + CARD_STATUS_H;
 
 pub struct Lector {
     screen: Screen,
@@ -482,16 +488,33 @@ impl Lector {
         let mut open_path: Option<PathBuf> = None;
         let mut remove: Option<usize> = None;
 
+        let missing_count = self.library.books.iter().filter(|b| b.missing).count();
+        let book_count = self.library.books.len() - missing_count;
+        let count_label = if missing_count > 0 {
+            format!(
+                "{book_count} libros · {missing_count} falta{}",
+                if missing_count == 1 { "" } else { "s" }
+            )
+        } else {
+            format!("{book_count} libros")
+        };
+
         egui::TopBottomPanel::top("library-bar")
-            .exact_height(44.0)
+            .show_separator_line(false)
+            .exact_height(52.0)
             .frame(
                 egui::Frame::new()
                     .fill(th.panel)
-                    .inner_margin(egui::Margin::symmetric(10, 6)),
+                    .inner_margin(egui::Margin::symmetric(16, 8)),
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.label(RichText::new("lector").size(15.0).color(th.fg));
+                    ui.label(RichText::new("lector").size(16.0).strong().color(th.fg));
+                    ui.add_space(2.0);
+                    ui.label(RichText::new(&count_label).size(11.0).color(th.dim));
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(4.0);
                     if ui.button("Añadir carpeta…").clicked() {
                         add_folder = true;
                     }
@@ -499,11 +522,19 @@ impl Lector {
                         rescan = true;
                     }
                     ui.add_space(6.0);
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.library_search)
-                            .hint_text("Buscar título, autor…")
-                            .desired_width(220.0),
-                    );
+                    let response = egui::Frame::new()
+                        .fill(th.bg)
+                        .corner_radius(7.0)
+                        .inner_margin(egui::Margin::symmetric(10, 5))
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.library_search)
+                                    .hint_text("Buscar título, autor…")
+                                    .desired_width(200.0)
+                                    .frame(false),
+                            )
+                        })
+                        .inner;
                     if ctx.input(|i| {
                         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
                     }) {
@@ -526,6 +557,8 @@ impl Lector {
                                     );
                                 }
                             });
+                        ui.label(RichText::new("Filtro").size(11.0).color(th.dim));
+                        ui.add_space(4.0);
                         egui::ComboBox::from_id_salt("library-order")
                             .selected_text(self.library_order.label())
                             .show_ui(ui, |ui| {
@@ -542,6 +575,7 @@ impl Lector {
                                     );
                                 }
                             });
+                        ui.label(RichText::new("Orden").size(11.0).color(th.dim));
                     });
                 });
             });
@@ -597,16 +631,14 @@ impl Lector {
                 }
 
                 if indices.is_empty() {
+                    let message = if self.library_search.trim().is_empty() {
+                        "No hay libros en este filtro.".to_string()
+                    } else {
+                        format!("Nada coincide con «{}»", self.library_search.trim())
+                    };
                     ui.vertical_centered(|ui| {
                         ui.add_space(100.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "Nada coincide con «{}»",
-                                self.library_search.trim()
-                            ))
-                            .size(18.0)
-                            .color(th.fg),
-                        );
+                        ui.label(RichText::new(message).size(18.0).color(th.fg));
                     });
                     return;
                 }
@@ -615,12 +647,18 @@ impl Lector {
                     .id_salt("library-grid")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.add_space(12.0);
-                        let cols = ((ui.available_width() - 24.0) / (CARD_W + 18.0))
+                        ui.add_space(18.0);
+                        let avail = ui.available_width();
+                        let cols = ((avail - PAGE_PAD * 2.0 + CARD_GAP) / (CARD_W + CARD_GAP))
                             .floor()
                             .max(1.0) as usize;
+                        let row_w = cols as f32 * CARD_W + cols.saturating_sub(1) as f32 * CARD_GAP;
+                        let left = ((avail - row_w) * 0.5).max(PAGE_PAD);
+                        ui.spacing_mut().item_spacing.x = CARD_GAP;
+
                         for row in cards.chunks(cols) {
                             ui.horizontal_top(|ui| {
+                                ui.add_space(left);
                                 for card in row {
                                     match library_card(ui, card, th) {
                                         Some(CardAction::Open) => {
@@ -631,9 +669,9 @@ impl Lector {
                                     }
                                 }
                             });
-                            ui.add_space(16.0);
+                            ui.add_space(22.0);
                         }
-                        ui.add_space(24.0);
+                        ui.add_space(28.0);
                     });
             });
 
@@ -759,6 +797,7 @@ impl Lector {
             .unwrap_or_default();
 
         egui::TopBottomPanel::top("bar")
+            .show_separator_line(false)
             .exact_height(38.0)
             .frame(
                 egui::Frame::new()
@@ -1010,6 +1049,7 @@ impl Lector {
 
         // Barra de progreso: 2 px al pie.
         egui::TopBottomPanel::bottom("prog")
+            .show_separator_line(false)
             .exact_height(2.0)
             .frame(egui::Frame::new().fill(th.bg))
             .show(ctx, |ui| {
@@ -1158,6 +1198,16 @@ impl eframe::App for Lector {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.persist();
     }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        let th = theme::theme(self.cfg.settings.theme);
+        [
+            th.bg.r() as f32 / 255.0,
+            th.bg.g() as f32 / 255.0,
+            th.bg.b() as f32 / 255.0,
+            1.0,
+        ]
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1238,22 +1288,30 @@ fn reveal_in_finder(path: &str) {
 
 fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> {
     let mut action = None;
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
     let response = ui.allocate_ui_with_layout(
-        Vec2::new(CARD_W, 0.0),
-        Layout::top_down(Align::Center),
+        Vec2::new(CARD_W, CARD_H),
+        Layout::top_down(Align::Min),
         |ui| {
+            let card_top = ui.cursor().top();
             ui.set_width(CARD_W);
             ui.spacing_mut().item_spacing.y = 0.0;
+
+            let (cover_rect, _) =
+                ui.allocate_exact_size(Vec2::new(CARD_W, CARD_COVER_H), Sense::hover());
+            ui.painter().rect_filled(cover_rect, 7.0, th.panel);
             if let Some((id, size)) = card.cover {
-                let scale = (CARD_W / size.x).min(CARD_COVER_H / size.y);
+                let scale = ((CARD_W - 10.0) / size.x)
+                    .min((CARD_COVER_H - 10.0) / size.y)
+                    .min(1.0);
                 let shown = size * scale;
-                ui.add_space(((CARD_COVER_H - shown.y) * 0.5).max(0.0));
-                ui.add(egui::Image::new(egui::load::SizedTexture::new(id, shown)));
-                ui.add_space(((CARD_COVER_H - shown.y) * 0.5).max(0.0));
+                ui.painter().with_clip_rect(cover_rect.shrink(1.0)).image(
+                    id,
+                    egui::Rect::from_center_size(cover_rect.center(), shown),
+                    uv,
+                    Color32::WHITE,
+                );
             } else {
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::new(CARD_W, CARD_COVER_H), Sense::hover());
-                ui.painter().rect_filled(rect, 6.0, th.panel);
                 let initial = card
                     .title
                     .chars()
@@ -1262,95 +1320,126 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                     .to_uppercase()
                     .to_string();
                 ui.painter().text(
-                    rect.center(),
+                    cover_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     initial,
                     FontId::new(42.0, fonts::family(true, false)),
                     th.dim,
                 );
             }
+            if card.missing || card.error.is_some() {
+                ui.painter()
+                    .rect_filled(cover_rect, 7.0, Color32::from_black_alpha(110));
+            }
+            ui.painter().rect_stroke(
+                cover_rect,
+                7.0,
+                Stroke::new(1.0, th.dim.gamma_multiply(0.18)),
+                egui::StrokeKind::Inside,
+            );
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.allocate_ui_with_layout(
-                Vec2::new(CARD_W, 34.0),
-                Layout::top_down(Align::Center),
+                Vec2::new(CARD_W, CARD_TEXT_H),
+                Layout::top_down(Align::Min),
                 |ui| {
                     let top = ui.cursor().top();
-                    ui.label(
-                        RichText::new(truncate(&card.title, 48))
-                            .size(12.5)
-                            .color(th.fg),
+                    ui.set_max_width(CARD_W);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(truncate(&card.title, 44))
+                                .size(12.5)
+                                .color(th.fg),
+                        )
+                        .wrap(),
                     );
-                    pad_to(ui, top, 34.0);
+                    pad_to(ui, top, CARD_TEXT_H);
                 },
             );
             ui.allocate_ui_with_layout(
-                Vec2::new(CARD_W, 16.0),
-                Layout::top_down(Align::Center),
+                Vec2::new(CARD_W, CARD_AUTHOR_H),
+                Layout::top_down(Align::Min),
                 |ui| {
                     let top = ui.cursor().top();
+                    ui.set_max_width(CARD_W);
                     if !card.author.is_empty() {
-                        ui.label(
-                            RichText::new(truncate(&card.author, 26))
-                                .size(11.0)
-                                .color(th.dim),
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(truncate(&card.author, 30))
+                                    .size(10.5)
+                                    .color(th.dim),
+                            )
+                            .wrap(),
                         );
                     }
-                    pad_to(ui, top, 16.0);
+                    pad_to(ui, top, CARD_AUTHOR_H);
                 },
             );
             ui.allocate_ui_with_layout(
-                Vec2::new(CARD_W, 24.0),
-                Layout::top_down(Align::Center),
+                Vec2::new(CARD_W, CARD_STATUS_H),
+                Layout::top_down(Align::Min),
                 |ui| {
                     let top = ui.cursor().top();
                     if card.missing {
                         ui.label(
                             RichText::new("Falta")
-                                .size(10.5)
-                                .color(Color32::from_rgb(180, 80, 70)),
+                                .size(10.0)
+                                .color(Color32::from_rgb(190, 92, 82)),
                         );
                     } else if card.error.is_some() {
                         ui.label(
                             RichText::new("Error al abrir")
-                                .size(10.5)
-                                .color(Color32::from_rgb(180, 80, 70)),
+                                .size(10.0)
+                                .color(Color32::from_rgb(190, 92, 82)),
                         );
                     } else if card.chapters > 0 {
                         let fraction = (card.chapter as f32 / card.chapters as f32).clamp(0.0, 1.0);
-                        let (rect, _) =
-                            ui.allocate_exact_size(Vec2::new(CARD_W, 3.0), Sense::hover());
+                        let (bar, _) =
+                            ui.allocate_exact_size(Vec2::new(CARD_W, 2.0), Sense::hover());
                         ui.painter()
-                            .rect_filled(rect, 1.5, th.dim.gamma_multiply(0.25));
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_size(
-                                rect.min,
-                                Vec2::new(CARD_W * fraction, rect.height()),
-                            ),
-                            1.5,
-                            th.accent,
-                        );
-                        ui.label(
-                            RichText::new(format!("{}%", (fraction * 100.0).round() as u32))
-                                .size(10.0)
-                                .color(th.dim),
-                        );
+                            .rect_filled(bar, 1.0, th.dim.gamma_multiply(0.18));
+                        if fraction > 0.0 {
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(
+                                    bar.min,
+                                    Vec2::new(CARD_W * fraction, bar.height()),
+                                ),
+                                1.0,
+                                th.accent.gamma_multiply(0.85),
+                            );
+                            ui.add_space(3.0);
+                            ui.label(
+                                RichText::new(format!("{}%", (fraction * 100.0).round() as u32))
+                                    .size(9.5)
+                                    .color(th.dim),
+                            );
+                        }
                     }
-                    pad_to(ui, top, 24.0);
+                    pad_to(ui, top, CARD_STATUS_H);
                 },
             );
+            pad_to(ui, card_top, CARD_H);
         },
     );
 
     let rect = response.response.rect;
-    let response = ui.interact(
+    let mut response = ui.interact(
         rect,
         ui.id().with(("library-card", card.index)),
         Sense::click(),
     );
+    if response.hovered() {
+        ui.painter().rect_stroke(
+            rect.expand(3.0),
+            9.0,
+            Stroke::new(1.0, th.accent.gamma_multiply(0.35)),
+            egui::StrokeKind::Inside,
+        );
+    }
     if response.clicked() {
         action = Some(CardAction::Open);
     }
+    response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
     let response = if let Some(error) = &card.error {
         response.on_hover_text(error.clone())
     } else if card.missing {

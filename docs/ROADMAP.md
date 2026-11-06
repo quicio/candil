@@ -1,13 +1,13 @@
 ---
 id: roadmap
 status: vigente
-version: 1.7.0
+version: 1.8.0
 updated: 2026-11-06
 ---
 
 # Roadmap
 
-Cinco milestones. Cada uno tiene criterio de salida **verificable**, no una
+Seis milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -18,6 +18,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M3 | Lectura fina | **Hecho** | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | **Hecho** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 | M5 | Segunda etapa | **Hecho** | [50](specs/50-anotaciones-globales.md), [55](specs/55-navegacion.md) | Ver y saltar anotaciones de cualquier libro, elegir color, exportar Markdown y saltar por porcentaje/capítulo |
+| M6 | Consultas externas | **Spec borrador** | [60](specs/60-diccionario-traduccion-ia.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
 
 ## M1 — Lector (terminado)
 
@@ -141,6 +142,28 @@ Cerrado el 2026-11-06 con specs 50 y 55:
 - Queda fuera: regex/stemming, sincronización, export a PDF/DOCX y búsqueda
   dentro de las notas.
 
+## M6 — Consultas externas: diccionario, traducción e IA (diseño)
+
+Estado 2026-11-06: **spec 60 en borrador**. No hay código ni red todavía. La
+selección de texto ya existe (M4), así que el trabajo es añadir una acción
+“Consultar” y un panel con Diccionario / Traducción / IA.
+
+Decisiones pendientes antes de implementar:
+
+- proveedor de diccionario (Wiktionary vs. Diccionario del sistema);
+- traducción gratuita (MyMemory/LibreTranslate) vs. con clave (DeepL/Google);
+- proveedor de IA (OpenAI/Anthropic/OpenRouter/Ollama local) y formato de
+  configuración;
+- claves por variable de entorno vs. Keychain;
+- dependencia HTTP (`ureq`/`reqwest`/`curl`), que exige **ADR-0011** y medir el
+  aumento de `dist` (presupuesto < 8 MB);
+- privacidad: el texto solo sale con click explícito, aviso la primera vez y
+  `online_enabled` en configuración.
+
+Fases: (1) diccionario + traducción + cache en memoria; (2) IA
+OpenAI-compatible con hilo de trabajo, prompts y cancelación; (3) más
+proveedores, historial, Keychain y diccionario offline.
+
 ## Orden de ataque recomendado
 
 1. M2 cerrado (T1–T11): 50 EPUB en 1.65 s, 96 % de portadas, capturas y tests.
@@ -150,7 +173,9 @@ Cerrado el 2026-11-06 con specs 50 y 55:
 4. M4: búsqueda dentro del libro (spec 40) — **hecho**.
 5. M5: anotaciones globales, colores, export Markdown y navegación por
    porcentaje/capítulo — **hecho**.
-6. Futuro: búsqueda con regex/stemming, sincronización y export a PDF/DOCX.
+6. M6 (diseño): diccionario, traducción y análisis con IA; primero cerrar
+   decisiones y ADR-0011.
+7. Futuro: búsqueda con regex/stemming, sincronización y export a PDF/DOCX.
 
 Regla: **una spec, un milestone, un PR lógico**. Si una tarea no encaja en la
 spec, se discute antes de codear (flujo spec → código, nunca al revés).

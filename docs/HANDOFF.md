@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.7.0
+version: 1.8.0
 updated: 2026-11-06
 ---
 
@@ -22,6 +22,10 @@ M4 (extras) y M5 (segunda etapa) están cerrados.** M3 incluye anclas/saltos
 
 Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
 export a PDF/DOCX y búsqueda dentro de las notas.
+
+**M6 está en diseño:** la spec 60 define diccionario, traducción y análisis con
+IA sobre la selección. No hay código ni red todavía; antes de implementar hay
+que decidir proveedores, privacidad y la dependencia HTTP (ADR-0011).
 
 ## Estado medido (no estimado)
 
@@ -188,3 +192,7 @@ flotante tapando texto) solo aparecieron así.
   atómica (`src/store.rs`).
 - No tocar la tipografía ni los temas sin mirar una captura.
 - No agregar dependencias por comodidad (cada MB del binario se nota).
+- No agregar cliente HTTP, diccionario online o IA sin ADR y sin medir `dist`
+  (spec 60, ADR-0011 pendiente).
+- No enviar texto del libro a un proveedor externo sin una acción explícita del
+  usuario, y nunca guardar claves de API en `config.json` ni en logs.

@@ -16,7 +16,7 @@ webview ni motor HTML.
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | comandos y reglas duras para agentes |
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | estado, invariantes, verificación sin ojos |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M5 con criterios de salida |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M6 con criterios de salida |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | módulos, modelo `Block`, cómo extenderlo |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
@@ -182,6 +182,9 @@ porcentaje del libro o número de capítulo.
   anotaciones global es una lista plana (sin búsqueda dentro de las notas).
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
+- Diccionario, traducción y análisis con IA están **en diseño** (spec 60), no
+  implementados: hoy se puede copiar la selección y consultarla fuera del
+  lector.
 
 ## Roadmap
 
@@ -193,6 +196,9 @@ porcentaje del libro o número de capítulo.
   libro (spec 40).
 - **M5 — Segunda etapa (cerrada):** anotaciones globales, tres colores, export
   Markdown (spec 50) y navegación por porcentaje/capítulo (spec 55).
+- **M6 — Consultas externas (en diseño):** diccionario, traducción y análisis
+  con IA sobre la selección (spec 60). Pendiente de decidir proveedores,
+  privacidad y la dependencia HTTP (ADR-0011).
 
 ## Modo diagnóstico
 

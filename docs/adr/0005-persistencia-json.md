@@ -1,7 +1,7 @@
 ---
 id: adr-0005
 status: aceptada
-version: 1.3.0
+version: 1.4.0
 updated: 2026-11-06
 ---
 
@@ -77,3 +77,7 @@ esquema rígido.
 La spec 45 agrega `annotations.json` con el mismo helper atómico y
 `schema_version`. Se mantiene separado de `library.json` para no hinchar el
 índice de la estantería ni reescribirlo en cada destacado.
+
+La spec 60 agrega `consultas.json` para el historial de diccionario/traducción/IA:
+mismo helper atómico, `schema_version`, límite de entradas y borrado. No guarda
+claves ni el párrafo de contexto.

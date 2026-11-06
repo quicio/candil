@@ -5,9 +5,9 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
-del libro y salto por porcentaje/capítulo.
+del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
 
-Binario final (`dist`): **5.3 MiB** (5.599.328 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.664.128 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -60,6 +60,8 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 | `S` | tipografía |
 | `D` | destacados y notas (por libro o global) |
 | `G` | ir a porcentaje/capítulo |
+| `K` | consultar selección (diccionario/traducción/IA) |
+| `⌘,` | configuración |
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
 | `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
@@ -92,6 +94,7 @@ src/
   library.rs índice de carpetas, escaneo incremental y BookEntry
   annotations.rs destacados/notas por libro (offsets de texto + cita)
   search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
+  consulta.rs diccionario/traducción/IA (HTTP ureq) e historial local
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
   theme.rs   presets de color
@@ -113,8 +116,8 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 74
-tests unitarios y 9 de integración sobre fixtures propios versionados
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 91
+tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
 
@@ -145,6 +148,14 @@ una anotación de otro libro, y la exportación a Markdown desde el mismo panel.
 También suma `G` / click en el porcentaje para abrir “Ir a…”, con salto por
 porcentaje del libro o número de capítulo.
 
+M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar**
+(o `K`) para Wiktionary, MyMemory o **OpenCode Go**. El panel tiene
+Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
+defecto y la clave de IA vive solo en `OPENCODE_API_KEY`. El historial se guarda
+en `consultas.json` (local, con límite y borrado). El centro **Configuración**
+(`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
+avanzado.
+
 ## Capturas
 
 | Vacía | Poblada |
@@ -165,6 +176,10 @@ porcentaje del libro o número de capítulo.
 |---|---|---|
 | ![Panel global con anotaciones de dos libros](docs/img/reader-notes-global.jpg) | ![Ventana para ir a un porcentaje o capítulo](docs/img/reader-goto.jpg) | ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
 
+| **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
+|---|---|---|
+| ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
+
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
@@ -182,10 +197,13 @@ porcentaje del libro o número de capítulo.
   anotaciones global es una lista plana (sin búsqueda dentro de las notas).
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
-- Diccionario, traducción y análisis con IA están **en diseño** (specs 60/65),
-  no implementados: hoy se puede copiar la selección y consultarla fuera del
-  lector. La red estará apagada por defecto y la clave de OpenCode Go vivirá solo
-  en `OPENCODE_API_KEY`.
+- Diccionario y traducción usan Wiktionary/MyMemory (online); la IA usa
+  **OpenCode Go** y requiere `OPENCODE_API_KEY`. Online está apagado por defecto.
+  El uso de la suscripción Go para lectura depende de sus términos y límites.
+- La traducción se muestra solo en el panel; no reemplaza el texto del libro.
+- El idioma de origen se deduce de `Book.lang`; el override manual queda para
+  una fase posterior. La IA no admite preguntas libres, solo prompts
+  predefinidos.
 
 ## Roadmap
 
@@ -197,10 +215,10 @@ porcentaje del libro o número de capítulo.
   libro (spec 40).
 - **M5 — Segunda etapa (cerrada):** anotaciones globales, tres colores, export
   Markdown (spec 50) y navegación por porcentaje/capítulo (spec 55).
-- **M6 — Consultas y configuración (en diseño):** diccionario con Wiktionary,
-  traducción gratuita con MyMemory, análisis con **OpenCode Go** e historial en
-  disco (spec 60); centro de configuración para estos ajustes y el resto del
-  programa (spec 65). Pendiente ADR-0011 y medir `dist`.
+- **M6 — Consultas y configuración (cerrado):** diccionario Wiktionary,
+  traducción MyMemory, análisis con **OpenCode Go**, historial local (spec 60) y
+  centro de configuración (spec 65). Online apagado por defecto; clave en
+  `OPENCODE_API_KEY`.
 
 ## Modo diagnóstico
 

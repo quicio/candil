@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.9.0
+version: 1.10.0
 updated: 2026-11-06
 ---
 
@@ -14,21 +14,20 @@ propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
 **M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina),
-M4 (extras) y M5 (segunda etapa) están cerrados.** M3 incluye anclas/saltos
-(spec 30) y progreso por fracción con ancla de bloque más preferencias por libro
-(spec 35). M4 incluye destacados/notas (spec 45) y búsqueda dentro del libro
-(spec 40). M5 agrega anotaciones globales, tres colores, export Markdown
-(spec 50) y navegación por porcentaje/capítulo (spec 55).
+M4 (extras), M5 (segunda etapa) y M6 (consultas) están cerrados.** M3 incluye
+anclas/saltos y progreso por fracción. M4 incluye destacados/notas y búsqueda
+interna. M5 agrega anotaciones globales, colores, export Markdown y navegación.
+M6 agrega diccionario Wiktionary, traducción MyMemory, IA con OpenCode Go,
+historial en `consultas.json` y el centro de configuración.
+
+**Online está apagado por defecto**: se activa en Configuración o desde el panel
+Consulta. La clave de IA vive solo en `OPENCODE_API_KEY`; si falta, el botón de
+IA queda deshabilitado. La prueba real con la clave del usuario queda pendiente;
+con una clave inválida se verificó el 401 sin congelar la UI.
 
 Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
-export a PDF/DOCX y búsqueda dentro de las notas.
-
-**M6 está en diseño:** la spec 60 (aprobada) define diccionario con Wiktionary,
-traducción gratuita con MyMemory, análisis con **OpenCode Go** e historial en
-disco; **online apagado por defecto**, clave solo por entorno y traducción solo
-en el panel. La spec 65 (aprobada) define el centro de configuración para estos
-ajustes y el resto del programa. No hay código ni red todavía; antes de
-implementar hay que escribir el ADR-0011 y medir `dist`.
+export a PDF/DOCX, búsqueda dentro de las notas y override manual del idioma de
+origen.
 
 ## Estado medido (no estimado)
 
@@ -42,12 +41,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 11 en `docs/img/` (biblioteca ×4, tipografía, destacado multicolor, panel, nota, global, búsqueda e Ir a) | `--shot --screen library` / `--panel settings/notes/note/search/goto` |
+| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial) | `--shot --screen library` / `--panel settings/notes/note/search/goto/config` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 74 unit + 9 integración | `cargo test` |
+| tests | 91 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.599.328 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 6.664.128 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -75,6 +74,7 @@ src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
 src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
+src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
@@ -107,6 +107,12 @@ cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase
 cargo run --profile fast -- --shot /tmp/p.png --panel notes --annotations-all libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel goto libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --export-md /tmp/destacados.md libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel config libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind diccionario --consulta-run libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind historial libro.epub
+
+# test live (no corre en el gate normal)
+cargo test --lib red_real_wiktionary_y_mymemory -- --ignored
 
 # diagnóstico de parser
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub
@@ -166,6 +172,14 @@ flotante tapando texto) solo aparecieron así.
 15. **El color del destacado es `u8` en `annotations.json`** (0 acento, 1 ámbar,
     2 verde), no una propiedad del tema ni de `library.json`. El modo global del
     panel no cambia el archivo; solo cambia la vista y el alcance del export.
+16. **Online apagado por defecto**: `Config.consulta.online_enabled = false`.
+    Ninguna consulta sale sin click explícito; apagarlo corta toda salida.
+17. **Las claves viven solo en `OPENCODE_API_KEY`**; nunca en `config.json`,
+    `consultas.json`, logs ni URLs. El estado se muestra como detectada/no
+    configurada, nunca el valor.
+18. **El historial es local** (`consultas.json`), con límite y borrado; no guarda
+    el párrafo de contexto, claves ni se envía a proveedores. Las peticiones
+    corren en un hilo y la UI no se bloquea.
 
 ## Definición de terminado (por tarea)
 

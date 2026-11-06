@@ -83,12 +83,77 @@ impl Progress {
     }
 }
 
+pub const DEFAULT_AI_BASE: &str = "https://opencode.ai/inference/go/openai/v1";
+pub const DEFAULT_AI_MODEL: &str = "deepseek-v4.1-flash";
+pub const HISTORY_DEFAULT: usize = 200;
+pub const AI_TIMEOUT_DEFAULT: u64 = 30;
+pub const AI_MAX_TOKENS_DEFAULT: u32 = 512;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ConsultaSettings {
+    /// La red está apagada hasta que el usuario la habilite.
+    pub online_enabled: bool,
+    pub dictionary_provider: String,
+    pub translation_provider: String,
+    /// `None` = automático (en→es, es→en, resto→es).
+    pub target_lang: Option<String>,
+    pub ai_base_url: String,
+    pub ai_model: String,
+    pub ai_timeout_secs: u64,
+    pub ai_max_tokens: u32,
+    /// 0 = no guardar historial.
+    pub history_limit: usize,
+}
+
+impl Default for ConsultaSettings {
+    fn default() -> Self {
+        Self {
+            online_enabled: false,
+            dictionary_provider: "wiktionary".into(),
+            translation_provider: "mymemory".into(),
+            target_lang: None,
+            ai_base_url: DEFAULT_AI_BASE.into(),
+            ai_model: DEFAULT_AI_MODEL.into(),
+            ai_timeout_secs: AI_TIMEOUT_DEFAULT,
+            ai_max_tokens: AI_MAX_TOKENS_DEFAULT,
+            history_limit: HISTORY_DEFAULT,
+        }
+    }
+}
+
+impl ConsultaSettings {
+    pub fn clamp(&mut self) {
+        self.ai_timeout_secs = self.ai_timeout_secs.clamp(5, 120);
+        self.ai_max_tokens = self.ai_max_tokens.clamp(64, 4096);
+        self.history_limit = self.history_limit.min(2000);
+        if self.ai_base_url.trim().is_empty() {
+            self.ai_base_url = DEFAULT_AI_BASE.into();
+        }
+        if self.ai_model.trim().is_empty() {
+            self.ai_model = DEFAULT_AI_MODEL.into();
+        }
+        if self.dictionary_provider.trim().is_empty() {
+            self.dictionary_provider = "wiktionary".into();
+        }
+        if self.translation_provider.trim().is_empty() {
+            self.translation_provider = "mymemory".into();
+        }
+        if let Some(lang) = &self.target_lang {
+            if lang.trim().is_empty() {
+                self.target_lang = None;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub settings: Settings,
     pub last_book: Option<String>,
     pub recent: Vec<String>,
+    pub consulta: ConsultaSettings,
     /// Compatibilidad: el progreso se migra a `library.json` en M2. No se
     /// vuelve a escribir acá.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -120,6 +185,7 @@ impl Config {
     pub fn load_with_report_from(path: &Path) -> (Self, Option<String>) {
         let (mut cfg, report) = store::load_json_with_report::<Self>(path, "configuración");
         cfg.settings.clamp();
+        cfg.consulta.clamp();
         (cfg, report)
     }
 
@@ -257,5 +323,54 @@ mod tests {
         let back: Progress = serde_json::from_str(&json).unwrap();
         assert_eq!(back.anchor, Some(7));
         assert!((back.ratio - 0.25).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn consulta_apagada_por_defecto_y_roundtrip() {
+        let mut cfg = Config::default();
+        assert!(!cfg.consulta.online_enabled);
+        assert_eq!(cfg.consulta.ai_base_url, DEFAULT_AI_BASE);
+        assert_eq!(cfg.consulta.ai_model, DEFAULT_AI_MODEL);
+        assert_eq!(cfg.consulta.history_limit, HISTORY_DEFAULT);
+
+        cfg.consulta.online_enabled = true;
+        cfg.consulta.target_lang = Some("es".into());
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(!json.contains("OPENCODE_API_KEY"), "{json}");
+        let back: Config = serde_json::from_str(&json).unwrap();
+        assert!(back.consulta.online_enabled);
+        assert_eq!(back.consulta.target_lang.as_deref(), Some("es"));
+    }
+
+    #[test]
+    fn config_vieja_sin_consulta_usa_defaults() {
+        let dir = temp_dir("consulta-defaults");
+        let path = dir.join("config.json");
+        std::fs::write(&path, r#"{"settings":{"font_size":21.0}}"#).unwrap();
+        let cfg = Config::load_from(&path);
+        assert_eq!(cfg.settings.font_size, 21.0);
+        assert!(!cfg.consulta.online_enabled);
+        assert_eq!(cfg.consulta.ai_model, DEFAULT_AI_MODEL);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn consulta_se_clampa() {
+        let mut c = ConsultaSettings {
+            ai_timeout_secs: 999,
+            ai_max_tokens: 1,
+            history_limit: 99_999,
+            ai_base_url: " ".into(),
+            ai_model: String::new(),
+            translation_provider: String::new(),
+            ..ConsultaSettings::default()
+        };
+        c.clamp();
+        assert_eq!(c.ai_timeout_secs, 120);
+        assert_eq!(c.ai_max_tokens, 64);
+        assert_eq!(c.history_limit, 2000);
+        assert_eq!(c.ai_base_url, DEFAULT_AI_BASE);
+        assert_eq!(c.ai_model, DEFAULT_AI_MODEL);
+        assert_eq!(c.translation_provider, "mymemory");
     }
 }

@@ -1,7 +1,7 @@
 ---
 id: roadmap
 status: vigente
-version: 1.9.0
+version: 1.10.0
 updated: 2026-11-06
 ---
 
@@ -18,7 +18,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M3 | Lectura fina | **Hecho** | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | **Hecho** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 | M5 | Segunda etapa | **Hecho** | [50](specs/50-anotaciones-globales.md), [55](specs/55-navegacion.md) | Ver y saltar anotaciones de cualquier libro, elegir color, exportar Markdown y saltar por porcentaje/capítulo |
-| M6 | Consultas externas | **Aprobado** | [60](specs/60-diccionario-traduccion-ia.md), [65](specs/65-centro-configuracion.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
+| M6 | Consultas externas | **Hecho** | [60](specs/60-diccionario-traduccion-ia.md), [65](specs/65-centro-configuracion.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
 
 ## M1 — Lector (terminado)
 
@@ -37,7 +37,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 74 + 9 con M2/M3/M4/M5); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 91 + 9 (1 live ignorado) con M2–M6); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -67,7 +67,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 74 + 9.
+2279/2279 imágenes. `cargo test`: 91 + 9 (1 live ignorado).
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -142,27 +142,26 @@ Cerrado el 2026-11-06 con specs 50 y 55:
 - Queda fuera: regex/stemming, sincronización, export a PDF/DOCX y búsqueda
   dentro de las notas.
 
-## M6 — Consultas externas: diccionario, traducción e IA (aprobado)
+## M6 — Consultas externas (terminado)
 
-Estado 2026-11-06: **spec 60 aprobada** (proveedores, privacidad e historial
-cerrados) y **spec 65 aprobada** (centro de configuración). No hay código ni
-red todavía. La selección de texto ya existe (M4), así que el trabajo es añadir
-una acción “Consultar”, un panel con Diccionario / Traducción / IA / Historial y
-un centro de configuración para activar online, elegir proveedores, idioma,
-modelo y gestionar el historial.
+Cerrado el 2026-11-06 con specs 60 y 65:
 
-Decisiones pendientes antes de implementar:
+- **Diccionario/traducción (spec 60):** Wiktionary y MyMemory en vivo,
+  normalización de idioma, panel con contexto, resultados y enlaces de fuente.
+- **IA (spec 60):** OpenCode Go (`inference/go/openai/v1`), clave
+  `OPENCODE_API_KEY`, `x-opencode-session`, prompts predefinidos, petición en
+  hilo de trabajo y errores claros. Probado con 401 real; falta la prueba de una
+  respuesta exitosa con la clave del usuario.
+- **Historial:** `consultas.json` atómico, local, con límite y borrado; guarda
+  consultas y errores, no claves ni el párrafo completo.
+- **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
+  Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
+- Medición: `dist` **6.664.128 B** (ureq+rustls sumó 1.064.800 B; < 8 MB).
+- Verificación: **91 unit (1 live ignorado) + 9 integración**, clippy limpio,
+  capturas de consulta, configuración e historial.
 
-Decisiones cerradas: Wiktionary; traducción gratuita (MyMemory); IA con
-**OpenCode Go** (`https://opencode.ai/inference/go/openai/v1`, `OPENCODE_API_KEY`); clave solo
-por entorno; `online_enabled=false` por defecto; prompts predefinidos; historial
-en disco; traducción solo en el panel.
-
-Pendiente: **ADR-0011** de la dependencia HTTP (`ureq`+`rustls` propuesto) y
-medición de `dist` (< 8 MB), implementar el centro de configuración (spec 65) y
-verificar el endpoint/modelo de OpenCode Go. Fases: (1) diccionario + traducción
-+ cache + historial; (2) OpenCode Go con hilo de trabajo, prompts y cancelación;
-(3) más proveedores, Keychain y diccionario offline.
+Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
+dentro de las notas y override manual del idioma de origen.
 
 ## Orden de ataque recomendado
 
@@ -174,7 +173,7 @@ verificar el endpoint/modelo de OpenCode Go. Fases: (1) diccionario + traducció
 5. M5: anotaciones globales, colores, export Markdown y navegación por
    porcentaje/capítulo — **hecho**.
 6. M6: diccionario, traducción, IA e historial (spec 60) + centro de
-   configuración (spec 65); primero ADR-0011 y medir `dist`.
+   configuración (spec 65) — **hecho**.
 7. Futuro: búsqueda con regex/stemming, sincronización y export a PDF/DOCX.
 
 Regla: **una spec, un milestone, un PR lógico**. Si una tarea no encaja en la

@@ -12,11 +12,11 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 74 unit + 9 integración (fixtures propios)
+cargo test                                  # 91 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio
-cargo build --profile dist                  # artefacto final: ~5.5 MB
+cargo build --profile dist                  # artefacto final: ~6.4 MB
 cargo run --profile fast                    # biblioteca
 cargo run --profile fast -- --resume        # reabrir el último libro
 cargo run --profile fast -- --scan ~/Libros # índice + portadas sin UI
@@ -46,6 +46,12 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Los destacados y notas se guardan como **offsets de caracteres + cita** en
   `annotations.json`; no los conviertas a píxeles ni los mezcles con
   `library.json`.
+- Las consultas online están **apagadas por defecto** (`online_enabled=false`) y
+  nunca salen sin una acción explícita. Las peticiones van en un hilo; no
+  bloquees la UI.
+- La clave de IA vive solo en `OPENCODE_API_KEY`; nunca en `config.json`,
+  `consultas.json`, logs ni URLs. El historial es local y no incluye el párrafo
+  de contexto.
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

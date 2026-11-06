@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.8.0
+version: 1.9.0
 updated: 2026-11-06
 ---
 
@@ -43,11 +43,12 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
 | `annotations.rs` | destacados/notas por libro: offsets de texto, cita y nota; `annotations.json` atómico | no conoce píxeles ni la UI |
 | `search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
+| `consulta.rs` | diccionario/traducción/IA, HTTP ureq, parsers e historial local | no conoce egui |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
-| `config.rs` | settings globales en `config.json`; `Progress` con ratio/ancla/fracción y compatibilidad con el offset legado | no conoce el contenido |
+| `config.rs` | settings globales, `consulta` y `Progress` con ratio/ancla/fracción; compatibilidad con el offset legado | no conoce el contenido |
 | `fonts.rs` | registra Literata en 4 familias + monoespaciada | no decide tamaños |
 | `lib.rs` | expone módulos para tests de integración | — |
 
@@ -173,6 +174,30 @@ con el mismo mecanismo de `TextFormat::background` que los destacados.
 (capítulo + ratio, sin ancla) y `load_chapter` restaura. El capítulo se clampea a
 `1..=N` y lleva al inicio.
 
+## Consultas y configuración
+
+`consulta.rs` define `ConsultaKind`, `ConsultaRequest/Response`, `Transport`,
+`HttpTransport` (ureq+rustls, timeout), parsers de Wiktionary/dictionaryapi.dev,
+MyMemory y respuestas OpenAI-compatible, prompts predefinidos e
+`ConsultaHistory`. La red está apagada por defecto; cada consulta es explícita.
+
+La UI abre el panel con la acción `Consultar` de la selección o `K`. Diccionario,
+Traducción, IA e Historial comparten ventana. La petición corre en
+`std::thread` y vuelve por `mpsc` con un request id; la UI muestra spinner, error
+o resultado sin bloquearse. OpenCode Go usa
+`https://opencode.ai/inference/go/openai/v1/chat/completions`, la clave
+`OPENCODE_API_KEY`, `x-opencode-session` y `User-Agent: lector/…`.
+
+El historial vive en `consultas.json` (atómico, `schema_version`, límite y
+borrado); no guarda el párrafo de contexto ni claves. `Config.consulta` guarda
+solo preferencias no secretas: online, proveedores, idioma destino, base/modelo
+de IA, timeout, tokens e límite de historial.
+
+El centro de configuración (`⌘,` o Ajustes) reúne Lectura, Biblioteca,
+Anotaciones, Consultas, Privacidad y Avanzado. `Aa` sigue siendo el acceso
+rápido a la tipografía por libro; el centro edita lo global y las preferencias
+nuevas, sin duplicar estado.
+
 ## Biblioteca
 
 `app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.
@@ -189,8 +214,8 @@ sus libros) y la barra muestra el contador de errores con tooltip.
 
 `Lector` guarda: pantalla (`Library`/`Reader`), biblioteca, libro abierto
 (`Book`), capítulo actual, bloques del capítulo, texturas del lector y de
-portadas, `Config`, `Annotations`, selección/nota activas, índice de búsqueda y
-resultados, offset de scroll,
+portadas, `Config`, `Annotations`, `ConsultaHistory`, selección/nota activas,
+índice de búsqueda y resultados, consulta en vuelo, offset de scroll,
 altura del viewport, flags de panel y estado de guardado diferido.
 
 Regla de oro: **el scroll es del lector, no del EPUB**. Se guarda por libro como
@@ -229,6 +254,11 @@ avisa que el libro tiene ajustes propios.
 Guarda `schema_version` e `items`; se escribe en cada alta/edición/borrado, no
 en el debounce del progreso. Si está corrupto se renombra y se arranca vacío sin
 bloquear el lector.
+
+`consultas.json` guarda el historial de diccionario/traducción/IA con el mismo
+helper. Tiene `schema_version`, límite de entradas y borrado; no contiene claves
+ni el párrafo de contexto. Las preferencias de red viven en `config.json` con
+`online_enabled=false` por defecto.
 
 ## Errores
 

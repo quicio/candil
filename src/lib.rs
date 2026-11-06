@@ -4,6 +4,7 @@
 pub mod annotations;
 pub mod app;
 pub mod config;
+pub mod consulta;
 pub mod covers;
 pub mod epub;
 pub mod fonts;

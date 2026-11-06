@@ -1,18 +1,17 @@
 ---
 id: spec-60
 title: Consulta de selección — diccionario, traducción e IA
-status: aprobada
-version: 1.0.0
+status: implementada
+version: 1.1.0
 updated: 2026-11-06
 milestone: M6
-depends_on: [spec-30, spec-45, spec-65, adr-0005]
+depends_on: [spec-30, spec-45, spec-65, adr-0005, adr-0011]
 ---
 
 # Spec 60 — Consulta de selección: diccionario, traducción e IA
 
-> **Estado: aprobada el 2026-11-06.** Las decisiones de proveedores,
-> privacidad e historial están cerradas. Falta el ADR-0011 de la dependencia
-> HTTP y la implementación. La selección de texto ya existe desde M4.
+> **Estado: implementada el 2026-11-06.** Decisiones cerradas y código
+> integrado (spec 60 + spec 65). La selección de texto ya existía desde M4.
 
 ## Objetivo
 
@@ -77,7 +76,8 @@ selección en el lector
 - El panel se puede dejar abierto mientras se lee; al seleccionar otra frase se
   actualiza el texto y se cancela/ignora la consulta anterior.
 - El idioma de origen se toma de `Book.lang` (normalizando `en-US`/`en-GB` a
-  `en` y `es-419` a `es`); es editable si falta o está mal.
+  `en` y `es-419` a `es`). Si falta, se asume `en`. El override manual de origen
+  queda para fase 3.
 - El destino por defecto: si el libro es `en`, `es`; si es `es`, `en`; si no,
   `es`. Se puede cambiar y se recuerda para la sesión.
 
@@ -265,7 +265,7 @@ pub struct ConsultaHistory {
   (la selección completa sigue visible).
 - Diccionario, traducción, IA e historial comparten el mismo panel; no se abren
   ventanas separadas por proveedor.
-- La pestaña Historial solo está disponible si `history_limit > 0`.
+- La pestaña Historial muestra las entradas existentes; con `history_limit = 0` no se guardan nuevas y se puede limpiar desde Configuración.
 
 ## Tests
 
@@ -295,6 +295,10 @@ pub struct ConsultaHistory {
    el párrafo completo.
 7. Tests con fixtures/mocks y `dist` sigue por debajo de 8 MB.
 
+Estado: 1–4 y 6–7 cumplidos y verificados; el 5 se validó con un 401 real de
+OpenCode Go (sin congelar la UI) y con mocks, pero la respuesta exitosa de IA
+requiere que el usuario configure `OPENCODE_API_KEY`.
+
 ## Riesgos y mitigaciones
 
 | riesgo | mitigación |
@@ -305,28 +309,37 @@ pub struct ConsultaHistory {
 | Clave de IA filtrada | env vars, no logs, no URL; Keychain en fase 3 |
 | Respuestas de IA inventadas | etiqueta “Generado por IA”, prompt con contexto, el texto original siempre visible |
 | Inyección de prompt desde el libro | delimitar el pasaje y decir explícitamente que es dato, no instrucción |
-| Libro en idioma desconocido | permitir elegir origen/destino manualmente |
+| Libro en idioma desconocido | se usa `en`; el override manual de origen queda para fase 3 |
 | Selección gigante | tope de ~2.000 caracteres para la petición |
 | Historial con texto sensible | archivo local, límite, borrado y aviso; no se envía a proveedores |
 | OpenCode Go cambia modelos/headers | base/model configurables; `x-opencode-session` estable; errores claros |
 | Uso de la suscripción para lectura | el usuario verifica los términos/límites de OpenCode Go; la app solo envía fragmentos explícitos |
 
-## Decisiones cerradas y pendientes operativos
+## Implementación (2026-11-06)
 
-Cerradas el 2026-11-06: Wiktionary, traducción gratuita (MyMemory), IA con
-OpenCode Go, clave por entorno, online apagado por defecto, prompts predefinidos,
-historial en disco y traducción solo en el panel.
-
-Pendiente antes de codear:
-
-1. **ADR-0011** de la dependencia HTTP (`ureq` + `rustls` propuesto) y medición
-   del aumento de `dist` (presupuesto < 8 MB).
-2. Verificar en la práctica el endpoint/modelo de OpenCode Go y el header
-   `x-opencode-session` con la clave del usuario.
-3. Implementar el centro de configuración de la **spec 65** para
-   `online_enabled`, proveedores, idioma, modelo, clave (estado) e historial.
-4. Decidir si el historial se exporta a Markdown en una fase posterior (no en el
-   MVP).
+- `src/consulta.rs`: `ConsultaKind`, `ConsultaRequest/Response`, `Transport`,
+  `HttpTransport` (ureq+rustls, timeout), `run`, `AiPrompt`, parsers de
+  Wiktionary/dictionaryapi.dev/MyMemory/OpenAI-compatible y `ConsultaHistory`.
+- UI: acción `Consultar` en la barra de selección y atajo `K`; panel con
+  Diccionario, Traducción, IA e Historial. Petición en `std::thread` + `mpsc`,
+  request id, spinner y descarte de respuestas viejas. Las fuentes se muestran
+  con enlace y “Copiar”.
+- OpenCode Go: `https://opencode.ai/inference/go/openai/v1/chat/completions`,
+  `OPENCODE_API_KEY`, `x-opencode-session` estable y `User-Agent: lector/…`.
+  Prompt con `<pasaje>`/`<contexto>` delimitados y prompts predefinidos.
+- Historial: `consultas.json` atómico, límite configurable (200 por defecto),
+  borrado con confirmación, sin contexto ni claves; se guardan también errores.
+- Configuración: el centro de la spec 65 edita online, proveedores, idioma,
+  modelo, timeout, tokens e historial. `online_enabled=false` por defecto.
+- **Medición**: `dist` pasó de 5.599.328 B a **6.664.128 B** (+1.064.800 B por
+  ureq/rustls), dentro del presupuesto < 8 MB.
+- **Verificación**: 91 unit (1 live ignorado) + 9 integración. Se probaron en
+  vivo Wiktionary y MyMemory; con `wiktionary` real el panel muestra
+  definiciones. OpenCode Go se probó con una clave inválida y mostró el 401 sin
+  congelar la UI; falta la prueba de una respuesta exitosa con la clave real del
+  usuario. El historial guardó las tres consultas (incluido el error).
+- Capturas: `docs/img/reader-consulta.jpg`, `reader-history.jpg` y
+  `reader-config.jpg`.
 
 ## Orden de implementación propuesto
 

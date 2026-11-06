@@ -1,8 +1,8 @@
 ---
 id: spec-65
 title: Centro de configuración
-status: aprobada
-version: 1.0.0
+status: implementada
+version: 1.1.0
 updated: 2026-11-06
 milestone: M6
 depends_on: [spec-20, spec-35, spec-60, adr-0005]
@@ -89,8 +89,9 @@ duplica estado.
   - timeout y `max_tokens`.
 - **Estado de la clave**: “`OPENCODE_API_KEY` detectada” o “no configurada”.
   Nunca se muestra el valor ni se escribe en `config.json`.
-- “Probar conexión” (solo con online activo y clave): petición mínima, spinner y
-  resultado; puede consumir una fracción de cuota.
+- Estado de la clave (detectada/no configurada). La prueba real de conexión se
+  hace con una consulta de IA desde el panel; el MVP no agrega un botón aparte
+  para no duplicar el flujo de trabajador/hilo.
 - Historial: límite de entradas, ruta del archivo, cantidad actual y “Limpiar
   historial” con confirmación.
 
@@ -150,6 +151,26 @@ pub struct ConsultaSettings {
   próxima consulta.
 - Un `status` discreto confirma guardados y errores.
 
+## Implementación (2026-11-06)
+
+- `show_config`, `config_tab` y la ventana “Configuración” con barra lateral
+  (Lectura, Biblioteca, Anotaciones, Consultas, Privacidad, Avanzado).
+- Acceso desde el botón **Ajustes** en lector y biblioteca, y con `⌘,`/`Ctrl+,`.
+- Lectura edita `Config.settings` global; “Tipografía de este libro…” abre el
+  panel `Aa` existente, sin duplicar la precedencia.
+- Biblioteca lista carpetas, permite añadir/refrescar/quitar y muestra
+  libros/faltantes.
+- Anotaciones muestra el total, abre el panel y exporta todo a Markdown.
+- Consultas edita `online_enabled`, traducción, idioma, base URL/modelo de
+  OpenCode Go, timeout, tokens, límite de historial y estado de
+  `OPENCODE_API_KEY` (nunca el valor). La prueba real de conexión es una consulta
+  IA desde el panel.
+- Privacidad concentra el aviso, el toggle online y el borrado del historial.
+- Avanzado muestra las rutas, abre la carpeta de datos, muestra la versión y
+  restablece `settings`/`consulta` (no biblioteca, anotaciones ni historial).
+- Captura: `docs/img/reader-config.jpg`. Tests de defaults/clamp/serde en
+  `config.rs`; el resto se verificó con `--shot` y una sesión real de consultas.
+
 ## Tests
 
 - Serde: `consulta` ausente → defaults; `online_enabled` default **false**;
@@ -171,6 +192,10 @@ pub struct ConsultaSettings {
 4. El historial se limita y se puede limpiar desde la UI.
 5. La tipografía global y la de un libro siguen funcionando sin duplicar estado.
 6. `cargo test` verde, clippy limpio y captura revisada.
+
+Estado: implementado y verificado con captura (`docs/img/reader-config.jpg`),
+sesión real de consultas y tests de configuración. La “prueba de conexión”
+separada no se agregó: se usa una consulta IA real desde el panel.
 
 ## Riesgos
 

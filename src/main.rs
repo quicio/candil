@@ -70,6 +70,22 @@ fn main() -> eframe::Result<()> {
                 dev.export_md = args.get(i + 1).map(PathBuf::from);
                 i += 2;
             }
+            "--consulta" => {
+                dev.consulta = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--consulta-kind" => {
+                dev.consulta_kind = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--consulta-demo" => {
+                dev.consulta_demo = true;
+                i += 1;
+            }
+            "--consulta-run" => {
+                dev.consulta_run = true;
+                i += 1;
+            }
             "--anchor" => {
                 dev.anchor = args
                     .get(i + 1)

@@ -143,7 +143,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 92
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 94
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.

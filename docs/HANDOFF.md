@@ -51,7 +51,7 @@ el mismo):
 | capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 92 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 94 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
 | binario `dist` | 6.664.160 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |

@@ -12,7 +12,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 92 unit (1 live ignorado) + 9 integración
+cargo test                                  # 94 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio

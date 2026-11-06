@@ -37,10 +37,10 @@ Entra:
 
 No entra:
 
-- Índice global de todos los libros (segunda etapa).
-- Varios colores o subrayado tipo Kindle.
+- Índice global de todos los libros (segunda etapa; implementado en spec 50).
+- Varios colores o subrayado tipo Kindle (los tres colores llegan en spec 50).
 - Selección que cruce párrafos.
-- Exportación a Markdown.
+- Exportación a Markdown (implementada en spec 50).
 - Notas sueltas sin fragmento.
 - Sincronización entre dispositivos.
 
@@ -182,7 +182,8 @@ barra del lector:  ☰  Aa  ✎  …
 
 ### T6 — Verificación y docs (hecha)
 - Tests de modelo (`annotations.rs`), reanclaje por cita, selección con prefijo y
-  `locate_quote` en `app.rs`. Total: **69 unit + 9 integración**.
+  `locate_quote` en `app.rs`. Total al cerrar M4: **69 unit + 9 integración**
+  (hoy 74 + 9 tras la segunda etapa).
 - Capturas en `docs/img/reader-highlight.jpg`, `reader-notes.jpg` y
   `reader-note.jpg` (lector con destacado, panel y editor).
 - Rendimiento del caso grande: `flores-del-mal` (1895 bloques en un capítulo),

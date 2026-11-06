@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.7.0
+version: 1.8.0
 updated: 2026-11-06
 ---
 
@@ -130,8 +130,20 @@ caen dentro de cada rango.
 
 El panel “Destacados y notas” lista las del libro ordenadas por capítulo/bloque;
 `Ir` carga el capítulo y resuelve el bloque por cita (`pending_block_jump`),
-`Editar` abre la nota y `×` borra. `H`/`N`/`D` son los atajos; `Esc` sale de la
-selección o cierra la ventana activa.
+`Editar` abre la nota y `×` borra. El selector “Este libro / Todos” usa
+`Annotations::sorted_all`; en modo global `Ir` abre el libro de la anotación
+(`open_annotation`) y luego salta. `Exportar…` arma un Markdown agrupado por
+libro/capítulo con `export_markdown` (función pura y testeada) y lo escribe en la
+ruta elegida con `rfd`.
+
+El color vive en `Annotation.color` (`0` acento, `1` ámbar, `2` verde). El render
+incluye el color en cada rango (`(inicio, fin, Color32)`) y `append_with_highlights`
+parte el `LayoutJob` por los bordes de todos los rangos; el último rango que
+contiene un segmento gana (así el resaltado de búsqueda, más fuerte, se ve sobre
+un destacado). La barra flotante y el editor de nota comparten `active_color`.
+
+`H`/`N`/`D` son los atajos; `Esc` sale de la selección o cierra la ventana
+activa.
 
 ## Búsqueda
 
@@ -152,6 +164,14 @@ acento. Al activar uno, `activate_search_result` carga el capítulo si hace falt
 deja `pending_block_jump` para ubicar el bloque y `pending_search_jump` para
 refinar el scroll a la fracción de caracteres del match. El rango activo se pinta
 con el mismo mecanismo de `TextFormat::background` que los destacados.
+
+## Navegación
+
+`G` o el click en el porcentaje de la barra abren “Ir a…”: un slider 0–100 y un
+`DragValue` de capítulo. `chapter_for_percent` traduce el porcentaje a
+`(capítulo, fracción)`; el salto usa el mismo `Progress` que el resto del lector
+(capítulo + ratio, sin ancla) y `load_chapter` restaura. El capítulo se clampea a
+`1..=N` y lleva al inicio.
 
 ## Biblioteca
 

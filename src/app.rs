@@ -103,7 +103,15 @@ struct NoteEditor {
     selection: Option<Selection>,
     book: String,
     draft: String,
+    color: u8,
     focus: bool,
+}
+
+struct AnnRow {
+    annotation: Annotation,
+    book_title: String,
+    chapter_title: String,
+    missing: bool,
 }
 
 const CARD_W: f32 = 160.0;
@@ -143,6 +151,8 @@ pub struct Lector {
     selection: Option<Selection>,
     note: Option<NoteEditor>,
     show_annotations: bool,
+    annotations_global: bool,
+    active_color: u8,
     show_search: bool,
     search_query: String,
     search_results: Vec<search::Hit>,
@@ -155,6 +165,9 @@ pub struct Lector {
     search_highlight: Option<(usize, usize, usize, usize)>,
     /// Salto único al bloque/offset de un resultado.
     pending_search_jump: Option<(usize, usize)>,
+    show_goto: bool,
+    goto_percent: f32,
+    goto_chapter_number: usize,
     /// Último `TextEdit` del lector con foco (para salir de la selección con Esc).
     reader_focus: Option<egui::Id>,
     status: Option<(String, Instant)>,
@@ -184,6 +197,10 @@ pub struct DevOpts {
     pub book_search: Option<String>,
     /// Salta al primer resultado de la búsqueda (capturas).
     pub search_jump: bool,
+    /// Abre el panel de anotaciones en modo global (capturas).
+    pub annotations_all: bool,
+    /// Exporta las anotaciones a esta ruta sin abrir el diálogo (dev/capturas).
+    pub export_md: Option<PathBuf>,
     /// Salta a un ancla del libro al abrir (capturas/dev).
     pub anchor: Option<String>,
 }
@@ -261,6 +278,8 @@ impl Lector {
             selection: None,
             note: None,
             show_annotations: false,
+            annotations_global: false,
+            active_color: 0,
             show_search: false,
             search_query: initial_book_search.clone(),
             search_results: Vec::new(),
@@ -271,6 +290,9 @@ impl Lector {
             search_dirty: !initial_book_search.is_empty(),
             search_highlight: None,
             pending_search_jump: None,
+            show_goto: false,
+            goto_percent: 0.0,
+            goto_chapter_number: 1,
             reader_focus: None,
             status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
@@ -337,6 +359,7 @@ impl Lector {
                 self.selection = None;
                 self.note = None;
                 self.show_annotations = false;
+                self.annotations_global = false;
                 self.pending_block_jump = None;
                 self.reader_focus = None;
                 self.search_index = None;
@@ -345,10 +368,18 @@ impl Lector {
                 self.search_active = 0;
                 self.search_highlight = None;
                 self.pending_search_jump = None;
+                self.show_goto = false;
                 self.search_query = self.dev.book_search.clone().unwrap_or_default();
                 self.search_dirty = !self.search_query.is_empty();
                 self.show_search = self.dev.book_search.is_some();
                 self.search_focus = self.show_search;
+                if self.dev.annotations_all {
+                    self.annotations_global = true;
+                    self.show_annotations = true;
+                }
+                if let Some(path) = self.dev.export_md.clone() {
+                    self.export_annotations_to(&path);
+                }
                 self.cfg.last_book = Some(key.clone());
                 self.cfg.touch_recent(&key);
                 if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
@@ -375,6 +406,11 @@ impl Lector {
                         self.search_focus = true;
                         self.search_dirty = !self.search_query.is_empty();
                     }
+                    Some("goto") => {
+                        self.show_goto = true;
+                        self.goto_percent = self.progress() * 100.0;
+                        self.goto_chapter_number = self.chapter + 1;
+                    }
                     Some("note") => {
                         if let Some(a) = self
                             .annotations
@@ -387,6 +423,7 @@ impl Lector {
                                 selection: None,
                                 book: key.clone(),
                                 draft: a.note,
+                                color: a.color,
                                 focus: true,
                             });
                         }
@@ -552,6 +589,7 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.show_annotations = false;
+        self.annotations_global = false;
         self.reader_focus = None;
         self.show_search = false;
         self.search_index = None;
@@ -560,6 +598,7 @@ impl Lector {
         self.search_active = 0;
         self.search_highlight = None;
         self.pending_search_jump = None;
+        self.show_goto = false;
     }
 
     fn effective_settings(&self) -> Settings {
@@ -650,7 +689,7 @@ impl Lector {
             end: selection.end,
             quote: selection.quote,
             note: String::new(),
-            color: 0,
+            color: self.active_color.min(2),
             ..Annotation::default()
         });
         self.save_annotations();
@@ -671,6 +710,7 @@ impl Lector {
             selection: Some(selection.clone()),
             book,
             draft: String::new(),
+            color: self.active_color,
             focus: true,
         });
         self.show_search = false;
@@ -688,6 +728,7 @@ impl Lector {
         let draft = editor.draft.trim().to_string();
         if let Some(id) = editor.id {
             self.annotations.update_note(id, &draft);
+            self.annotations.update_color(id, editor.color.min(2));
         } else if let Some(selection) = editor.selection {
             self.annotations.add(Annotation {
                 book: editor.book,
@@ -697,7 +738,7 @@ impl Lector {
                 end: selection.end,
                 quote: selection.quote,
                 note: draft,
-                color: 0,
+                color: editor.color.min(2),
                 ..Annotation::default()
             });
         }
@@ -723,6 +764,95 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.reader_focus = None;
+    }
+
+    fn open_annotation(&mut self, annotation: &Annotation) {
+        let target = std::fs::canonicalize(&annotation.book)
+            .unwrap_or_else(|_| PathBuf::from(&annotation.book));
+        let target_key = target.to_string_lossy().to_string();
+        if self.book_key().as_deref() != Some(target_key.as_str()) {
+            if !target.is_file() {
+                self.status = Some((
+                    format!("No encuentro el libro: {}", target.display()),
+                    Instant::now(),
+                ));
+                return;
+            }
+            self.open(target);
+            if self.book_key().as_deref() != Some(target_key.as_str()) {
+                return;
+            }
+        }
+        if let Some(a) = self.annotations.get(annotation.id).cloned() {
+            self.jump_to_annotation(&a);
+        }
+    }
+
+    fn export_entries(&mut self) -> Vec<(String, String, Annotation)> {
+        let current = self.book_key();
+        let items: Vec<Annotation> = if self.annotations_global {
+            self.annotations.sorted_all().into_iter().cloned().collect()
+        } else if let Some(key) = current.as_deref() {
+            self.annotations
+                .sorted_for_book(key)
+                .into_iter()
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mut entries = Vec::with_capacity(items.len());
+        for annotation in items {
+            let book_title = book_title_for(&self.library, &annotation.book);
+            let chapter_title = if current.as_deref() == Some(annotation.book.as_str()) {
+                self.book
+                    .as_mut()
+                    .map(|b| b.chapter_title(annotation.chapter))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            entries.push((book_title, chapter_title, annotation));
+        }
+        entries
+    }
+
+    fn export_annotations(&mut self) {
+        let entries = self.export_entries();
+        if entries.is_empty() {
+            self.status = Some(("No hay destacados para exportar.".into(), Instant::now()));
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("destacados.md")
+            .add_filter("Markdown", &["md"])
+            .save_file()
+        else {
+            return;
+        };
+        self.write_export(&path, &export_markdown(&entries));
+    }
+
+    /// Variante para dev/capturas: escribe directo, sin diálogo.
+    fn export_annotations_to(&mut self, path: &Path) {
+        let entries = self.export_entries();
+        if entries.is_empty() {
+            self.status = Some(("No hay destacados para exportar.".into(), Instant::now()));
+            return;
+        }
+        self.write_export(path, &export_markdown(&entries));
+    }
+
+    fn write_export(&mut self, path: &Path, markdown: &str) {
+        match std::fs::write(path, markdown) {
+            Ok(()) => {
+                self.status = Some((format!("Exportado a {}", path.display()), Instant::now()));
+            }
+            Err(e) => {
+                self.status = Some((format!("No pude exportar: {e}"), Instant::now()));
+            }
+        }
     }
 
     fn cycle_search(&mut self, delta: i32, ctx: &egui::Context) {
@@ -943,6 +1073,7 @@ impl Lector {
             key_enter,
             shift,
             key_f,
+            key_g,
         ) = ctx.input(|i| {
             (
                 i.key_pressed(Key::Space),
@@ -966,6 +1097,7 @@ impl Lector {
                 i.key_pressed(Key::Enter),
                 i.modifiers.shift,
                 i.key_pressed(Key::F),
+                i.key_pressed(Key::G),
             )
         });
 
@@ -984,8 +1116,25 @@ impl Lector {
             self.show_toc = false;
             self.show_settings = false;
             self.show_annotations = false;
+            self.show_goto = false;
             self.selection = None;
             self.note = None;
+            ctx.request_repaint();
+        }
+
+        if key_g && !typing && self.book.is_some() && self.note.is_none() {
+            self.show_goto = !self.show_goto;
+            if self.show_goto {
+                self.goto_percent = self.progress() * 100.0;
+                self.goto_chapter_number = self.chapter + 1;
+                self.show_toc = false;
+                self.show_settings = false;
+                self.show_search = false;
+                self.show_annotations = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+                self.selection = None;
+            }
             ctx.request_repaint();
         }
 
@@ -999,6 +1148,8 @@ impl Lector {
                 self.search_highlight = None;
                 self.pending_search_jump = None;
                 ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("book-search")));
+            } else if self.show_goto {
+                self.show_goto = false;
             } else if self.show_annotations {
                 self.show_annotations = false;
             } else if self.selection.is_some() || self.reader_focus.is_some() {
@@ -1019,6 +1170,7 @@ impl Lector {
                 self.show_toc = false;
                 self.show_settings = false;
                 if self.show_annotations {
+                    self.show_goto = false;
                     self.show_search = false;
                     self.search_highlight = None;
                     self.pending_search_jump = None;
@@ -1082,6 +1234,7 @@ impl Lector {
             self.show_toc = !self.show_toc;
             self.show_settings = false;
             if self.show_toc {
+                self.show_goto = false;
                 self.show_search = false;
                 self.search_highlight = None;
                 self.pending_search_jump = None;
@@ -1091,6 +1244,7 @@ impl Lector {
             self.show_settings = !self.show_settings;
             self.show_toc = false;
             if self.show_settings {
+                self.show_goto = false;
                 self.show_search = false;
                 self.search_highlight = None;
                 self.pending_search_jump = None;
@@ -1527,6 +1681,7 @@ impl Lector {
                     {
                         self.show_toc = !self.show_toc;
                         if self.show_toc {
+                            self.show_goto = false;
                             self.show_search = false;
                             self.search_highlight = None;
                             self.pending_search_jump = None;
@@ -1543,6 +1698,7 @@ impl Lector {
                     {
                         self.show_settings = !self.show_settings;
                         if self.show_settings {
+                            self.show_goto = false;
                             self.show_search = false;
                             self.search_highlight = None;
                             self.pending_search_jump = None;
@@ -1557,6 +1713,7 @@ impl Lector {
                         self.show_toc = false;
                         self.show_settings = false;
                         if self.show_annotations {
+                            self.show_goto = false;
                             self.show_search = false;
                             self.search_highlight = None;
                             self.pending_search_jump = None;
@@ -1572,6 +1729,7 @@ impl Lector {
                         self.show_toc = false;
                         self.show_settings = false;
                         self.show_annotations = false;
+                        self.show_goto = false;
                         self.selection = None;
                         self.note = None;
                     }
@@ -1592,11 +1750,25 @@ impl Lector {
                     }
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(format!("{:.0}%", self.progress() * 100.0))
-                                .size(12.5)
-                                .color(th.dim),
+                        let pct = ui.add(
+                            egui::Label::new(
+                                RichText::new(format!("{:.0}%", self.progress() * 100.0))
+                                    .size(12.5)
+                                    .color(th.dim),
+                            )
+                            .sense(Sense::click()),
                         );
+                        if pct.on_hover_text("Ir a… (G)").clicked() {
+                            self.show_goto = true;
+                            self.goto_percent = self.progress() * 100.0;
+                            self.goto_chapter_number = self.chapter + 1;
+                            self.show_toc = false;
+                            self.show_settings = false;
+                            self.show_search = false;
+                            self.show_annotations = false;
+                            self.search_highlight = None;
+                            self.pending_search_jump = None;
+                        }
                         if ui
                             .button(RichText::new("›").size(16.0))
                             .on_hover_text("Capítulo siguiente (→)")
@@ -1862,7 +2034,7 @@ impl Lector {
         }
         pos.x = pos.x.clamp(
             screen.left() + 8.0,
-            (screen.right() - 200.0).max(screen.left() + 8.0),
+            (screen.right() - 300.0).max(screen.left() + 8.0),
         );
 
         let mut highlight = false;
@@ -1878,6 +2050,17 @@ impl Lector {
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
+                                ui.selectable_value(
+                                    &mut self.active_color,
+                                    index as u8,
+                                    RichText::new("●")
+                                        .size(14.0)
+                                        .color(highlight_swatch(th, index as u8)),
+                                )
+                                .on_hover_text(format!("Color {name}"));
+                            }
+                            ui.separator();
                             if ui
                                 .button(RichText::new("Destacar").size(12.5))
                                 .on_hover_text("Destacar selección (H)")
@@ -1908,40 +2091,106 @@ impl Lector {
         if !self.show_annotations {
             return;
         }
-        let Some(book) = self.book_key() else {
+        let Some(book_key) = self.book_key() else {
             self.show_annotations = false;
             return;
         };
-        let items: Vec<Annotation> = self
+
+        let book_items: Vec<Annotation> = self
             .annotations
-            .sorted_for_book(&book)
+            .sorted_for_book(&book_key)
             .into_iter()
             .cloned()
             .collect();
-        let missing: Vec<u64> = items
-            .iter()
-            .filter(|a| a.chapter == self.chapter && resolve_annotation(a, &self.blocks).is_none())
-            .map(|a| a.id)
+        let all_items: Vec<Annotation> =
+            self.annotations.sorted_all().into_iter().cloned().collect();
+        let current_book_title = book_title_for(&self.library, &book_key);
+
+        let rows_book: Vec<AnnRow> = book_items
+            .into_iter()
+            .map(|a| {
+                let chapter_title = self
+                    .book
+                    .as_mut()
+                    .map(|b| b.chapter_title(a.chapter))
+                    .unwrap_or_default();
+                let missing =
+                    a.chapter == self.chapter && resolve_annotation(&a, &self.blocks).is_none();
+                AnnRow {
+                    annotation: a,
+                    book_title: current_book_title.clone(),
+                    chapter_title,
+                    missing,
+                }
+            })
             .collect();
+        let rows_all: Vec<AnnRow> = all_items
+            .into_iter()
+            .map(|a| {
+                let is_current = a.book == book_key;
+                let chapter_title = if is_current {
+                    self.book
+                        .as_mut()
+                        .map(|b| b.chapter_title(a.chapter))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                let missing = is_current
+                    && a.chapter == self.chapter
+                    && resolve_annotation(&a, &self.blocks).is_none();
+                AnnRow {
+                    annotation: a.clone(),
+                    book_title: book_title_for(&self.library, &a.book),
+                    chapter_title,
+                    missing,
+                }
+            })
+            .collect();
+
         let mut open = self.show_annotations;
         let mut remove = None;
         let mut edit = None;
         let mut jump = None;
+        let mut recolor = None;
+        let mut export = false;
 
         egui::Window::new("Destacados y notas")
             .open(&mut open)
-            .default_width(390.0)
-            .min_width(300.0)
+            .default_width(410.0)
+            .min_width(320.0)
             .resizable(true)
             .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
-                if items.is_empty() {
-                    ui.label(
-                        RichText::new("Todavía no destacaste nada.")
-                            .size(12.5)
-                            .color(th.dim),
-                    );
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.annotations_global, false, "Este libro");
+                    ui.selectable_value(&mut self.annotations_global, true, "Todos");
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .button(RichText::new("Exportar…").size(11.5))
+                            .on_hover_text("Exportar las citas visibles a Markdown")
+                            .clicked()
+                        {
+                            export = true;
+                        }
+                    });
+                });
+                ui.separator();
+
+                let rows = if self.annotations_global {
+                    &rows_all
+                } else {
+                    &rows_book
+                };
+
+                if rows.is_empty() {
+                    let message = if self.annotations_global {
+                        "Todavía no hay destacados en ningún libro."
+                    } else {
+                        "Todavía no destacaste nada."
+                    };
+                    ui.label(RichText::new(message).size(12.5).color(th.dim));
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Seleccioná una frase y usá Destacar o Nota.")
@@ -1952,20 +2201,29 @@ impl Lector {
                 }
 
                 egui::ScrollArea::vertical()
-                    .max_height(420.0)
+                    .max_height(430.0)
                     .show(ui, |ui| {
-                        for a in &items {
-                            let chapter_title = self
-                                .book
-                                .as_mut()
-                                .map(|b| b.chapter_title(a.chapter))
-                                .unwrap_or_default();
-                            ui.label(
-                                RichText::new(format!("“{}”", truncate(&a.quote, 150)))
-                                    .size(13.0)
-                                    .color(th.fg),
-                            );
-                            if missing.contains(&a.id) {
+                        for row in rows {
+                            let a = &row.annotation;
+                            ui.horizontal_top(|ui| {
+                                let color_button = ui.add(
+                                    egui::Button::new(
+                                        RichText::new("●")
+                                            .size(13.0)
+                                            .color(highlight_swatch(th, a.color)),
+                                    )
+                                    .frame(false),
+                                );
+                                if color_button.on_hover_text("Cambiar color").clicked() {
+                                    recolor = Some((a.id, (a.color + 1) % 3));
+                                }
+                                ui.label(
+                                    RichText::new(format!("“{}”", truncate(&a.quote, 150)))
+                                        .size(13.0)
+                                        .color(th.fg),
+                                );
+                            });
+                            if row.missing {
                                 ui.label(
                                     RichText::new("(no encontrada en este capítulo)")
                                         .size(11.0)
@@ -1981,15 +2239,21 @@ impl Lector {
                                 );
                             }
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new(format!(
-                                        "Cap. {} · {}",
-                                        a.chapter + 1,
-                                        truncate(&chapter_title, 26)
-                                    ))
-                                    .size(11.0)
-                                    .color(th.dim),
-                                );
+                                let place = if self.annotations_global {
+                                    format!(
+                                        "{} · Cap. {}",
+                                        truncate(&row.book_title, 32),
+                                        a.chapter + 1
+                                    )
+                                } else {
+                                    format!("Cap. {}", a.chapter + 1)
+                                };
+                                let place = if row.chapter_title.is_empty() {
+                                    place
+                                } else {
+                                    format!("{place} · {}", truncate(&row.chapter_title, 26))
+                                };
+                                ui.label(RichText::new(place).size(11.0).color(th.dim));
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     if ui
                                         .small_button("×")
@@ -2000,7 +2264,7 @@ impl Lector {
                                     }
                                     if ui
                                         .small_button("Editar")
-                                        .on_hover_text("Editar la nota")
+                                        .on_hover_text("Editar la nota y el color")
                                         .clicked()
                                     {
                                         edit = Some(a.id);
@@ -2016,17 +2280,23 @@ impl Lector {
             });
 
         self.show_annotations = open;
-        let acted = remove.is_some() || edit.is_some() || jump.is_some();
+        let acted = remove.is_some() || edit.is_some() || jump.is_some() || recolor.is_some();
         if let Some(id) = remove {
             self.remove_annotation(id);
         }
+        if let Some((id, color)) = recolor {
+            if self.annotations.update_color(id, color) {
+                self.save_annotations();
+            }
+        }
         if let Some(id) = edit {
-            if let Some(a) = self.annotations.get(id) {
+            if let Some(a) = self.annotations.get(id).cloned() {
                 self.note = Some(NoteEditor {
                     id: Some(id),
                     selection: None,
-                    book: book.clone(),
-                    draft: a.note.clone(),
+                    book: a.book,
+                    draft: a.note,
+                    color: a.color,
                     focus: true,
                 });
                 self.show_search = false;
@@ -2036,10 +2306,13 @@ impl Lector {
         }
         if let Some(id) = jump {
             if let Some(a) = self.annotations.get(id).cloned() {
-                self.jump_to_annotation(&a);
+                self.open_annotation(&a);
             }
         }
-        if acted {
+        if export {
+            self.export_annotations();
+        }
+        if acted || export {
             ctx.request_repaint();
         }
     }
@@ -2061,6 +2334,19 @@ impl Lector {
             .default_width(420.0)
             .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
             .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Color").size(11.0).color(th.dim));
+                    for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
+                        ui.selectable_value(
+                            &mut editor.color,
+                            index as u8,
+                            RichText::new("●")
+                                .size(14.0)
+                                .color(highlight_swatch(th, index as u8)),
+                        )
+                        .on_hover_text(format!("Color {name}"));
+                    }
+                });
                 ui.label(
                     RichText::new("Nota (opcional; vacía deja solo el destacado)")
                         .size(11.0)
@@ -2096,6 +2382,103 @@ impl Lector {
             ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
             ctx.request_repaint();
         }
+    }
+
+    fn goto_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.show_goto {
+            return;
+        }
+        let chapters = self.book.as_ref().map(|b| b.chapter_count()).unwrap_or(0);
+        if chapters == 0 {
+            self.show_goto = false;
+            return;
+        }
+        let mut open = self.show_goto;
+        let mut by_percent = false;
+        let mut by_chapter = false;
+
+        egui::Window::new("Ir a")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(340.0)
+            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new("Porcentaje del libro")
+                        .size(11.0)
+                        .color(th.dim),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.goto_percent, 0.0..=100.0)
+                        .suffix(" %")
+                        .step_by(0.5),
+                );
+                if ui.button("Ir al porcentaje").clicked() {
+                    by_percent = true;
+                }
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(format!("Capítulo (1–{chapters})"))
+                        .size(11.0)
+                        .color(th.dim),
+                );
+                ui.add(
+                    egui::DragValue::new(&mut self.goto_chapter_number)
+                        .range(1..=chapters)
+                        .speed(0.2),
+                );
+                if ui.button("Ir al capítulo").clicked() {
+                    by_chapter = true;
+                }
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("G para abrir/cerrar · Esc para cerrar")
+                        .size(10.5)
+                        .color(th.dim),
+                );
+            });
+
+        self.show_goto = open;
+        if by_percent {
+            self.apply_goto_percent();
+        }
+        if by_chapter {
+            self.apply_goto_chapter();
+        }
+        if !open {
+            self.show_goto = false;
+        }
+    }
+
+    fn apply_goto_percent(&mut self) {
+        let Some(chapters) = self.book.as_ref().map(|b| b.chapter_count()) else {
+            return;
+        };
+        let (chapter, fraction) = chapter_for_percent(self.goto_percent, chapters);
+        self.load_chapter(
+            chapter,
+            Some(Progress {
+                chapter,
+                ratio: fraction,
+                anchor: None,
+                anchor_ratio: None,
+                legacy_offset: None,
+            }),
+        );
+        self.show_goto = false;
+    }
+
+    fn apply_goto_chapter(&mut self) {
+        let Some(chapters) = self.book.as_ref().map(|b| b.chapter_count()) else {
+            return;
+        };
+        let chapter = self.goto_chapter_number.clamp(1, chapters.max(1)) - 1;
+        self.load_chapter(chapter, None);
+        self.show_goto = false;
     }
 
     fn status_toast(&mut self, ctx: &egui::Context, th: &Theme) {
@@ -2151,12 +2534,17 @@ impl Lector {
         self.delta = 0.0;
 
         let mut highlights = match self.book_key() {
-            Some(key) => resolve_highlights(&self.annotations, &key, self.chapter, &self.blocks),
+            Some(key) => {
+                resolve_highlights(&self.annotations, &key, self.chapter, &self.blocks, th)
+            }
             None => HashMap::new(),
         };
         if let Some((chapter, block, start, end)) = self.search_highlight {
             if chapter == self.chapter {
-                highlights.entry(block).or_default().push((start, end));
+                highlights
+                    .entry(block)
+                    .or_default()
+                    .push((start, end, search_highlight_color(th)));
             }
         }
 
@@ -2320,6 +2708,7 @@ impl Lector {
         self.toc_window(ctx, th);
         self.settings_window(ctx, th);
         self.search_window(ctx, th);
+        self.goto_window(ctx, th);
         self.selection_bar(ctx, th);
         self.annotations_window(ctx, th);
         self.note_window(ctx, th);
@@ -2358,6 +2747,19 @@ impl Lector {
             ctx.request_repaint();
         }
     }
+}
+
+/// Traduce un porcentaje del libro a `(capítulo, fracción dentro del capítulo)`.
+/// `chapters` debe ser > 0. El 100 % cae en el último capítulo.
+fn chapter_for_percent(percent: f32, chapters: usize) -> (usize, f32) {
+    if chapters == 0 {
+        return (0, 0.0);
+    }
+    let pos = (percent.clamp(0.0, 100.0) / 100.0 * chapters as f32)
+        .clamp(0.0, chapters as f32 - f32::EPSILON);
+    let chapter = (pos.floor() as usize).min(chapters - 1);
+    let fraction = (pos - chapter as f32).clamp(0.0, 1.0);
+    (chapter, fraction)
 }
 
 /// Índice del bloque cuyo tope queda en o por encima del scroll.
@@ -2423,14 +2825,46 @@ fn resolve_highlights(
     book: &str,
     chapter: usize,
     blocks: &[Block],
-) -> HashMap<usize, Vec<(usize, usize)>> {
-    let mut out: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    theme: &Theme,
+) -> HashMap<usize, Vec<(usize, usize, Color32)>> {
+    let mut out: HashMap<usize, Vec<(usize, usize, Color32)>> = HashMap::new();
     for annotation in annotations.for_book(book).filter(|a| a.chapter == chapter) {
         if let Some((block, start, end)) = resolve_annotation(annotation, blocks) {
-            out.entry(block).or_default().push((start, end));
+            out.entry(block).or_default().push((
+                start,
+                end,
+                highlight_color(theme, annotation.color),
+            ));
         }
     }
     out
+}
+
+const HIGHLIGHT_AMBER: (u8, u8, u8) = (214, 160, 60);
+const HIGHLIGHT_GREEN: (u8, u8, u8) = (74, 150, 110);
+
+/// Color del resaltado con alfa para pintar detrás del texto. `0` usa el acento
+/// del tema; `1` ámbar y `2` verde.
+fn highlight_color(theme: &Theme, index: u8) -> Color32 {
+    let (r, g, b) = match index {
+        1 => HIGHLIGHT_AMBER,
+        2 => HIGHLIGHT_GREEN,
+        _ => (theme.accent.r(), theme.accent.g(), theme.accent.b()),
+    };
+    Color32::from_rgba_unmultiplied(r, g, b, 90)
+}
+
+fn search_highlight_color(theme: &Theme) -> Color32 {
+    Color32::from_rgba_unmultiplied(theme.accent.r(), theme.accent.g(), theme.accent.b(), 150)
+}
+
+/// Color opaco para los swatches de la UI.
+fn highlight_swatch(theme: &Theme, index: u8) -> Color32 {
+    match index {
+        1 => Color32::from_rgb(HIGHLIGHT_AMBER.0, HIGHLIGHT_AMBER.1, HIGHLIGHT_AMBER.2),
+        2 => Color32::from_rgb(HIGHLIGHT_GREEN.0, HIGHLIGHT_GREEN.1, HIGHLIGHT_GREEN.2),
+        _ => theme.accent,
+    }
 }
 
 fn locate_quote(blocks: &[Block], block: usize, quote: &str) -> Option<usize> {
@@ -2527,6 +2961,60 @@ impl eframe::App for Lector {
 // Pintado de bloques
 // ---------------------------------------------------------------------------
 
+fn book_title_for(library: &Library, path: &str) -> String {
+    library
+        .books
+        .iter()
+        .find(|entry| entry.path == path)
+        .map(|entry| entry.title.clone())
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            Path::new(path)
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// Markdown estable para exportar citas: un `##` por libro y un `###` por
+/// capítulo. `entries` viene ordenado por libro/capítulo/bloque.
+fn export_markdown(entries: &[(String, String, Annotation)]) -> String {
+    let mut out = String::from("# Destacados y notas\n\n");
+    let mut current_book = "";
+    let mut current_chapter: Option<(usize, String)> = None;
+    for (book, chapter, annotation) in entries {
+        if book != current_book {
+            if !current_book.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format!("## {book}\n\n"));
+            current_book = book;
+            current_chapter = None;
+        }
+        let chapter_label = if chapter.is_empty() {
+            format!("Cap. {}", annotation.chapter + 1)
+        } else {
+            format!("Cap. {} — {chapter}", annotation.chapter + 1)
+        };
+        let same_chapter = current_chapter
+            .as_ref()
+            .is_some_and(|(num, label)| *num == annotation.chapter && label == &chapter_label);
+        if !same_chapter {
+            out.push_str(&format!("### {chapter_label}\n\n"));
+            current_chapter = Some((annotation.chapter, chapter_label));
+        }
+        out.push_str(&format!(
+            "> {}\n\n",
+            annotation.quote.replace(['\r', '\n'], " ")
+        ));
+        if !annotation.note.trim().is_empty() {
+            out.push_str(annotation.note.trim());
+            out.push_str("\n\n");
+        }
+    }
+    out
+}
+
 fn truncate(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         return s.to_string();
@@ -2564,8 +3052,7 @@ fn append_with_highlights(
     text: &str,
     format: TextFormat,
     base: usize,
-    ranges: &[(usize, usize)],
-    background: Color32,
+    ranges: &[(usize, usize, Color32)],
 ) {
     let len = text.chars().count();
     if len == 0 {
@@ -2573,14 +3060,14 @@ fn append_with_highlights(
     }
     let overlaps = ranges
         .iter()
-        .any(|&(start, end)| end > base && start < base + len);
+        .any(|&(start, end, _)| end > base && start < base + len);
     if !overlaps {
         job.append(text, 0.0, format);
         return;
     }
 
     let mut cuts = vec![0usize, len];
-    for &(start, end) in ranges {
+    for &(start, end, _) in ranges {
         if end <= base || start >= base + len {
             continue;
         }
@@ -2598,12 +3085,13 @@ fn append_with_highlights(
         }
         let abs_a = base + a;
         let abs_b = base + b;
-        let inside = ranges
-            .iter()
-            .any(|&(start, end)| abs_a >= start && abs_b <= end);
         let mut fmt = format.clone();
-        if inside {
-            fmt.background = background;
+        if let Some((_, _, color)) = ranges
+            .iter()
+            .rev()
+            .find(|(start, end, _)| abs_a >= *start && abs_b <= *end)
+        {
+            fmt.background = *color;
         }
         let segment: String = chars[a..b].iter().collect();
         job.append(&segment, 0.0, fmt);
@@ -2950,7 +3438,7 @@ fn draw_block(
     ui: &mut Ui,
     b: &Block,
     block_index: usize,
-    highlights: &[(usize, usize)],
+    highlights: &[(usize, usize, Color32)],
     colw: f32,
     s: &Settings,
     th: &Theme,
@@ -3063,8 +3551,6 @@ fn draw_block(
     let mut cursor = 0usize;
     let mut text_cursor = 0usize;
     let mut link_spans: Vec<(std::ops::Range<usize>, String)> = Vec::new();
-    let highlight =
-        Color32::from_rgba_unmultiplied(th.accent.r(), th.accent.g(), th.accent.b(), 85);
 
     let format_for = |bold: bool, italic: bool, size: f32, color: Color32| -> TextFormat {
         let fam = if matches!(b.kind, Kind::Pre) {
@@ -3108,7 +3594,6 @@ fn draw_block(
             format_for(run.bold || bold_all, run.italic || force_italic, rs, rc),
             text_cursor,
             highlights,
-            highlight,
         );
         cursor += len;
         text_cursor += len;
@@ -3328,15 +3813,38 @@ mod tests {
     #[test]
     fn destacado_inexistente_no_se_dibuja() {
         let blocks = vec![paragraph("Hola mundo")];
+        let th = theme::theme(0);
         let perdido = annotation(0, 0, 4, "zzz");
         assert_eq!(resolve_annotation(&perdido, &blocks), None);
 
         let mut all = Annotations::default();
         all.add(perdido);
         all.add(annotation(0, 5, 10, "mundo"));
-        let ranges = resolve_highlights(&all, "/libro.epub", 2, &blocks);
-        assert_eq!(ranges.get(&0).map(Vec::as_slice), Some(&[(5, 10)][..]));
+        let ranges = resolve_highlights(&all, "/libro.epub", 2, &blocks, &th);
+        let ranges = ranges.get(&0).expect("un rango válido");
         assert_eq!(ranges.len(), 1);
+        assert_eq!((ranges[0].0, ranges[0].1), (5, 10));
+        assert_eq!(ranges[0].2, highlight_color(&th, 0));
+    }
+
+    #[test]
+    fn colores_distintos_conviven_en_el_mismo_bloque() {
+        let blocks = vec![paragraph("uno dos tres")];
+        let th = theme::theme(0);
+        let mut all = Annotations::default();
+        let mut a1 = annotation(0, 0, 3, "uno");
+        a1.color = 1;
+        let mut a2 = annotation(0, 8, 12, "tres");
+        a2.color = 2;
+        all.add(a1);
+        all.add(a2);
+
+        let ranges = resolve_highlights(&all, "/libro.epub", 2, &blocks, &th);
+        let ranges = ranges.get(&0).expect("dos rangos");
+        assert_eq!(ranges.len(), 2);
+        assert_ne!(ranges[0].2, ranges[1].2);
+        assert_eq!(ranges[0].2, highlight_color(&th, 1));
+        assert_eq!(ranges[1].2, highlight_color(&th, 2));
     }
 
     #[test]
@@ -3367,5 +3875,72 @@ mod tests {
             selection_range(0, "hola", 0, 99),
             Some((0, 4, "hola".to_string()))
         );
+    }
+
+    #[test]
+    fn porcentaje_a_capitulo() {
+        assert_eq!(chapter_for_percent(0.0, 10), (0, 0.0));
+        let (chapter, fraction) = chapter_for_percent(50.0, 10);
+        assert_eq!(chapter, 5);
+        assert!((fraction - 0.0).abs() < 0.01);
+        let (chapter, fraction) = chapter_for_percent(100.0, 10);
+        assert_eq!(chapter, 9);
+        assert!(fraction > 0.99);
+        assert_eq!(chapter_for_percent(99.999, 10).0, 9);
+        assert_eq!(chapter_for_percent(50.0, 0), (0, 0.0));
+    }
+
+    #[test]
+    fn export_markdown_agrupa_libros_y_conserva_citas() {
+        let a1 = Annotation {
+            chapter: 2,
+            quote: "uno\ndos".into(),
+            note: "nota".into(),
+            ..Annotation::default()
+        };
+        let a2 = Annotation {
+            chapter: 0,
+            quote: "tres".into(),
+            ..Annotation::default()
+        };
+        let a3 = Annotation {
+            chapter: 2,
+            quote: "cuatro".into(),
+            ..Annotation::default()
+        };
+        let entries = vec![
+            ("Libro A".to_string(), "Capítulo X".to_string(), a1),
+            ("Libro A".to_string(), "Capítulo X".to_string(), a3),
+            ("Libro B".to_string(), String::new(), a2),
+        ];
+        let md = export_markdown(&entries);
+        assert!(md.starts_with("# Destacados y notas"));
+        assert!(md.contains("## Libro A"));
+        assert!(md.contains("### Cap. 3 — Capítulo X"));
+        assert_eq!(md.matches("### Cap. 3 — Capítulo X").count(), 1);
+        assert!(md.contains("> uno dos"));
+        assert!(md.contains("> cuatro"));
+        assert!(md.contains("nota"));
+        assert!(md.contains("## Libro B"));
+        assert!(md.contains("### Cap. 1\n"));
+    }
+
+    #[test]
+    fn rangos_solapados_gana_el_ultimo_color() {
+        let mut job = LayoutJob::default();
+        let first = Color32::RED;
+        let second = Color32::GREEN;
+        append_with_highlights(
+            &mut job,
+            "abcdef",
+            TextFormat::default(),
+            0,
+            &[(0, 4, first), (3, 6, second)],
+        );
+        assert_eq!(job.sections.len(), 3);
+        assert_eq!(job.sections[0].format.background, first);
+        assert_eq!(job.sections[1].format.background, second);
+        assert_eq!(job.sections[2].format.background, second);
+        assert_eq!(job.text, "abcdef");
     }
 }

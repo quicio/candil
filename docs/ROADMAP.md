@@ -1,13 +1,13 @@
 ---
 id: roadmap
 status: vigente
-version: 1.6.0
+version: 1.7.0
 updated: 2026-11-06
 ---
 
 # Roadmap
 
-Cuatro milestones. Cada uno tiene criterio de salida **verificable**, no una
+Cinco milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -17,6 +17,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M2 | Biblioteca | **Hecho** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
 | M3 | Lectura fina | **Hecho** | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | **Hecho** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
+| M5 | Segunda etapa | **Hecho** | [50](specs/50-anotaciones-globales.md), [55](specs/55-navegacion.md) | Ver y saltar anotaciones de cualquier libro, elegir color, exportar Markdown y saltar por porcentaje/capítulo |
 
 ## M1 — Lector (terminado)
 
@@ -35,7 +36,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 69 + 9 con M2/M3/M4); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 74 + 9 con M2/M3/M4/M5); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -65,7 +66,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 69 + 9.
+2279/2279 imágenes. `cargo test`: 74 + 9.
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -125,6 +126,21 @@ Cerrado el 2026-11-06 con specs 40 y 45:
 Fuera del MVP y para una segunda etapa: índice global de anotaciones, varios
 colores, export Markdown, citas exportables y búsqueda con regex/stemming.
 
+## M5 — Segunda etapa (terminado)
+
+Cerrado el 2026-11-06 con specs 50 y 55:
+
+- **Anotaciones globales (spec 50):** selector “Este libro / Todos”, salto a
+  anotaciones de otros libros, tres colores (acento, ámbar, verde) elegibles en
+  la barra flotante y el editor de nota, y exportación Markdown con libro,
+  capítulo, cita y nota.
+- **Navegación (spec 55):** ventana “Ir a…” con slider de porcentaje y número de
+  capítulo; se abre con `G` o click en el porcentaje de la barra.
+- Verificación: **74 unit + 9 integración**, clippy sin warnings, capturas de
+  destacados multicolor, panel global e “Ir a…”.
+- Queda fuera: regex/stemming, sincronización, export a PDF/DOCX y búsqueda
+  dentro de las notas.
+
 ## Orden de ataque recomendado
 
 1. M2 cerrado (T1–T11): 50 EPUB en 1.65 s, 96 % de portadas, capturas y tests.
@@ -132,8 +148,9 @@ colores, export Markdown, citas exportables y búsqueda con regex/stemming.
    preferencias por libro.
 3. M4: destacados y notas (spec 45) — **hecho**.
 4. M4: búsqueda dentro del libro (spec 40) — **hecho**.
-5. Segunda etapa: índice global de anotaciones, export de citas, búsqueda con
-   regex/stemming y salto a porcentaje/capítulo por número.
+5. M5: anotaciones globales, colores, export Markdown y navegación por
+   porcentaje/capítulo — **hecho**.
+6. Futuro: búsqueda con regex/stemming, sincronización y export a PDF/DOCX.
 
 Regla: **una spec, un milestone, un PR lógico**. Si una tarea no encaja en la
 spec, se discute antes de codear (flujo spec → código, nunca al revés).

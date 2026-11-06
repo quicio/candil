@@ -62,6 +62,14 @@ fn main() -> eframe::Result<()> {
                 dev.search_jump = true;
                 i += 1;
             }
+            "--annotations-all" => {
+                dev.annotations_all = true;
+                i += 1;
+            }
+            "--export-md" => {
+                dev.export_md = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
             "--anchor" => {
                 dev.anchor = args
                     .get(i + 1)

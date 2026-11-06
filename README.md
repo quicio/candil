@@ -4,9 +4,10 @@ Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
-destacados/notas y búsqueda dentro del libro.
+destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
+del libro y salto por porcentaje/capítulo.
 
-Binario final (`dist`): **5.3 MiB** (5.582.640 B), arranque instantáneo, sin
+Binario final (`dist`): **5.3 MiB** (5.599.328 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -15,7 +16,7 @@ webview ni motor HTML.
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | comandos y reglas duras para agentes |
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | estado, invariantes, verificación sin ojos |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M4 con criterios de salida |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M5 con criterios de salida |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | módulos, modelo `Block`, cómo extenderlo |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
@@ -57,7 +58,8 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 | `+` / `-` | tamaño de fuente |
 | `T` | índice |
 | `S` | tipografía |
-| `D` | destacados y notas |
+| `D` | destacados y notas (por libro o global) |
+| `G` | ir a porcentaje/capítulo |
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
 | `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
@@ -111,7 +113,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 69
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 74
 tests unitarios y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -130,13 +132,18 @@ ventana no descoloca la lectura. Tema y tipografía se pueden fijar **solo para 
 libro** con el checkbox del panel `Aa`; el indicador `Aa·` avisa que ese libro
 tiene ajustes propios.
 
-M4 (extras) está cerrado con el MVP de destacados/notas y la búsqueda dentro
-del libro. Seleccioná una frase y usá `Destacar`/`H` o `Nota`/`N`; el panel
-`D` lista, edita y borra. Se guardan en `annotations.json` como offsets de
-caracteres + cita, así que sobreviven cambios de tipografía y se reanclan por
-texto si el bloque cambió. `⌘F` abre “Buscar en el libro”: índice efímero,
-búsqueda sin acentos/mayúsculas, resultados con contexto, salto al match y
-`n`/`N` para recorrerlos.
+M4 (extras) está cerrado con destacados/notas y búsqueda dentro del libro.
+Seleccioná una frase y usá `Destacar`/`H` o `Nota`/`N`; elegí entre tres colores
+(acento, ámbar, verde); el panel `D` lista, edita, recolorea y borra. Se guardan
+en `annotations.json` como offsets de caracteres + cita, así que sobreviven
+cambios de tipografía y se reanclan por texto si el bloque cambió. `⌘F` abre
+“Buscar en el libro”: índice efímero, búsqueda sin acentos/mayúsculas,
+resultados con contexto, salto al match y `n`/`N` para recorrerlos.
+
+M5 (segunda etapa) agrega el selector “Este libro / Todos”, que permite saltar a
+una anotación de otro libro, y la exportación a Markdown desde el mismo panel.
+También suma `G` / click en el porcentaje para abrir “Ir a…”, con salto por
+porcentaje del libro o número de capítulo.
 
 ## Capturas
 
@@ -150,13 +157,13 @@ búsqueda sin acentos/mayúsculas, resultados con contexto, salto al match y
 |---|
 | ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
 
-| **Destacado** | **Panel de notas** | **Nota abierta** |
+| **Destacados de tres colores** | **Panel de notas** | **Nota abierta** |
 |---|---|---|
-| ![Frase destacada en el lector](docs/img/reader-highlight.jpg) | ![Panel de destacados y notas](docs/img/reader-notes.jpg) | ![Editor de nota](docs/img/reader-note.jpg) |
+| ![Tres colores de destacado](docs/img/reader-highlight.jpg) | ![Panel de destacados y notas](docs/img/reader-notes.jpg) | ![Editor de nota](docs/img/reader-note.jpg) |
 
-| **Búsqueda en el libro** |
-|---|
-| ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
+| **Anotaciones globales** | **Ir a…** | **Búsqueda en el libro** |
+|---|---|---|
+| ![Panel global con anotaciones de dos libros](docs/img/reader-notes-global.jpg) | ![Ventana para ir a un porcentaje o capítulo](docs/img/reader-goto.jpg) | ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
 
 ## Limitaciones conocidas
 
@@ -171,10 +178,10 @@ búsqueda sin acentos/mayúsculas, resultados con contexto, salto al match y
 - La biblioteca no tiene watcher: se refresca a mano.
 - El progreso por fracción y las preferencias por libro están desde M3; el
   filtro “Terminados” del roadmap original quedó fuera de alcance.
-- Sin salto a porcentaje exacto ni por número de capítulo: se navega con las
-  flechas y el índice.
-- El panel de notas es por libro; el índice global y la exportación a Markdown
-  quedan para una segunda etapa de la spec 45.
+- La búsqueda sigue siendo substring sin regex/stemming; el índice de
+  anotaciones global es una lista plana (sin búsqueda dentro de las notas).
+- Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
+  dispositivos.
 
 ## Roadmap
 
@@ -183,8 +190,9 @@ búsqueda sin acentos/mayúsculas, resultados con contexto, salto al match y
 - **M3 — Lectura fina (cerrada):** anclas, saltos, enlaces internos, progreso
   por fracción con ancla de bloque y ajustes por libro.
 - **M4 — Extras (cerrado):** destacados/notas (spec 45) y búsqueda dentro del
-  libro (spec 40). Quedan para una segunda etapa el índice global de
-  anotaciones, varios colores y la exportación a Markdown.
+  libro (spec 40).
+- **M5 — Segunda etapa (cerrada):** anotaciones globales, tres colores, export
+  Markdown (spec 50) y navegación por porcentaje/capítulo (spec 55).
 
 ## Modo diagnóstico
 

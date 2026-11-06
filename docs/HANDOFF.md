@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.6.0
+version: 1.7.0
 updated: 2026-11-06
 ---
 
@@ -13,13 +13,15 @@ Lector de EPUB de escritorio en Rust: una columna, scroll continuo, tipografía
 propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
-**M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina) y
-M4 (extras) están cerrados.** M3 incluye anclas/saltos (spec 30) y progreso por
-fracción con ancla de bloque más preferencias por libro (spec 35). M4 incluye
-destacados/notas (spec 45) y búsqueda dentro del libro (spec 40).
+**M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina),
+M4 (extras) y M5 (segunda etapa) están cerrados.** M3 incluye anclas/saltos
+(spec 30) y progreso por fracción con ancla de bloque más preferencias por libro
+(spec 35). M4 incluye destacados/notas (spec 45) y búsqueda dentro del libro
+(spec 40). M5 agrega anotaciones globales, tres colores, export Markdown
+(spec 50) y navegación por porcentaje/capítulo (spec 55).
 
-Quedan para una segunda etapa de M4, fuera del MVP: índice global de
-anotaciones, varios colores, export Markdown y salto a porcentaje exacto.
+Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
+export a PDF/DOCX y búsqueda dentro de las notas.
 
 ## Estado medido (no estimado)
 
@@ -33,12 +35,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 9 en `docs/img/` (biblioteca ×4, tipografía, destacado, panel, nota y búsqueda) | `--shot --screen library` / `--panel settings/notes/note/search` |
+| capturas | 11 en `docs/img/` (biblioteca ×4, tipografía, destacado multicolor, panel, nota, global, búsqueda e Ir a) | `--shot --screen library` / `--panel settings/notes/note/search/goto` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 69 unit + 9 integración | `cargo test` |
+| tests | 74 unit + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.582.640 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.599.328 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -95,6 +97,9 @@ cargo run --profile fast -- --shot /tmp/p.png --panel notes libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel note libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase --search-jump libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel notes --annotations-all libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel goto libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --export-md /tmp/destacados.md libro.epub
 
 # diagnóstico de parser
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub
@@ -151,6 +156,9 @@ flotante tapando texto) solo aparecieron así.
 14. **El índice de búsqueda es efímero**: vive en memoria mientras el libro está
     abierto y se libera al volver a la biblioteca. No se persiste en
     `library.json`. La normalización es 1:1 para que los offsets coincidan.
+15. **El color del destacado es `u8` en `annotations.json`** (0 acento, 1 ámbar,
+    2 verde), no una propiedad del tema ni de `library.json`. El modo global del
+    panel no cambia el archivo; solo cambia la vista y el alcance del export.
 
 ## Definición de terminado (por tarea)
 

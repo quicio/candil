@@ -112,10 +112,27 @@ impl Annotations {
         }
     }
 
+    pub fn update_color(&mut self, id: u64, color: u8) -> bool {
+        match self.get_mut(id) {
+            Some(a) => {
+                a.color = color;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Anotaciones del libro ordenadas por capítulo, bloque y offset.
     pub fn sorted_for_book<'a>(&'a self, book: &'a str) -> Vec<&'a Annotation> {
         let mut items: Vec<&Annotation> = self.for_book(book).collect();
         items.sort_by_key(|a| (a.chapter, a.block, a.start, a.id));
+        items
+    }
+
+    /// Todas las anotaciones, ordenadas por libro, capítulo, bloque y offset.
+    pub fn sorted_all(&self) -> Vec<&Annotation> {
+        let mut items: Vec<&Annotation> = self.items.iter().collect();
+        items.sort_by_key(|a| (a.book.as_str(), a.chapter, a.block, a.start, a.id));
         items
     }
 }
@@ -152,7 +169,9 @@ mod tests {
         let dir = temp_dir("roundtrip");
         let path = dir.join("annotations.json");
         let mut all = Annotations::default();
-        let id = all.add(annotation("/libro.epub", 3, "frase"));
+        let mut a = annotation("/libro.epub", 3, "frase");
+        a.color = 2;
+        let id = all.add(a);
         all.update_note(id, "mi nota");
         all.save_to(&path).expect("guardar");
 
@@ -165,6 +184,7 @@ mod tests {
         assert_eq!(a.id, id);
         assert_eq!(a.quote, "frase");
         assert_eq!(a.note, "mi nota");
+        assert_eq!(a.color, 2);
         assert_eq!(a.book, "/libro.epub");
 
         let _ = std::fs::remove_dir_all(dir);
@@ -197,7 +217,21 @@ mod tests {
         assert_eq!(nuevo, 1, "el id vuelve a empezar tras borrar todo");
         assert!(all.update_note(nuevo, "nota"));
         assert_eq!(all.get(nuevo).unwrap().note, "nota");
+        assert!(all.update_color(nuevo, 2));
+        assert_eq!(all.get(nuevo).unwrap().color, 2);
+        assert!(!all.update_color(999, 1));
         assert!(!all.update_note(999, "x"));
+    }
+
+    #[test]
+    fn orden_global_por_libro_y_posicion() {
+        let mut all = Annotations::default();
+        let b2 = all.add(annotation("/b.epub", 1, "b"));
+        let a2 = all.add(annotation("/a.epub", 2, "a2"));
+        let a1 = all.add(annotation("/a.epub", 1, "a1"));
+        let orden: Vec<u64> = all.sorted_all().iter().map(|a| a.id).collect();
+        assert_eq!(orden, vec![a1, a2, b2]);
+        assert_eq!(all.sorted_for_book("/a.epub").len(), 2);
     }
 
     #[test]

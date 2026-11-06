@@ -3,9 +3,10 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros.
+sin copiar los libros, anclas internas, progreso estable por bloque y
+destacados/notas por libro.
 
-Binario final (`dist`): **5.3 MiB** (5.532.752 B), arranque instantáneo, sin
+Binario final (`dist`): **5.3 MiB** (5.566.032 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -56,7 +57,10 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 | `+` / `-` | tamaño de fuente |
 | `T` | índice |
 | `S` | tipografía |
-| `Esc` | cerrar panel; en el lector, volver a la biblioteca |
+| `D` | destacados y notas |
+| `H` | destacar la selección |
+| `N` | nota sobre la selección |
+| `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
 | `⌘F` | buscar en la biblioteca |
 | `⌘O` | abrir archivo |
 
@@ -65,7 +69,9 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 Cinco presets prearmados (Papel, Noche, Claro, Ámbar, Contraste) y ajustes de
 tamaño, interlineado, ancho de columna y espacio entre párrafos. Los ajustes se
 guardan en `~/Library/Application Support/lector/config.json`; el progreso de los
-libros indexados vive en `library.json`, junto a las portadas.
+libros indexados vive en `library.json`, junto a las portadas. Con el checkbox
+“Solo para este libro” del panel `Aa` se fija tema/tipografía por libro; el
+indicador `Aa·` avisa que ese libro tiene ajustes propios.
 
 Tipografía: Literata (OFL) embebida en cuatro variantes — regular, itálica,
 bold, bold-itálica — más semibold para títulos, instanciadas desde la fuente
@@ -80,6 +86,7 @@ src/
   epub.rs    zip → container.xml → OPF → spine + índice con #ancla + portada
   xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre, tablas, SVG, anclas)
   library.rs índice de carpetas, escaneo incremental y BookEntry
+  annotations.rs destacados/notas por libro (offsets de texto + cita)
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
   theme.rs   presets de color
@@ -101,7 +108,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 52
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 64
 tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -115,9 +122,17 @@ carpetas y vuelta con `Esc`.
 
 M3 (lectura fina) también está cerrada: el índice salta por `#ancla` dentro y
 entre capítulos, los enlaces internos son clicables y la posición se guarda como
-`chapter + ratio + bloque`, así que cambiar fuente o ventana no descoloca la
-lectura. Tema y tipografía se pueden fijar **solo para un libro** con el checkbox
-del panel `Aa`; el indicador `Aa·` avisa que ese libro tiene ajustes propios.
+`chapter + ratio + bloque + fracción del bloque`, así que cambiar fuente o
+ventana no descoloca la lectura. Tema y tipografía se pueden fijar **solo para un
+libro** con el checkbox del panel `Aa`; el indicador `Aa·` avisa que ese libro
+tiene ajustes propios.
+
+M4 (extras) tiene implementado el MVP de destacados y notas (spec 45): seleccioná
+una frase dentro de un párrafo, `Destacar` o `H`, agregá una nota con `N`, y
+administrala desde “Destacados y notas” (`D`). Se guardan en
+`annotations.json` como offsets de caracteres + cita, así que sobreviven cambios
+de tipografía y se reanclan por texto si el bloque cambió. Falta la búsqueda
+dentro del libro (spec 40).
 
 ## Capturas
 
@@ -131,13 +146,18 @@ del panel `Aa`; el indicador `Aa·` avisa que ese libro tiene ajustes propios.
 |---|
 | ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
 
+| **Destacado** | **Panel de notas** | **Nota abierta** |
+|---|---|---|
+| ![Frase destacada en el lector](docs/img/reader-highlight.jpg) | ![Panel de destacados y notas](docs/img/reader-notes.jpg) | ![Editor de nota](docs/img/reader-note.jpg) |
+
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
 - Índice con anclas y enlaces internos: el salto intra/intercapítulo y los
   enlaces `<a href="#…">` funcionan; los enlaces externos todavía se ignoran.
 - Sin paginado por columnas ni sinónimos/hyphenation.
-- Sin búsqueda dentro del libro ni anotaciones.
+- Sin búsqueda dentro del libro (spec 40). Los destacados/notas están desde M4,
+  pero la selección no cruza párrafos (MVP).
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher: se refresca a mano.
@@ -145,6 +165,8 @@ del panel `Aa`; el indicador `Aa·` avisa que ese libro tiene ajustes propios.
   filtro “Terminados” del roadmap original quedó fuera de alcance.
 - Sin salto a porcentaje exacto ni por número de capítulo: se navega con las
   flechas y el índice.
+- El panel de notas es por libro; el índice global y la exportación a Markdown
+  quedan para una segunda etapa de la spec 45.
 
 ## Roadmap
 
@@ -152,8 +174,8 @@ del panel `Aa`; el indicador `Aa·` avisa que ese libro tiene ajustes propios.
   filtros, carpetas y migración de progreso.
 - **M3 — Lectura fina (cerrada):** anclas, saltos, enlaces internos, progreso
   por fracción con ancla de bloque y ajustes por libro.
-- **M4 — Extras (siguiente):** búsqueda dentro del libro, destacados, notas,
-  índice de anotaciones y exportar citas.
+- **M4 — Extras (en curso):** destacados y notas listos (spec 45); falta la
+  búsqueda dentro del libro (spec 40), el índice global y exportar citas.
 
 ## Modo diagnóstico
 

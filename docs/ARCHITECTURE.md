@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.5.0
+version: 1.6.0
 updated: 2026-11-06
 ---
 
@@ -41,11 +41,12 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s y portada declarada | no decide estilos ni layout |
 | `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
+| `annotations.rs` | destacados/notas por libro: offsets de texto, cita y nota; `annotations.json` atómico | no conoce píxeles ni la UI |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
-| `config.rs` | settings globales en `config.json`; `Progress` con ratio/ancla y compatibilidad con el offset legado | no conoce el contenido |
+| `config.rs` | settings globales en `config.json`; `Progress` con ratio/ancla/fracción y compatibilidad con el offset legado | no conoce el contenido |
 | `fonts.rs` | registra Literata en 4 familias + monoespaciada | no decide tamaños |
 | `lib.rs` | expone módulos para tests de integración | — |
 
@@ -108,6 +109,29 @@ el actual, se ajusta el scroll. `current_anchor` marca la entrada activa. Un
 `id` en un elemento vacío (`<a id="6"></a>`) se conserva como bloque-ancla
 invisible para no perder el destino (ADR-0010).
 
+## Anotaciones
+
+Los destacados viven en `annotations.json`, separados de la biblioteca. Una
+`Annotation` guarda `book` (ruta canónica), `chapter`, `block`, `start`/`end` en
+**caracteres** dentro de `Block::text()`, `quote`, `note`, `color` y `created`.
+El render resuelve cada anotación del capítulo con `resolve_annotation`: si los
+offsets guardados siguen conteniendo la cita se usan tal cual; si no, se busca la
+cita primero en ese bloque y después en todo el capítulo. Las que no aparecen no
+se dibujan.
+
+Cada bloque de texto se dibuja con un `TextEdit` multilínea inmutable (`&mut
+&str`) con `.frame(false)`, margen cero y un `layouter` que reutiliza el
+`LayoutJob` del lector. Eso habilita selección y copia sin perder tipografía ni
+justificación. El rango de cursor se convierte a offsets del bloque descontando
+el prefijo de viñeta/numeración; la barra flotante ofrece `Destacar` y `Nota`.
+El resaltado se pinta con `TextFormat::background` en las secciones del job que
+caen dentro de cada rango.
+
+El panel “Destacados y notas” lista las del libro ordenadas por capítulo/bloque;
+`Ir` carga el capítulo y resuelve el bloque por cita (`pending_block_jump`),
+`Editar` abre la nota y `×` borra. `H`/`N`/`D` son los atajos; `Esc` sale de la
+selección o cierra la ventana activa.
+
 ## Biblioteca
 
 `app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.
@@ -124,15 +148,17 @@ sus libros) y la barra muestra el contador de errores con tooltip.
 
 `Lector` guarda: pantalla (`Library`/`Reader`), biblioteca, libro abierto
 (`Book`), capítulo actual, bloques del capítulo, texturas del lector y de
-portadas, `Config`, offset de scroll, altura del viewport, flags de panel y estado
-de guardado diferido.
+portadas, `Config`, `Annotations`, selección/nota activas, offset de scroll,
+altura del viewport, flags de panel y estado de guardado diferido.
 
 Regla de oro: **el scroll es del lector, no del EPUB**. Se guarda por libro como
-`{chapter, ratio, anchor}`: el ancla es el índice del bloque visible superior y
-manda al restaurar; el ratio (`scroll / max_scroll`) ajusta la posición dentro de
-ese bloque. Así cambiar fuente, interlineado, ancho o tamaño de ventana no
-descoloca la lectura. Las posiciones de bloque se registran en coordenadas del
-contenido (`cursor + scroll − inner_rect.top()`), no de pantalla.
+`{chapter, ratio, anchor, anchor_ratio}`: el ancla es el índice del bloque
+visible superior y manda al restaurar; `anchor_ratio` interpola dentro de ese
+bloque y `ratio` (`scroll / max_scroll`) sirve para la tarjeta y de fallback.
+Así cambiar fuente, interlineado, ancho o tamaño de ventana no descoloca la
+lectura, incluso en párrafos de varias pantallas. Las posiciones de bloque se
+registran en coordenadas del contenido (`cursor + scroll − inner_rect.top()`),
+no de pantalla.
 
 ## Persistencia
 
@@ -156,6 +182,11 @@ Precedencia de ajustes: `BookEntry.settings` → `Config.settings` → `Default`
 `+/-` y el panel Tipografía editan el override cuando existe; desmarcar "Solo
 para este libro" lo borra y vuelve al global. El indicador `Aa·` de la barra
 avisa que el libro tiene ajustes propios.
+
+`annotations.json` vive en el mismo directorio y usa el mismo helper atómico.
+Guarda `schema_version` e `items`; se escribe en cada alta/edición/borrado, no
+en el debounce del progreso. Si está corrupto se renombra y se arranca vacío sin
+bloquear el lector.
 
 ## Errores
 

@@ -637,6 +637,7 @@ mod tests {
                 chapter: 7,
                 ratio: 0.5,
                 anchor: Some(3),
+                anchor_ratio: None,
                 legacy_offset: None,
             },
         );
@@ -657,6 +658,7 @@ mod tests {
                 chapter: 3,
                 ratio: 0.2,
                 anchor: Some(2),
+                anchor_ratio: None,
                 legacy_offset: None,
             },
             ..BookEntry::default()
@@ -668,6 +670,7 @@ mod tests {
                 chapter: 9,
                 ratio: 0.9,
                 anchor: None,
+                anchor_ratio: None,
                 legacy_offset: None,
             },
         );
@@ -677,6 +680,7 @@ mod tests {
                 chapter: 1,
                 ratio: 0.1,
                 anchor: None,
+                anchor_ratio: None,
                 legacy_offset: None,
             },
         );

@@ -1,8 +1,8 @@
 ---
 id: spec-45
 title: Citas, destacados y notas
-status: draft
-version: 0.2.0
+status: implementada
+version: 1.0.0
 updated: 2026-11-06
 milestone: M4
 depends_on: [spec-30, spec-35, spec-20]
@@ -113,54 +113,94 @@ barra del lector:  ☰  Aa  ✎  …
   `LayoutJob` que caen dentro de `[start, end)`.
 - Los bloques que no son texto (imagen, regla) siguen igual.
 - Si el `block` guardado ya no contiene la cita en `[start, end)`, se busca la
-  cita en el capítulo y se usa la primera coincidencia; si no aparece, la
-  anotación se muestra en el panel como “no encontrada”.
+  cita en el capítulo y se usa la primera coincidencia; si no aparece en el
+  capítulo actual, el panel la marca como “no encontrada en este capítulo”.
+
+## Implementación (2026-11-06)
+
+- **Modelo**: `src/annotations.rs` con `Annotation`/`Annotations`, `schema_version: 1`,
+  `load/save` atómicos vía `src/store.rs`, `for_book`, `sorted_for_book`, `add`
+  (id = max + 1), `remove`, `update_note` y `get`/`get_mut`.
+- **Selección**: cada bloque de texto se dibuja con un `TextEdit` multilínea
+  **inmutable** (`&mut &str`, sin marco, margen cero, una fila mínima) y un
+  `layouter` que reutiliza el `LayoutJob` de siempre. Así se conservan
+  justificación, interlineado, espaciado y estilos inline. Al soltar el mouse,
+  `cursor_range` se convierte a offsets de `Block::text()`
+  (`selection_range`), descontando el prefijo de viñeta/numeración; la cita se
+  extrae del bloque.
+- **Resaltado**: `LayoutJob` se parte en los bordes de cada anotación y las
+  secciones internas llevan `TextFormat::background` con el acento al 33 % de
+  alfa. El resaltado se calcula por frame y no toca el EPUB.
+- **Reanclaje**: si el bloque guardado cambió, `resolve_annotation` busca la cita
+  primero en ese bloque y después en todo el capítulo. Si no aparece, la
+  anotación no se dibuja (el panel la sigue mostrando con su cita).
+- **UI**: barra flotante `Destacar`/`Nota` sobre la selección; `H` y `N`;
+  ventana de nota multilínea (crear o editar); panel “Destacados y notas” (`D`)
+  con cita, nota, capítulo, `Ir`, `Editar` y `×`. `Esc` sale de la selección o
+  cierra la ventana activa sin volver a la biblioteca.
+- **Salto**: `(chapter, block, quote)`; si el capítulo cambia se carga y el
+  bloque se ubica con `locate_quote`, luego se ajusta el scroll con las
+  posiciones registradas al dibujar (`pending_block_jump`).
+- **Persistencia**: `annotations.json` separado de `library.json`, escritura
+  atómica y backup de corruptos. Borrar una anotación no toca el EPUB.
+- **Desviación menor**: el botón de la barra dice `Notas` en lugar del glifo
+  `✎`, porque Literata y la fuente de fallback de la app no traen ese carácter y
+  se veía un cuadrado. La función y el atajo son los de la spec.
+- **Dev**: `--panel notes` y `--panel note` abren el panel y el editor para las
+  capturas; `--shot` sigue siendo el mecanismo de verificación visual.
 
 ## Tareas
 
-### T1 — Modelo y persistencia
+### T1 — Modelo y persistencia (hecha)
 - Crear `src/annotations.rs`, `pub mod annotations;`.
 - `load/save`, `for_book`, `add`, `remove`, `update_note`, `id` único.
 - Tests: roundtrip, JSON corrupto con backup, agregar/borrar.
 
-### T2 — Selección de texto
+### T2 — Selección de texto (hecha)
 - Renderizar bloques de texto con selección sin romper la tipografía.
 - Mapear `cursor_range` a `(block, start, end, quote)`, descontando el prefijo
   de viñeta/numeración si existe.
 - Test visual: seleccionar una frase en `flores-del-mal` y en un capítulo normal;
   medir que el capítulo gigante no se vuelva inusable.
 
-### T3 — Destacar
+### T3 — Destacar (hecha)
 - Barra flotante `Destacar` / `Nota` cuando hay selección no vacía.
 - Crear `Annotation` con `color: 0`, guardar y repintar el `LayoutJob` con fondo.
 - Atajo `H` para destacar la selección.
 
-### T4 — Nota
+### T4 — Nota (hecha)
 - Ventana de nota multilínea; guardar/editar.
 - `N` abre la nota de la selección.
 - Una anotación con nota se ve igual que un destacado; el panel muestra la nota.
 
-### T5 — Panel del libro
+### T5 — Panel del libro (hecha)
 - Ventana “Destacados y notas” (`D`/`✎`) con lista ordenada por capítulo/bloque.
 - Salto: `(chapter, block)` + posiciones registradas al dibujar; `pending_jump`
   y `request_repaint`.
 - Borrar y editar nota desde el panel.
 - Estados: sin anotaciones (“Todavía no destacaste nada.”).
 
-### T6 — Verificación y docs
-- Tests de modelo, reanclaje por cita y persistencia.
-- Captura: lectura con un destacado, panel de notas, nota abierta.
-- Actualizar README/HANDOFF/spec 45 al implementar.
+### T6 — Verificación y docs (hecha)
+- Tests de modelo (`annotations.rs`), reanclaje por cita, selección con prefijo y
+  `locate_quote` en `app.rs`. Total: **64 unit + 8 integración**.
+- Capturas en `docs/img/reader-highlight.jpg`, `reader-notes.jpg` y
+  `reader-note.jpg` (lector con destacado, panel y editor).
+- Rendimiento del caso grande: `flores-del-mal` (1895 bloques en un capítulo),
+  `--shot` de 12 frames en 0.52 s; no hizo falta el modo “Anotar”.
+- README/HANDOFF/ARCHITECTURE/spec actualizados.
 
 ## Criterio de salida
 
 1. Seleccionar una frase, destacarla, cerrar y reabrir: el destacado sigue en el
-   mismo texto.
+   mismo texto. **Cumplido**: offsets de caracteres + cita; se reancla si el
+   bloque cambió.
 2. Cambiar tamaño de fuente y ancho de ventana: el destacado no se mueve de
-   frase.
-3. Agregar una nota, verla en el panel y saltar al fragmento.
-4. Borrar una anotación no deja restos visuales.
-5. `cargo test` verde y capturas revisadas.
+   frase. **Cumplido**: verificado a 17 y 27 con el mismo `Block` y cita.
+3. Agregar una nota, verla en el panel y saltar al fragmento. **Cumplido**:
+   `NoteEditor` crea/edita y el panel resuelve `pending_block_jump`.
+4. Borrar una anotación no deja restos visuales. **Cumplido**: se quita del
+   `Vec`, se guarda y el resaltado se recalcula por frame.
+5. `cargo test` verde y capturas revisadas. **Cumplido**; clippy sin warnings.
 
 ## Riesgos
 

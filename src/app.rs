@@ -10,6 +10,7 @@ use eframe::egui::{
     Vec2,
 };
 
+use crate::annotations::{Annotation, Annotations};
 use crate::config::{self, Config, Progress, Settings};
 use crate::epub::Book;
 use crate::fonts;
@@ -80,6 +81,30 @@ enum CardAction {
     Remove,
 }
 
+/// Selección activa de texto dentro de un bloque, lista para destacar.
+#[derive(Clone, Debug)]
+struct Selection {
+    chapter: usize,
+    block: usize,
+    start: usize,
+    end: usize,
+    quote: String,
+    /// Rect en pantalla, para ubicar la barra flotante.
+    rect: egui::Rect,
+    /// Id del `TextEdit` que la contiene; se usa para soltar el foco.
+    edit_id: egui::Id,
+}
+
+/// Ventana de nota abierta: crear desde una selección o editar una existente.
+#[derive(Clone, Debug)]
+struct NoteEditor {
+    id: Option<u64>,
+    selection: Option<Selection>,
+    book: String,
+    draft: String,
+    focus: bool,
+}
+
 const CARD_W: f32 = 160.0;
 const CARD_COVER_H: f32 = 240.0;
 const CARD_GAP: f32 = 20.0;
@@ -112,6 +137,13 @@ pub struct Lector {
     current_anchor: Option<String>,
     block_positions: Vec<f32>,
     pending_restore: Option<Progress>,
+    pending_block_jump: Option<(usize, String)>,
+    annotations: Annotations,
+    selection: Option<Selection>,
+    note: Option<NoteEditor>,
+    show_annotations: bool,
+    /// Último `TextEdit` del lector con foco (para salir de la selección con Esc).
+    reader_focus: Option<egui::Id>,
     status: Option<(String, Instant)>,
     applied_theme: Option<usize>,
     dirty: bool,
@@ -143,13 +175,14 @@ impl Lector {
     pub fn new(cc: &eframe::CreationContext<'_>, path: Option<PathBuf>, dev: DevOpts) -> Self {
         fonts::install(&cc.egui_ctx);
         let (mut cfg, cfg_warning) = Config::load_with_report();
+        let (annotations, ann_warning) = Annotations::load();
         let (mut library, library_warning) = if let Some(path) = dev.library_path.as_ref() {
             Library::load_with_report_from(path)
         } else {
             Library::load_with_report()
         };
         let migrated = library.migrate_progress_from(&mut cfg);
-        let mut warning = cfg_warning.or(library_warning);
+        let mut warning = cfg_warning.or(library_warning).or(ann_warning);
         if migrated > 0 {
             if let Err(e) = library.save() {
                 warning = Some(format!("no pude guardar la biblioteca: {e}"));
@@ -205,6 +238,12 @@ impl Lector {
             current_anchor: None,
             block_positions: Vec::new(),
             pending_restore: None,
+            pending_block_jump: None,
+            annotations,
+            selection: None,
+            note: None,
+            show_annotations: false,
+            reader_focus: None,
             status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
             dirty: false,
@@ -267,6 +306,11 @@ impl Lector {
                 self.chapter = prog.chapter.min(n.saturating_sub(1));
                 self.book = Some(book);
                 self.screen = Screen::Reader;
+                self.selection = None;
+                self.note = None;
+                self.show_annotations = false;
+                self.pending_block_jump = None;
+                self.reader_focus = None;
                 self.cfg.last_book = Some(key.clone());
                 self.cfg.touch_recent(&key);
                 if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
@@ -287,6 +331,23 @@ impl Lector {
                 match self.dev.panel.as_deref() {
                     Some("toc") => self.show_toc = true,
                     Some("settings") => self.show_settings = true,
+                    Some("notes") => self.show_annotations = true,
+                    Some("note") => {
+                        if let Some(a) = self
+                            .annotations
+                            .sorted_for_book(&key)
+                            .first()
+                            .map(|a| (*a).clone())
+                        {
+                            self.note = Some(NoteEditor {
+                                id: Some(a.id),
+                                selection: None,
+                                book: key.clone(),
+                                draft: a.note,
+                                focus: true,
+                            });
+                        }
+                    }
                     _ => {}
                 }
                 self.dirty = true;
@@ -310,6 +371,10 @@ impl Lector {
         self.current_anchor = None;
         self.block_positions.clear();
         self.pending_restore = restore;
+        self.pending_block_jump = None;
+        self.selection = None;
+        self.note = None;
+        self.reader_focus = None;
         self.scroll = 0.0;
         self.delta = 0.0;
         self.dirty = true;
@@ -367,10 +432,14 @@ impl Lector {
                 0.0
             };
             let anchor = top_block(self.scroll, &self.block_positions);
+            let anchor_ratio = anchor.map(|index| {
+                block_fraction(self.scroll, index, &self.block_positions, self.max_scroll)
+            });
             let progress = Progress {
                 chapter: self.chapter,
                 ratio,
                 anchor,
+                anchor_ratio,
                 legacy_offset: None,
             };
             if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
@@ -434,6 +503,11 @@ impl Lector {
         self.show_settings = false;
         self.pending_restore = None;
         self.block_positions.clear();
+        self.pending_block_jump = None;
+        self.selection = None;
+        self.note = None;
+        self.show_annotations = false;
+        self.reader_focus = None;
     }
 
     fn effective_settings(&self) -> Settings {
@@ -487,6 +561,115 @@ impl Lector {
         self.dirty = true;
     }
 
+    fn book_key(&self) -> Option<String> {
+        self.book
+            .as_ref()
+            .map(|book| book.path.to_string_lossy().to_string())
+    }
+
+    fn surrender_reader_focus(&mut self, ctx: &egui::Context) {
+        if let Some(id) = self.reader_focus.take() {
+            ctx.memory_mut(|memory| memory.surrender_focus(id));
+        }
+        self.selection = None;
+    }
+
+    fn save_annotations(&mut self) {
+        if let Err(e) = self.annotations.save() {
+            self.status = Some((
+                format!("No pude guardar los destacados: {e}"),
+                Instant::now(),
+            ));
+        }
+    }
+
+    fn add_highlight(&mut self, ctx: &egui::Context) {
+        let Some(selection) = self.selection.take() else {
+            return;
+        };
+        let Some(book) = self.book_key() else {
+            return;
+        };
+        self.annotations.add(Annotation {
+            book,
+            chapter: selection.chapter,
+            block: selection.block,
+            start: selection.start,
+            end: selection.end,
+            quote: selection.quote,
+            note: String::new(),
+            color: 0,
+            ..Annotation::default()
+        });
+        self.save_annotations();
+        self.reader_focus = Some(selection.edit_id);
+        self.surrender_reader_focus(ctx);
+        ctx.request_repaint();
+    }
+
+    fn open_note_for_selection(&mut self, ctx: &egui::Context) {
+        let Some(selection) = self.selection.take() else {
+            return;
+        };
+        let Some(book) = self.book_key() else {
+            return;
+        };
+        self.note = Some(NoteEditor {
+            id: None,
+            selection: Some(selection.clone()),
+            book,
+            draft: String::new(),
+            focus: true,
+        });
+        self.reader_focus = Some(selection.edit_id);
+        self.surrender_reader_focus(ctx);
+        ctx.request_repaint();
+    }
+
+    fn save_note(&mut self) {
+        let Some(editor) = self.note.take() else {
+            return;
+        };
+        let draft = editor.draft.trim().to_string();
+        if let Some(id) = editor.id {
+            self.annotations.update_note(id, &draft);
+        } else if let Some(selection) = editor.selection {
+            self.annotations.add(Annotation {
+                book: editor.book,
+                chapter: selection.chapter,
+                block: selection.block,
+                start: selection.start,
+                end: selection.end,
+                quote: selection.quote,
+                note: draft,
+                color: 0,
+                ..Annotation::default()
+            });
+        }
+        self.save_annotations();
+    }
+
+    fn remove_annotation(&mut self, id: u64) {
+        if self.annotations.remove(id) {
+            self.save_annotations();
+        }
+    }
+
+    fn jump_to_annotation(&mut self, annotation: &Annotation) {
+        if self.book.is_none() {
+            return;
+        }
+        if annotation.chapter != self.chapter {
+            self.load_chapter(annotation.chapter, None);
+        }
+        self.pending_restore = None;
+        self.pending_block_jump = Some((annotation.block, annotation.quote.clone()));
+        self.show_annotations = false;
+        self.selection = None;
+        self.note = None;
+        self.reader_focus = None;
+    }
+
     // -- entrada -------------------------------------------------------------
 
     fn handle_input(&mut self, ctx: &egui::Context) {
@@ -523,6 +706,9 @@ impl Lector {
             key_o,
             ctrl,
             home,
+            key_d,
+            key_h,
+            key_n,
         ) = ctx.input(|i| {
             (
                 i.key_pressed(Key::Space),
@@ -540,6 +726,9 @@ impl Lector {
                 i.key_pressed(Key::O),
                 i.modifiers.command || i.modifiers.ctrl,
                 i.key_pressed(Key::Home),
+                i.key_pressed(Key::D),
+                i.key_pressed(Key::H),
+                i.key_pressed(Key::N),
             )
         });
 
@@ -553,13 +742,37 @@ impl Lector {
         }
 
         if key_esc {
-            if self.show_toc || self.show_settings {
+            if self.note.is_some() {
+                self.note = None;
+                ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
+                self.surrender_reader_focus(ctx);
+            } else if self.show_annotations {
+                self.show_annotations = false;
+            } else if self.selection.is_some() || self.reader_focus.is_some() {
+                self.surrender_reader_focus(ctx);
+            } else if self.show_toc || self.show_settings {
                 self.show_toc = false;
                 self.show_settings = false;
             } else if self.screen == Screen::Reader {
                 self.go_library();
             } else {
                 self.library_search.clear();
+            }
+        }
+
+        if self.book.is_some() && self.note.is_none() {
+            if key_d {
+                self.show_annotations = !self.show_annotations;
+                self.show_toc = false;
+                self.show_settings = false;
+            }
+            if self.selection.is_some() {
+                if key_h {
+                    self.add_highlight(ctx);
+                }
+                if key_n {
+                    self.open_note_for_selection(ctx);
+                }
             }
         }
 
@@ -1046,6 +1259,15 @@ impl Lector {
                     {
                         self.show_settings = !self.show_settings;
                     }
+                    if ui
+                        .button(RichText::new("Notas").size(12.0))
+                        .on_hover_text("Destacados y notas (D)")
+                        .clicked()
+                    {
+                        self.show_annotations = !self.show_annotations;
+                        self.show_toc = false;
+                        self.show_settings = false;
+                    }
                     ui.add_space(6.0);
                     let shown = if chapter_title.is_empty() {
                         title.clone()
@@ -1319,6 +1541,253 @@ impl Lector {
         }
     }
 
+    fn selection_bar(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(selection) = self.selection.clone() else {
+            return;
+        };
+        if self.note.is_some() {
+            return;
+        }
+        let screen = ctx.screen_rect();
+        let mut pos = egui::pos2(selection.rect.left(), selection.rect.top() - 44.0);
+        if pos.y < screen.top() + 44.0 {
+            pos.y = selection.rect.bottom() + 8.0;
+        }
+        pos.x = pos.x.clamp(
+            screen.left() + 8.0,
+            (screen.right() - 200.0).max(screen.left() + 8.0),
+        );
+
+        let mut highlight = false;
+        let mut note = false;
+        egui::Area::new(egui::Id::new("selection_bar"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(th.panel)
+                    .stroke(egui::Stroke::new(1.0, th.dim.gamma_multiply(0.45)))
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin::symmetric(6, 4))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button(RichText::new("Destacar").size(12.5))
+                                .on_hover_text("Destacar selección (H)")
+                                .clicked()
+                            {
+                                highlight = true;
+                            }
+                            if ui
+                                .button(RichText::new("Nota").size(12.5))
+                                .on_hover_text("Destacar con nota (N)")
+                                .clicked()
+                            {
+                                note = true;
+                            }
+                        });
+                    });
+            });
+
+        if highlight {
+            self.add_highlight(ctx);
+        }
+        if note {
+            self.open_note_for_selection(ctx);
+        }
+    }
+
+    fn annotations_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.show_annotations {
+            return;
+        }
+        let Some(book) = self.book_key() else {
+            self.show_annotations = false;
+            return;
+        };
+        let items: Vec<Annotation> = self
+            .annotations
+            .sorted_for_book(&book)
+            .into_iter()
+            .cloned()
+            .collect();
+        let missing: Vec<u64> = items
+            .iter()
+            .filter(|a| a.chapter == self.chapter && resolve_annotation(a, &self.blocks).is_none())
+            .map(|a| a.id)
+            .collect();
+        let mut open = self.show_annotations;
+        let mut remove = None;
+        let mut edit = None;
+        let mut jump = None;
+
+        egui::Window::new("Destacados y notas")
+            .open(&mut open)
+            .default_width(390.0)
+            .min_width(300.0)
+            .resizable(true)
+            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                if items.is_empty() {
+                    ui.label(
+                        RichText::new("Todavía no destacaste nada.")
+                            .size(12.5)
+                            .color(th.dim),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("Seleccioná una frase y usá Destacar o Nota.")
+                            .size(11.0)
+                            .color(th.dim),
+                    );
+                    return;
+                }
+
+                egui::ScrollArea::vertical()
+                    .max_height(420.0)
+                    .show(ui, |ui| {
+                        for a in &items {
+                            let chapter_title = self
+                                .book
+                                .as_mut()
+                                .map(|b| b.chapter_title(a.chapter))
+                                .unwrap_or_default();
+                            ui.label(
+                                RichText::new(format!("“{}”", truncate(&a.quote, 150)))
+                                    .size(13.0)
+                                    .color(th.fg),
+                            );
+                            if missing.contains(&a.id) {
+                                ui.label(
+                                    RichText::new("(no encontrada en este capítulo)")
+                                        .size(11.0)
+                                        .color(Color32::from_rgb(190, 92, 82)),
+                                );
+                            }
+                            if !a.note.is_empty() {
+                                ui.label(
+                                    RichText::new(truncate(&a.note, 220))
+                                        .size(12.0)
+                                        .italics()
+                                        .color(th.fg.gamma_multiply(0.88)),
+                                );
+                            }
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "Cap. {} · {}",
+                                        a.chapter + 1,
+                                        truncate(&chapter_title, 26)
+                                    ))
+                                    .size(11.0)
+                                    .color(th.dim),
+                                );
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if ui
+                                        .small_button("×")
+                                        .on_hover_text("Borrar destacado")
+                                        .clicked()
+                                    {
+                                        remove = Some(a.id);
+                                    }
+                                    if ui
+                                        .small_button("Editar")
+                                        .on_hover_text("Editar la nota")
+                                        .clicked()
+                                    {
+                                        edit = Some(a.id);
+                                    }
+                                    if ui.small_button("Ir").clicked() {
+                                        jump = Some(a.id);
+                                    }
+                                });
+                            });
+                            ui.separator();
+                        }
+                    });
+            });
+
+        self.show_annotations = open;
+        let acted = remove.is_some() || edit.is_some() || jump.is_some();
+        if let Some(id) = remove {
+            self.remove_annotation(id);
+        }
+        if let Some(id) = edit {
+            if let Some(a) = self.annotations.get(id) {
+                self.note = Some(NoteEditor {
+                    id: Some(id),
+                    selection: None,
+                    book: book.clone(),
+                    draft: a.note.clone(),
+                    focus: true,
+                });
+            }
+        }
+        if let Some(id) = jump {
+            if let Some(a) = self.annotations.get(id).cloned() {
+                self.jump_to_annotation(&a);
+            }
+        }
+        if acted {
+            ctx.request_repaint();
+        }
+    }
+
+    fn note_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(editor) = self.note.as_mut() else {
+            return;
+        };
+        let mut open = true;
+        let mut save = false;
+        let mut cancel = false;
+        let editing = editor.id.is_some();
+        let title = if editing { "Editar nota" } else { "Nueva nota" };
+
+        egui::Window::new(title)
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(420.0)
+            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new("Nota (opcional; vacía deja solo el destacado)")
+                        .size(11.0)
+                        .color(th.dim),
+                );
+                let response = ui.add(
+                    egui::TextEdit::multiline(&mut editor.draft)
+                        .id(egui::Id::new("note-editor"))
+                        .desired_rows(5)
+                        .desired_width(f32::INFINITY),
+                );
+                if editor.focus {
+                    response.request_focus();
+                    editor.focus = false;
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Guardar").clicked() {
+                        save = true;
+                    }
+                    if ui.button("Cancelar").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+
+        if save {
+            self.save_note();
+            ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
+            ctx.request_repaint();
+        } else if cancel || !open {
+            self.note = None;
+            ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
+            ctx.request_repaint();
+        }
+    }
+
     fn status_toast(&mut self, ctx: &egui::Context, th: &Theme) {
         let Some((msg, when)) = &self.status else {
             return;
@@ -1371,6 +1840,11 @@ impl Lector {
         let offset = (self.scroll + self.delta).max(0.0);
         self.delta = 0.0;
 
+        let highlights = match self.book_key() {
+            Some(key) => resolve_highlights(&self.annotations, &key, self.chapter, &self.blocks),
+            None => HashMap::new(),
+        };
+
         let mut colw = 660.0;
         let s = self.effective_settings();
         let mut link_target: Option<(usize, Option<String>)> = None;
@@ -1396,11 +1870,15 @@ impl Lector {
                     current_anchor,
                     block_positions,
                     pending_restore,
+                    pending_block_jump,
+                    selection,
+                    reader_focus,
                     ..
                 } = self;
                 let dirty_scroll = dirty;
                 chapter_anchors.clear();
                 block_positions.clear();
+                *reader_focus = None;
 
                 let so = ScrollArea::vertical()
                     .id_salt("reader")
@@ -1414,15 +1892,21 @@ impl Lector {
                                 ui.set_min_width(colw);
                                 ui.set_max_width(colw);
                                 ui.spacing_mut().item_spacing.y = 0.0;
-                                for b in blocks.iter() {
+                                for (block_index, b) in blocks.iter().enumerate() {
                                     let y = ui.cursor().top();
                                     block_positions.push(y);
                                     if let Some(anchor) = &b.anchor {
                                         chapter_anchors.entry(anchor.clone()).or_insert(y);
                                     }
+                                    let ranges = highlights
+                                        .get(&block_index)
+                                        .map(Vec::as_slice)
+                                        .unwrap_or(&[]);
                                     draw_block(
                                         ui,
                                         b,
+                                        block_index,
+                                        ranges,
                                         colw,
                                         &s,
                                         th,
@@ -1430,6 +1914,8 @@ impl Lector {
                                         book,
                                         current_chapter,
                                         &mut link_target,
+                                        selection,
+                                        reader_focus,
                                         ctx,
                                     );
                                 }
@@ -1474,7 +1960,21 @@ impl Lector {
                         ctx.request_repaint();
                     }
                 }
+
+                if let Some((block, quote)) = pending_block_jump.take() {
+                    if let Some(index) = locate_quote(blocks, block, &quote) {
+                        if let Some(y) = block_positions.get(index) {
+                            *scroll = *y;
+                            ctx.request_repaint();
+                        }
+                    }
+                }
             });
+
+        if (self.scroll - offset).abs() > 0.5 {
+            self.selection = None;
+            self.reader_focus = None;
+        }
 
         if let Some((spine, anchor)) = link_target {
             self.jump_to(spine, anchor);
@@ -1485,6 +1985,9 @@ impl Lector {
         let _ = colw;
         self.toc_window(ctx, th);
         self.settings_window(ctx, th);
+        self.selection_bar(ctx, th);
+        self.annotations_window(ctx, th);
+        self.note_window(ctx, th);
     }
 
     fn screenshot(&mut self, ctx: &egui::Context) {
@@ -1527,18 +2030,102 @@ fn top_block(scroll: f32, positions: &[f32]) -> Option<usize> {
     positions.iter().rposition(|y| *y <= scroll + 1.0)
 }
 
+/// Fracción del scroll dentro de un bloque (0..1), para reanclar con precisión
+/// incluso en párrafos que ocupan varias pantallas.
+fn block_fraction(scroll: f32, index: usize, positions: &[f32], max_scroll: f32) -> f32 {
+    let Some(&y) = positions.get(index) else {
+        return 0.0;
+    };
+    let next = positions
+        .get(index + 1)
+        .copied()
+        .unwrap_or(max_scroll)
+        .max(y);
+    if next <= y {
+        return 0.0;
+    }
+    ((scroll - y) / (next - y)).clamp(0.0, 1.0)
+}
+
+fn find_quote(text: &str, quote: &str) -> Option<(usize, usize)> {
+    if quote.is_empty() {
+        return None;
+    }
+    let byte = text.find(quote)?;
+    let start = text[..byte].chars().count();
+    Some((start, start + quote.chars().count()))
+}
+
+fn char_slice_eq(text: &str, start: usize, end: usize, quote: &str) -> bool {
+    end > start
+        && text
+            .chars()
+            .skip(start)
+            .take(end - start)
+            .collect::<String>()
+            == quote
+}
+
+/// Ubica una anotación en el capítulo: primero respeta los offsets guardados;
+/// si el bloque o el texto cambiaron, busca la cita. Devuelve (bloque, inicio, fin).
+fn resolve_annotation(annotation: &Annotation, blocks: &[Block]) -> Option<(usize, usize, usize)> {
+    if let Some(block) = blocks.get(annotation.block) {
+        let text = block.text();
+        if char_slice_eq(&text, annotation.start, annotation.end, &annotation.quote) {
+            return Some((annotation.block, annotation.start, annotation.end));
+        }
+        if let Some((start, end)) = find_quote(&text, &annotation.quote) {
+            return Some((annotation.block, start, end));
+        }
+    }
+    blocks.iter().enumerate().find_map(|(index, block)| {
+        find_quote(&block.text(), &annotation.quote).map(|(start, end)| (index, start, end))
+    })
+}
+
+fn resolve_highlights(
+    annotations: &Annotations,
+    book: &str,
+    chapter: usize,
+    blocks: &[Block],
+) -> HashMap<usize, Vec<(usize, usize)>> {
+    let mut out: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    for annotation in annotations.for_book(book).filter(|a| a.chapter == chapter) {
+        if let Some((block, start, end)) = resolve_annotation(annotation, blocks) {
+            out.entry(block).or_default().push((start, end));
+        }
+    }
+    out
+}
+
+fn locate_quote(blocks: &[Block], block: usize, quote: &str) -> Option<usize> {
+    if quote.is_empty() {
+        return (block < blocks.len()).then_some(block);
+    }
+    if let Some(found) = blocks.get(block) {
+        if found.text().contains(quote) {
+            return Some(block);
+        }
+    }
+    blocks.iter().position(|b| b.text().contains(quote))
+}
+
 /// Destino de restauración: el ancla manda y el ratio ajusta dentro del bloque.
 /// Si el ratio se sale del bloque (layout muy distinto) se recorta a sus bordes,
 /// de modo que reabrir nunca se aleje más de un bloque del punto guardado.
 fn restore_target(restore: &Progress, positions: &[f32], max_scroll: f32) -> Option<f32> {
     if let Some(index) = restore.anchor {
         if let Some(&y) = positions.get(index) {
-            let approx = restore.ratio * max_scroll;
             let next = positions
                 .get(index + 1)
                 .copied()
                 .unwrap_or(max_scroll)
                 .max(y);
+            if let Some(fraction) = restore.anchor_ratio {
+                let target = y + fraction.clamp(0.0, 1.0) * (next - y);
+                return Some(target.clamp(y, next));
+            }
+            let approx = restore.ratio * max_scroll;
             return Some(approx.clamp(y, next));
         }
     }
@@ -1637,32 +2224,165 @@ fn pad_to(ui: &mut Ui, top: f32, height: f32) {
     }
 }
 
-fn add_text_job(
+fn append_with_highlights(
+    job: &mut LayoutJob,
+    text: &str,
+    format: TextFormat,
+    base: usize,
+    ranges: &[(usize, usize)],
+    background: Color32,
+) {
+    let len = text.chars().count();
+    if len == 0 {
+        return;
+    }
+    let overlaps = ranges
+        .iter()
+        .any(|&(start, end)| end > base && start < base + len);
+    if !overlaps {
+        job.append(text, 0.0, format);
+        return;
+    }
+
+    let mut cuts = vec![0usize, len];
+    for &(start, end) in ranges {
+        if end <= base || start >= base + len {
+            continue;
+        }
+        cuts.push(start.saturating_sub(base).min(len));
+        cuts.push(end.saturating_sub(base).min(len));
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    let chars: Vec<char> = text.chars().collect();
+
+    for pair in cuts.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        if a >= b {
+            continue;
+        }
+        let abs_a = base + a;
+        let abs_b = base + b;
+        let inside = ranges
+            .iter()
+            .any(|&(start, end)| abs_a >= start && abs_b <= end);
+        let mut fmt = format.clone();
+        if inside {
+            fmt.background = background;
+        }
+        let segment: String = chars[a..b].iter().collect();
+        job.append(&segment, 0.0, fmt);
+    }
+}
+
+/// Datos de un bloque necesarios para renderizar texto seleccionable.
+struct TextArgs<'a> {
+    block_index: usize,
+    full_text: &'a str,
+    block_text: &'a str,
+    prefix_len: usize,
+    links: &'a [(std::ops::Range<usize>, String)],
+    chapter: usize,
+    book: Option<&'a Book>,
+}
+
+fn selection_range(
+    prefix_len: usize,
+    block_text: &str,
+    a: usize,
+    b: usize,
+) -> Option<(usize, usize, String)> {
+    let (a, b) = (a.min(b), a.max(b));
+    let chars = block_text.chars().count();
+    let start = a.saturating_sub(prefix_len).min(chars);
+    let end = b.saturating_sub(prefix_len).min(chars);
+    (end > start).then(|| {
+        let quote = block_text.chars().skip(start).take(end - start).collect();
+        (start, end, quote)
+    })
+}
+
+fn add_selectable_text(
     ui: &mut Ui,
     job: LayoutJob,
-    links: &[(std::ops::Range<usize>, String)],
-    chapter: usize,
-    book: Option<&Book>,
+    args: &TextArgs<'_>,
     link_target: &mut Option<(usize, Option<String>)>,
+    selection: &mut Option<Selection>,
+    reader_focus: &mut Option<egui::Id>,
 ) -> egui::Response {
-    let sense = if links.is_empty() {
-        Sense::hover()
-    } else {
-        Sense::click()
+    let desired_width = job.wrap.max_width;
+    let wrap_width = desired_width;
+    let mut layouter = move |ui: &egui::Ui, _buf: &dyn egui::TextBuffer, wrap_width: f32| {
+        let mut job = job.clone();
+        job.wrap.max_width = wrap_width;
+        ui.fonts(|fonts| fonts.layout_job(job))
     };
-    let response = ui.add(
-        egui::Label::new(job.clone())
-            .wrap()
-            .selectable(false)
-            .sense(sense),
-    );
-    if !links.is_empty() && response.clicked() {
+    let id = ui.make_persistent_id((
+        "reader-block",
+        args.chapter,
+        args.block_index,
+        args.book.map(|b| b.path.as_path()),
+    ));
+    let mut text = args.full_text;
+    let output = egui::TextEdit::multiline(&mut text)
+        .id(id)
+        .frame(false)
+        .margin(egui::Margin::ZERO)
+        .desired_rows(1)
+        .desired_width(wrap_width)
+        .layouter(&mut layouter)
+        .show(ui);
+    let response = output.response;
+
+    if response.has_focus() {
+        *reader_focus = Some(response.id);
+    }
+
+    if let Some(range) = output.cursor_range {
+        let (a, b) = (range.primary.index, range.secondary.index);
+        let (a, b) = (a.min(b), a.max(b));
+        let focused = response.has_focus();
+        if focused && b == a {
+            *selection = None;
+        } else if focused {
+            if let Some((start, end, quote)) =
+                selection_range(args.prefix_len, args.block_text, a, b)
+            {
+                let start_rect = output.galley.pos_from_cursor(egui::text::CCursor::new(a));
+                let end_rect = output.galley.pos_from_cursor(egui::text::CCursor::new(b));
+                let rect = egui::Rect::from_two_pos(
+                    output.galley_pos + start_rect.left_top().to_vec2(),
+                    output.galley_pos + end_rect.right_bottom().to_vec2(),
+                );
+                *selection = Some(Selection {
+                    chapter: args.chapter,
+                    block: args.block_index,
+                    start,
+                    end,
+                    quote,
+                    rect,
+                    edit_id: response.id,
+                });
+            } else {
+                *selection = None;
+            }
+        }
+    }
+
+    let collapsed = output
+        .cursor_range
+        .is_none_or(|range| range.primary.index == range.secondary.index);
+    if response.has_focus() && collapsed && ui.input(|i| i.pointer.any_released()) {
+        ui.memory_mut(|memory| memory.surrender_focus(response.id));
+        *reader_focus = None;
+    }
+
+    if !args.links.is_empty() && response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
-            let galley = ui.fonts(|fonts| fonts.layout_job(job));
-            let index = galley.cursor_from_pos(pos - response.rect.min).index;
-            if let Some((_, href)) = links.iter().find(|(range, _)| range.contains(&index)) {
-                if let Some(book) = book {
-                    if let Some(target) = book.link_target(href, chapter) {
+            let index = output.galley.cursor_from_pos(pos - output.galley_pos).index;
+            if let Some((_, href)) = args.links.iter().find(|(range, _)| range.contains(&index)) {
+                if let Some(book) = args.book {
+                    if let Some(target) = book.link_target(href, args.chapter) {
                         *link_target = Some(target);
                     }
                 }
@@ -1894,6 +2614,8 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
 fn draw_block(
     ui: &mut Ui,
     b: &Block,
+    block_index: usize,
+    highlights: &[(usize, usize)],
     colw: f32,
     s: &Settings,
     th: &Theme,
@@ -1901,6 +2623,8 @@ fn draw_block(
     book: &mut Option<Book>,
     chapter: usize,
     link_target: &mut Option<(usize, Option<String>)>,
+    selection: &mut Option<Selection>,
+    reader_focus: &mut Option<egui::Id>,
     ctx: &egui::Context,
 ) {
     let base = s.font_size;
@@ -2002,40 +2726,39 @@ fn draw_block(
     job.halign = halign;
 
     let mut cursor = 0usize;
+    let mut text_cursor = 0usize;
     let mut link_spans: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    let highlight =
+        Color32::from_rgba_unmultiplied(th.accent.r(), th.accent.g(), th.accent.b(), 85);
 
-    let section =
-        |job: &mut LayoutJob, text: &str, bold: bool, italic: bool, size: f32, color: Color32| {
-            let fam = if matches!(b.kind, Kind::Pre) {
-                FontFamily::Monospace
-            } else {
-                fonts::family(bold, italic)
-            };
-            job.append(
-                text,
-                0.0,
-                TextFormat {
-                    font_id: FontId::new(size, fam),
-                    color,
-                    line_height: Some(size * lh),
-                    ..Default::default()
-                },
-            );
+    let format_for = |bold: bool, italic: bool, size: f32, color: Color32| -> TextFormat {
+        let fam = if matches!(b.kind, Kind::Pre) {
+            FontFamily::Monospace
+        } else {
+            fonts::family(bold, italic)
         };
+        TextFormat {
+            font_id: FontId::new(size, fam),
+            color,
+            line_height: Some(size * lh),
+            ..Default::default()
+        }
+    };
 
     match b.kind {
         Kind::Bullet => {
             let prefix = "•\u{a0}\u{a0}\u{a0}";
-            section(&mut job, prefix, false, false, size, th.accent);
+            job.append(prefix, 0.0, format_for(false, false, size, th.accent));
             cursor += prefix.chars().count();
         }
         Kind::Numbered(n) => {
             let prefix = format!("{n}.\u{a0}\u{a0}\u{a0}");
-            section(&mut job, &prefix, false, false, size, th.accent);
+            job.append(&prefix, 0.0, format_for(false, false, size, th.accent));
             cursor += prefix.chars().count();
         }
         _ => {}
     }
+    let prefix_len = cursor;
 
     for run in &b.runs {
         let rs = if run.small { size * 0.86 } else { size };
@@ -2044,16 +2767,20 @@ fn draw_block(
         if let Some(href) = &run.href {
             link_spans.push((cursor..cursor + len, href.clone()));
         }
-        section(
+        append_with_highlights(
             &mut job,
             &run.text,
-            run.bold || bold_all,
-            run.italic || force_italic,
-            rs,
-            rc,
+            format_for(run.bold || bold_all, run.italic || force_italic, rs, rc),
+            text_cursor,
+            highlights,
+            highlight,
         );
         cursor += len;
+        text_cursor += len;
     }
+
+    let full_text = job.text.clone();
+    let block_text = b.text();
     match b.kind {
         Kind::Quote => {
             let x = ui.cursor().left();
@@ -2061,7 +2788,16 @@ fn draw_block(
                 ui.add_space(16.0);
                 let mut j2 = job.clone();
                 j2.wrap.max_width = (colw - 16.0).max(120.0);
-                let resp = add_text_job(ui, j2, &link_spans, chapter, book.as_ref(), link_target);
+                let args = TextArgs {
+                    block_index,
+                    full_text: &full_text,
+                    block_text: &block_text,
+                    prefix_len,
+                    links: &link_spans,
+                    chapter,
+                    book: book.as_ref(),
+                };
+                let resp = add_selectable_text(ui, j2, &args, link_target, selection, reader_focus);
                 ui.painter().vline(
                     x + 3.0,
                     resp.rect.y_range(),
@@ -2070,7 +2806,16 @@ fn draw_block(
             });
         }
         _ => {
-            add_text_job(ui, job, &link_spans, chapter, book.as_ref(), link_target);
+            let args = TextArgs {
+                block_index,
+                full_text: &full_text,
+                block_text: &block_text,
+                prefix_len,
+                links: &link_spans,
+                chapter,
+                book: book.as_ref(),
+            };
+            add_selectable_text(ui, job, &args, link_target, selection, reader_focus);
         }
     }
 
@@ -2120,6 +2865,7 @@ mod tests {
             chapter: 3,
             ratio,
             anchor,
+            anchor_ratio: None,
             legacy_offset: None,
         }
     }
@@ -2131,6 +2877,45 @@ mod tests {
         let target = restore_target(&p, &positions, 1000.0).unwrap();
         assert!((target - 300.0).abs() < 0.01);
         assert_eq!(top_block(target, &positions), Some(2));
+    }
+
+    #[test]
+    fn fraccion_del_bloque_sobrevive_al_cambio_de_layout() {
+        let p = Progress {
+            chapter: 3,
+            ratio: 0.25,
+            anchor: Some(2),
+            anchor_ratio: Some(0.5),
+            legacy_offset: None,
+        };
+        let antes = restore_target(&p, &[34.0, 120.0, 300.0, 700.0], 1000.0).unwrap();
+        assert!((antes - 500.0).abs() < 0.01);
+
+        // El mismo 50 % del bloque cae en otro píxel tras cambiar la fuente.
+        let despues = restore_target(&p, &[34.0, 150.0, 400.0, 1200.0], 2000.0).unwrap();
+        assert!((despues - 800.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn fraccion_cero_fija_el_tope_del_bloque() {
+        let p = Progress {
+            chapter: 3,
+            ratio: 0.9,
+            anchor: Some(2),
+            anchor_ratio: Some(0.0),
+            legacy_offset: None,
+        };
+        let target = restore_target(&p, &[34.0, 120.0, 300.0, 700.0], 1000.0).unwrap();
+        assert!((target - 300.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn fraccion_se_calcula_dentro_del_bloque() {
+        let positions = [34.0, 120.0, 300.0, 700.0];
+        assert!((block_fraction(500.0, 2, &positions, 1000.0) - 0.5).abs() < 0.01);
+        assert!((block_fraction(300.0, 2, &positions, 1000.0)).abs() < 0.01);
+        assert!((block_fraction(700.0, 2, &positions, 1000.0) - 1.0).abs() < 0.01);
+        assert!((block_fraction(850.0, 3, &positions, 1000.0) - 0.5).abs() < 0.01);
     }
 
     #[test]
@@ -2156,11 +2941,96 @@ mod tests {
             chapter: 1,
             ratio: 0.0,
             anchor: None,
+            anchor_ratio: None,
             legacy_offset: Some(42.0),
         };
         assert_eq!(restore_target(&viejo, &positions, 800.0), Some(42.0));
 
         let fuera = restore_target(&prog(0.1, Some(99)), &positions, 800.0).unwrap();
         assert!((fuera - 80.0).abs() < 0.01);
+    }
+
+    fn paragraph(text: &str) -> Block {
+        Block {
+            kind: Kind::Para,
+            runs: vec![crate::xhtml::Run {
+                text: text.into(),
+                ..Default::default()
+            }],
+            src: None,
+            alt: String::new(),
+            anchor: None,
+        }
+    }
+
+    fn annotation(block: usize, start: usize, end: usize, quote: &str) -> Annotation {
+        Annotation {
+            book: "/libro.epub".into(),
+            chapter: 2,
+            block,
+            start,
+            end,
+            quote: quote.into(),
+            ..Annotation::default()
+        }
+    }
+
+    #[test]
+    fn destacado_respeta_offsets_y_reancla_por_cita() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("Otra frase distinta")];
+        let exacto = annotation(0, 5, 10, "mundo");
+        assert_eq!(resolve_annotation(&exacto, &blocks), Some((0, 5, 10)));
+
+        // El bloque guardado cambió, pero la cita sigue en el capítulo.
+        let movido = annotation(1, 0, 5, "mundo");
+        assert_eq!(resolve_annotation(&movido, &blocks), Some((0, 5, 10)));
+
+        // Offsets viejos dentro del bloque correcto: se reancla por cita.
+        let corrido = annotation(0, 0, 9, "frase distinta");
+        assert_eq!(resolve_annotation(&corrido, &blocks), Some((1, 5, 19)));
+    }
+
+    #[test]
+    fn destacado_inexistente_no_se_dibuja() {
+        let blocks = vec![paragraph("Hola mundo")];
+        let perdido = annotation(0, 0, 4, "zzz");
+        assert_eq!(resolve_annotation(&perdido, &blocks), None);
+
+        let mut all = Annotations::default();
+        all.add(perdido);
+        all.add(annotation(0, 5, 10, "mundo"));
+        let ranges = resolve_highlights(&all, "/libro.epub", 2, &blocks);
+        assert_eq!(ranges.get(&0).map(Vec::as_slice), Some(&[(5, 10)][..]));
+        assert_eq!(ranges.len(), 1);
+    }
+
+    #[test]
+    fn locate_quote_prefiere_el_bloque_guardado() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("mundo otra vez")];
+        assert_eq!(locate_quote(&blocks, 1, "mundo"), Some(1));
+        assert_eq!(locate_quote(&blocks, 9, "mundo"), Some(0));
+        assert_eq!(locate_quote(&blocks, 0, "zzz"), None);
+        assert_eq!(locate_quote(&blocks, 1, ""), Some(1));
+    }
+
+    #[test]
+    fn seleccion_descuenta_prefijo_y_ordena_extremos() {
+        assert_eq!(
+            selection_range(0, "hola mundo", 0, 4),
+            Some((0, 4, "hola".to_string()))
+        );
+        assert_eq!(
+            selection_range(4, "hola mundo", 4, 9),
+            Some((0, 5, "hola ".to_string()))
+        );
+        assert_eq!(
+            selection_range(4, "hola mundo", 9, 4),
+            Some((0, 5, "hola ".to_string()))
+        );
+        assert_eq!(selection_range(4, "hola mundo", 2, 3), None);
+        assert_eq!(
+            selection_range(0, "hola", 0, 99),
+            Some((0, 4, "hola".to_string()))
+        );
     }
 }

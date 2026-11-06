@@ -12,7 +12,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 52 unit + 8 integración (fixtures propios)
+cargo test                                  # 64 unit + 8 integración (fixtures propios)
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio
@@ -43,6 +43,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - `config.json` se escribe atómico (temporal + `rename`); no volver a `fs::write`.
 - Toda dependencia nueva necesita justificación en un ADR (peso, licencia, mantenimiento).
 - Nada de `unwrap()` en rutas de datos de usuario (EPUB roto, archivo faltante).
+- Los destacados y notas se guardan como **offsets de caracteres + cita** en
+  `annotations.json`; no los conviertas a píxeles ni los mezcles con
+  `library.json`.
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

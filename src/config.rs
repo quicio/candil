@@ -54,10 +54,15 @@ impl Settings {
 #[serde(default)]
 pub struct Progress {
     pub chapter: usize,
-    /// Fracción de scroll dentro del capítulo (0..1).
+    /// Fracción de scroll dentro del capítulo (0..1). Sirve para la tarjeta de
+    /// biblioteca y como fallback cuando no hay ancla.
     pub ratio: f32,
     /// Índice del bloque visible superior; sobrevive cambios de fuente.
     pub anchor: Option<usize>,
+    /// Fracción dentro de ese bloque (0..1). Sin esto, un párrafo largo puede
+    /// descolocarse decenas de líneas al cambiar la tipografía.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_ratio: Option<f32>,
     /// Compatibilidad con `{chapter, offset}` de M2; se usa una vez al abrir
     /// el libro y se descarta al volver a guardar.
     #[serde(alias = "offset", default, skip_serializing_if = "Option::is_none")]
@@ -69,6 +74,7 @@ impl Progress {
         self.chapter == 0
             && self.ratio <= 0.0
             && self.anchor.is_none()
+            && self.anchor_ratio.is_none_or(|ratio| ratio <= 0.0)
             && self.legacy_offset.is_none_or(|offset| offset <= 0.0)
     }
 
@@ -159,6 +165,7 @@ mod tests {
                 chapter: 7,
                 ratio: 0.5,
                 anchor: Some(3),
+                anchor_ratio: Some(0.4),
                 legacy_offset: None,
             },
         );
@@ -170,6 +177,7 @@ mod tests {
         let progress = loaded.progress.get("/libro.epub").unwrap();
         assert_eq!(progress.chapter, 7);
         assert!((progress.ratio - 0.5).abs() < f32::EPSILON);
+        assert!((progress.anchor_ratio.unwrap() - 0.4).abs() < f32::EPSILON);
         assert_eq!(progress.anchor, Some(3));
 
         let _ = std::fs::remove_dir_all(dir);
@@ -240,6 +248,7 @@ mod tests {
             chapter: 2,
             ratio: 0.25,
             anchor: Some(7),
+            anchor_ratio: None,
             legacy_offset: None,
         };
         let json = serde_json::to_string(&new).unwrap();

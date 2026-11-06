@@ -1,7 +1,7 @@
 ---
 id: adr-0005
 status: aceptada
-version: 1.2.0
+version: 1.3.0
 updated: 2026-11-06
 ---
 
@@ -66,9 +66,14 @@ pedía la spec 20 (T8).
 ## Enmienda (2026-11-06) — forma del progreso
 
 La spec 35 cambia la forma del progreso por libro a
-`{chapter, ratio, anchor}` (ancla = índice del bloque visible superior) y agrega
+`{chapter, ratio, anchor, anchor_ratio}` (ancla = índice del bloque visible
+superior; `anchor_ratio` = fracción dentro de ese bloque) y agrega
 `BookEntry.settings` para overrides de tipografía/tema. El `offset` viejo se lee
 mediante `#[serde(alias = "offset")]` y se migra en el primer guardado; no se
 pierde la posición. `config.json` sigue sin recibir escrituras nuevas de
 progreso. Este ADR mantiene su decisión de fondo: JSON plano, atómico y sin
 esquema rígido.
+
+La spec 45 agrega `annotations.json` con el mismo helper atómico y
+`schema_version`. Se mantiene separado de `library.json` para no hinchar el
+índice de la estantería ni reescribirlo en cada destacado.

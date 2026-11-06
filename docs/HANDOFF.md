@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.4.0
+version: 1.5.0
 updated: 2026-11-06
 ---
 
@@ -13,10 +13,12 @@ Lector de EPUB de escritorio en Rust: una columna, scroll continuo, tipografía
 propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
-**M1 (lector), M1.1 (endurecimiento) y M2 (biblioteca) están cerrados.**
-**M3 (lectura fina) también:** anclas y saltos (spec 30) más progreso por
-fracción con ancla de bloque y preferencias por libro (spec 35). El siguiente
-milestone es M4 (búsqueda y destacados/notas, spec 45).
+**M1 (lector), M1.1 (endurecimiento), M2 (biblioteca) y M3 (lectura fina)
+están cerrados.** M3 incluye anclas/saltos (spec 30) y progreso por fracción con
+ancla de bloque más preferencias por libro (spec 35).
+
+**M4 está en curso:** el MVP de destacados y notas (spec 45) ya está
+implementado y verificado; falta la búsqueda dentro del libro (spec 40).
 
 ## Estado medido (no estimado)
 
@@ -30,12 +32,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 5 en `docs/img/` (vacía, llena, búsqueda, error, tipografía por libro) | `--shot --screen library` / `--panel settings` |
+| capturas | 8 en `docs/img/` (biblioteca ×4, tipografía, destacado, panel y nota) | `--shot --screen library` / `--panel settings/notes/note` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 52 unit + 8 integración | `cargo test` |
+| tests | 64 unit + 8 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.532.752 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.566.032 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -61,6 +63,7 @@ src/app.rs     ventana, biblioteca, lector, barra, scroll, paneles, teclado
 src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada (con #ancla)
 src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
+src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
@@ -86,6 +89,8 @@ cargo run --profile fast -- --shot /tmp/libro.png --chapter 13 libro.epub
 cargo run --profile fast -- --shot /tmp/ancla.png --anchor 6 libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel toc libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel settings libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel notes libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel note libro.epub
 
 # diagnóstico de parser
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub
@@ -129,13 +134,16 @@ flotante tapando texto) solo aparecieron así.
    solo se conserva para leer archivos viejos y no recibe escrituras nuevas.
 10. **Las anclas del EPUB se preservan** en `Block.anchor` y `TocEntry.anchor`;
     nunca se descarta el `#fragmento` al parsear nav/ncx.
-11. **El progreso se guarda como `{chapter, ratio, anchor}`**, no como píxeles.
-    El ancla es el índice de bloque visible superior y manda al restaurar; el
-    ratio solo ajusta dentro de ese bloque. Cualquier posición que se persista
-    debe venir de coordenadas de contenido, no de pantalla.
+11. **El progreso se guarda como `{chapter, ratio, anchor, anchor_ratio}`**, no
+    como píxeles. El ancla es el índice de bloque visible superior y manda al
+    restaurar; `anchor_ratio` interpola dentro del bloque. Cualquier posición que
+    se persista debe venir de coordenadas de contenido, no de pantalla.
 12. **Los ajustes por libro no contaminan el global**: `entry.settings` gana si
     existe; desmarcar "Solo para este libro" borra el override. El tema se
     resuelve por frame con `effective_settings`.
+13. **Los destacados son offsets de caracteres + cita**, no píxeles ni índices
+    de byte. Si el bloque cambió, se reanclan buscando la cita en el capítulo; si
+    no aparece, no se dibujan. Borrar una anotación nunca toca el EPUB.
 
 ## Definición de terminado (por tarea)
 

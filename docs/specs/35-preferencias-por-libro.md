@@ -2,7 +2,7 @@
 id: spec-35
 title: Preferencias por libro y progreso estable
 status: implementada
-version: 1.1.0
+version: 1.2.0
 updated: 2026-11-06
 milestone: M3
 depends_on: [spec-10, adr-0005, spec-20, adr-0010]
@@ -24,11 +24,12 @@ libro obliga a ir a ajustes cada vez.
 
 ## Decisión
 
-1. **Progreso en fracción**: guardar `{ chapter, ratio, anchor }` con
-   `ratio = offset / max_scroll` (0..1) **y** el índice del bloque visible
-   superior. Al restaurar manda el ancla: `offset = y_del_bloque[anchor]`, con el
-   ratio como ajuste **dentro** de ese bloque. Así el punto sobrevive cambios de
-   fuente, ventana y ancho de columna sin derivar al reabrir.
+1. **Progreso en fracción**: guardar `{ chapter, ratio, anchor, anchor_ratio }`
+   con `ratio = offset / max_scroll` (0..1), el índice del bloque visible
+   superior y la fracción del scroll **dentro** de ese bloque. Al restaurar
+   manda el ancla: `offset = y_bloque + anchor_ratio * alto_bloque`. Así el punto
+   sobrevive cambios de fuente, ventana y ancho de columna sin derivar al
+   reabrir, incluso en párrafos de varias pantallas.
 2. **Overrides por libro**: `Settings` opcional por entrada de biblioteca
    (`entry.settings: Option<Settings>`). "Aa" en el lector gana un checkbox
    "Solo para este libro"; al desmarcarlo, se borra el override.
@@ -38,16 +39,20 @@ libro obliga a ir a ajustes cada vez.
 
 ### Progreso
 
-- `Progress { chapter, ratio, anchor }`. Para leer JSON de M2 se agrega
-  `legacy_offset` con `#[serde(alias = "offset", skip_serializing_if = "Option::is_none")]`:
-  el offset viejo se usa **una vez** al abrir y se descarta al volver a guardar.
+- `Progress { chapter, ratio, anchor, anchor_ratio }`. `anchor_ratio` es
+  `Option<f32>`: `None` significa JSON viejo sin el campo y activa el fallback
+  por ratio de capítulo; `Some(0.0)` fija el tope del bloque. Para leer JSON de
+  M2 se agrega `legacy_offset` con
+  `#[serde(alias = "offset", skip_serializing_if = "Option::is_none")]`: el
+  offset viejo se usa **una vez** al abrir y se descarta al volver a guardar.
   No se pierde la posición ni se fuerza `ratio = 0` como preveía el borrador.
 - `anchor` es el **índice del bloque** cuyo tope queda en o por encima del
   scroll (`top_block`), no el `id` del EPUB: sobrevive a cambios de HTML y de
   parser. Si el índice deja de existir, se degrada al ratio o al offset legado.
-- Al restaurar, `restore_target` recorta el ratio estimado (`ratio * max_scroll`)
-  al rango `[y_anchor, y_bloque_siguiente]`. Si el layout no cambió, el ratio cae
-  exacto en la posición original; si cambió, nunca se aleja más de un bloque.
+- Al restaurar, `restore_target` usa `anchor_ratio` para interpolar dentro del
+  bloque; si falta (datos de M3), recorta `ratio * max_scroll` al rango
+  `[y_anchor, y_bloque_siguiente]`. Si el layout no cambió, la posición es
+  exacta; si cambió, la fracción del bloque mantiene la misma frase a la vista.
 - **Normalización de coordenadas:** `ui.cursor()` dentro de `ScrollArea` devuelve
   coordenadas de pantalla. Las posiciones se convierten a coordenadas del
   contenido con `y + state.offset.y - inner_rect.top()` antes de persistir o
@@ -67,20 +72,24 @@ libro obliga a ir a ajustes cada vez.
 
 - `progress_viejo_con_offset_se_migra_al_leer` (serde del JSON viejo).
 - `settings_por_libro_tienen_precedencia` y `escaneo_conserva_settings_por_libro`.
-- `ancla_no_deriva_al_reabrir`, `ratio_ajusta_dentro_del_ancla` y
-  `sin_ancla_cae_a_ratio_o_al_offset_viejo` (matemática de restore).
-- Total al cerrar: **52 unit + 8 integración**, clippy sin warnings.
+- `ancla_no_deriva_al_reabrir`, `ratio_ajusta_dentro_del_ancla`,
+  `sin_ancla_cae_a_ratio_o_al_offset_viejo`,
+  `fraccion_del_bloque_sobrevive_al_cambio_de_layout`,
+  `fraccion_cero_fija_el_tope_del_bloque` y
+  `fraccion_se_calcula_dentro_del_bloque` (matemática de restore).
+- Total al cerrar M3: **52 unit + 8 integración**; tras el MVP de M4, **64 + 8**.
+  Clippy sin warnings.
 
 ## Tareas
 
 ### T1 — Progreso en fracción (hecha)
-- `Progress` con `chapter`, `ratio` y `anchor`; compatibilidad con `offset`.
+- `Progress` con `chapter`, `ratio`, `anchor` y `anchor_ratio`; compatibilidad con `offset`.
 - Tests de serialización y de compatibilidad con el JSON viejo.
 
 ### T2 — Restaurar con ancla de bloque (hecha)
 - Registrar en cada frame el bloque visible superior y guardarlo.
-- Al abrir: ancla primero, ratio recortado al bloque, offset legado como último
-  recurso.
+- Al abrir: ancla + fracción del bloque; si faltan, ratio recortado al bloque;
+  offset legado como último recurso.
 
 ### T3 — Overrides por libro (hecha)
 - `Settings` opcional en `BookEntry`.
@@ -91,13 +100,15 @@ libro obliga a ir a ajustes cada vez.
 - Captura con `--shot` de un libro con tema propio sobre el tema global: se ve
   Noche con `Aa·`, slider en 17 y checkbox marcado.
 - Mismo ancla (bloque 12 de *El mito de Sísifo*, cap. 9) con fuente 27 y 17:
-  la primera línea visible es la misma; `library.json` conserva `anchor: 12`.
+  la primera línea visible es la misma; `library.json` conserva `anchor: 12` y
+  `anchor_ratio`, y la frase no se mueve ni en un párrafo largo.
 - Migración de `{chapter, offset}` cubierta por test unitario.
 
 ## Criterio de salida
 
 1. Cambiar fuente/interlineado/ancho y reabrir conserva el punto de lectura
-   (± 2 líneas). **Cumplido** con ancla + ratio intra-bloque.
+   (± 2 líneas). **Cumplido** con ancla + `anchor_ratio`; probado con el
+   párrafo largo del cap. 9 de *El mito de Sísifo* a 17 y 27.
 2. Libros distintos pueden tener temas distintos simultáneamente. **Cumplido**;
    el global queda intacto.
 3. `Progress` viejo en JSON no rompe el arranque. **Cumplido**; se migra al

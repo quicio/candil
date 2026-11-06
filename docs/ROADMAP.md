@@ -96,10 +96,14 @@ Criterio de salida, medible:
 - Preferencias por libro (tema, tamaño, interlineado) sin perder las globales.
 - Salto a porcentaje y a capítulo por número.
 
-## M4 — Extras
+## M4 — Extras (después de M3)
 
 - Búsqueda dentro del libro con contexto y resaltado de resultados.
-- Citas y marcadores exportables (texto + posición + título del libro).
+- **Destacados y notas:** MVP definido en spec 45 — selección de frase dentro de
+  un párrafo, un color, nota opcional, `annotations.json` y panel por libro con
+  salto/borrado. Índice global, varios colores y export Markdown quedan para una
+  segunda etapa.
+- Citas exportables (texto + posición + título del libro), después del MVP.
 
 ## Orden de ataque recomendado
 

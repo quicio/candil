@@ -28,7 +28,7 @@ Orden de lectura para un agente nuevo:
 | [30](specs/30-indice-por-ancla.md) | Índice por ancla | draft |
 | [35](specs/35-preferencias-por-libro.md) | Preferencias por libro y progreso estable | draft |
 | [40](specs/40-busqueda.md) | Búsqueda dentro del libro | borrador inicial |
-| [45](specs/45-citas-y-marcadores.md) | Citas y marcadores | borrador inicial |
+| [45](specs/45-citas-y-marcadores.md) | Citas y marcadores | **borrador (MVP definido; después de M3)** |
 
 ## ADR
 

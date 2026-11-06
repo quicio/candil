@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.2.0
+version: 1.3.0
 updated: 2026-11-06
 ---
 
@@ -14,8 +14,9 @@ propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
 **M1 (lector) y M1.1 (endurecimiento, spec 15) están terminados y verificados.**
-**M1, M1.1 y M2 están cerrados y verificados.** Sigue **M3 (lectura fina):
-anclas y progreso por fracción**.
+**M1, M1.1 y M2 están cerrados y verificados. M3 está en curso:** T1/T2 de
+anclas están hechas (`Block.anchor`, fragmentos del índice); faltan los saltos
+exactos y el progreso por fracción.
 
 ## Estado medido (no estimado)
 
@@ -32,9 +33,9 @@ el mismo):
 | capturas | 4 en `docs/img/` (vacía, llena, búsqueda, error) | `--shot --screen library` |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 41 unit + 8 integración | `cargo test` |
+| tests | 44 unit + 8 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.516.112 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.516.128 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -57,8 +58,8 @@ código.
 src/lib.rs     API pública (los tests de integración dependen de ella)
 src/main.rs    arranque, flags --inspect / --scan / --shot / --resume / --chapter / --panel
 src/app.rs     ventana, biblioteca, lector, barra, scroll, paneles, teclado
-src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada
-src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster)
+src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada (con #ancla)
+src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
@@ -125,6 +126,8 @@ flotante tapando texto) solo aparecieron así.
    archivo desaparece se marca `missing` y no se borra la entrada.
 9. **El progreso de libros indexados vive en `library.json`**; `config.progress`
    solo se conserva para leer archivos viejos y no recibe escrituras nuevas.
+10. **Las anclas del EPUB se preservan** en `Block.anchor` y `TocEntry.anchor`;
+    nunca se descarta el `#fragmento` al parsear nav/ncx.
 
 ## Definición de terminado (por tarea)
 

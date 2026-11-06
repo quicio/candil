@@ -1,21 +1,30 @@
 ---
 id: spec-30
 title: Índice por ancla
-status: draft
-version: 1.0.0
-updated: 2026-11-03
+status: aprobada
+version: 1.1.0
+updated: 2026-11-06
 milestone: M3
-depends_on: [spec-10, adr-0002]
+depends_on: [spec-10, adr-0002, adr-0010]
 ---
 
 # Spec 30 — Índice por ancla (M3)
 
+> **Estado: T1–T2 implementadas (2026-11-06).** `Block.anchor` y
+> `TocEntry.anchor` existen; `flores-del-mal` pasó de 1 a 8 entradas con
+> `#2`, `#6`, etc. Faltan T3–T4 (salto al bloque y `pending_anchor`) y T5
+> (enlaces internos clicables).
+
 ## Problema
 
-Hoy el índice mapea a archivos. Los libros con todo el texto en un XHTML (típico
-de conversiones Calibre) tienen **una sola entrada**: el índice real está en
-anclas (`index_split_000.html#sigil_toc_id_12`). Verificado con
-`flores-del-mal.epub`: 2 capítulos, 1 entrada, 24.115 palabras.
+Antes de T1/T2 el índice mapeaba a archivos. Los libros con todo el texto en un
+XHTML (típico de conversiones Calibre) tenían **una sola entrada**: el índice real
+está en anclas (`index_split_000.html#sigil_toc_id_12`). Verificado con
+`flores-del-mal.epub`: 2 capítulos, 24.115 palabras. Hoy el parser y el índice ya
+conservan las anclas (8 entradas para ese libro); falta el salto exacto.
+
+Además los enlaces internos (`<a href="#nota3">`) hoy se ignoran: se pintan con
+color de acento pero no hacen nada.
 
 Además los enlaces internos (`<a href="#nota3">`) hoy se ignoran: se pintan con
 color de acento pero no hacen nada.
@@ -64,15 +73,20 @@ redibuja entera):
 
 ## Tareas
 
-### T1 — Capturar anclas en los dos parsers
+### T1 — Capturar anclas en los dos parsers (hecha)
 - `Kind`/`Block` con `anchor`; tests: `<h2 id="x">` produce bloque con `anchor ==
   Some("x")`, tanto en XHTML válido como en HTML roto.
 - `cargo test xhtml` verde; ningún test existente cambia de expectativa.
 
-### T2 — Conservar fragmentos en el índice
+### T2 — Conservar fragmentos en el índice (hecha)
 - `TocEntry.anchor`; tests con el fixture (que ya tiene `cap3.xhtml#final`) y con
   un fixture nuevo que repita archivo con dos anclas distintas.
 - `--inspect` debe imprimir el ancla cuando exista.
+
+Implementado: `parse_nav`/`parse_ncx` separan y percent-decodean el fragmento;
+`build_toc` deduplica por `(spine, anchor)`; tests unitarios de fragmentos y
+dedupe. Sobre `flores-del-mal`, `--inspect` pasó de 1 a 8 entradas (`#2`, `#6`,
+`#101`, …).
 
 ### T3 — Salto dentro del capítulo
 - Mapa de anclas por frame + `pending_anchor`; test manual con `flores-del-mal`

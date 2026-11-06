@@ -989,14 +989,17 @@ impl Lector {
         if !self.show_toc {
             return;
         }
-        let entries: Vec<(String, usize)> = match &self.book {
+        let entries: Vec<(String, usize, Option<String>)> = match &self.book {
             Some(b) => {
                 if b.toc.is_empty() {
                     (0..b.chapter_count())
-                        .map(|i| (format!("Capítulo {}", i + 1), i))
+                        .map(|i| (format!("Capítulo {}", i + 1), i, None))
                         .collect()
                 } else {
-                    b.toc.iter().map(|e| (e.title.clone(), e.spine)).collect()
+                    b.toc
+                        .iter()
+                        .map(|e| (e.title.clone(), e.spine, e.anchor.clone()))
+                        .collect()
                 }
             }
             None => return,
@@ -1011,8 +1014,15 @@ impl Lector {
             .show(ctx, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
-                    for (title, spine) in &entries {
-                        let selected = *spine == self.chapter;
+                    let mut chapter_marked = false;
+                    for (title, spine, _anchor) in &entries {
+                        // Hasta T3 no hay ancla actual: marcamos solo la primera
+                        // entrada del capítulo para no resaltar todas las de un
+                        // libro con todo el texto en un XHTML.
+                        let selected = *spine == self.chapter && !chapter_marked;
+                        if *spine == self.chapter {
+                            chapter_marked = true;
+                        }
                         let text = RichText::new(title).size(13.5).color(if selected {
                             th.accent
                         } else {

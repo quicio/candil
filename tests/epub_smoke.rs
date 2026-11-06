@@ -28,6 +28,7 @@ fn expone_metadatos_y_estructura() {
     assert_eq!(book.toc[1].spine, 1);
     // El índice apunta a cap3.xhtml#final: el ancla no debe romper el mapeo.
     assert_eq!(book.toc[2].spine, 2);
+    assert_eq!(book.toc[2].anchor.as_deref(), Some("final"));
     assert_eq!(book.chapter_title(0), "Uno");
 }
 

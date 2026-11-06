@@ -14,6 +14,7 @@ use crate::xhtml::{self, Block};
 pub struct TocEntry {
     pub title: String,
     pub spine: usize,
+    pub anchor: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -180,7 +181,7 @@ impl Book {
         }
 
         // Índice: primero nav.xhtml (EPUB3), después toc.ncx (EPUB2)
-        let mut toc: Vec<(String, String)> = Vec::new();
+        let mut toc: Vec<(String, String, Option<String>)> = Vec::new();
         if let Some(nav) = manifest
             .values()
             .find(|m| m.props.split_whitespace().any(|p| p == "nav"))
@@ -213,18 +214,7 @@ impl Book {
             }
         }
 
-        let mut entries: Vec<TocEntry> = Vec::new();
-        for (t, href) in toc {
-            let target = resolve("", &href);
-            if let Some(idx) = spine_index(&spine, &target) {
-                if entries.last().map(|e| e.spine) != Some(idx) {
-                    entries.push(TocEntry {
-                        title: t,
-                        spine: idx,
-                    });
-                }
-            }
-        }
+        let entries = build_toc(toc, &spine);
 
         Ok(Self {
             path,
@@ -455,7 +445,37 @@ fn spine_index(spine: &[String], target: &str) -> Option<usize> {
     })
 }
 
-fn parse_nav(xml: &str, base: &str) -> Vec<(String, String)> {
+fn split_fragment(href: &str) -> (&str, Option<String>) {
+    match href.split_once('#') {
+        Some((path, fragment)) if !fragment.is_empty() => (path, Some(percent_decode(fragment))),
+        Some((path, _)) => (path, None),
+        None => (href, None),
+    }
+}
+
+fn build_toc(raw: Vec<(String, String, Option<String>)>, spine: &[String]) -> Vec<TocEntry> {
+    let mut entries: Vec<TocEntry> = Vec::new();
+    for (title, href, anchor) in raw {
+        let target = resolve("", &href);
+        let Some(spine_index) = spine_index(spine, &target) else {
+            continue;
+        };
+        let duplicate = entries
+            .last()
+            .map(|e| e.spine == spine_index && e.anchor.as_deref() == anchor.as_deref())
+            .unwrap_or(false);
+        if !duplicate {
+            entries.push(TocEntry {
+                title,
+                spine: spine_index,
+                anchor,
+            });
+        }
+    }
+    entries
+}
+
+fn parse_nav(xml: &str, base: &str) -> Vec<(String, String, Option<String>)> {
     let cleaned = xhtml::sanitize(xml);
     let Ok(doc) = roxmltree::Document::parse(&cleaned) else {
         return Vec::new();
@@ -483,15 +503,16 @@ fn parse_nav(xml: &str, base: &str) -> Vec<(String, String)> {
         let Some(href) = a.attribute("href") else {
             continue;
         };
-        let path = resolve(base, href);
+        let (path, anchor) = split_fragment(href);
+        let path = resolve(base, path);
         if !title.is_empty() && !path.is_empty() {
-            out.push((title, path));
+            out.push((title, path, anchor));
         }
     }
     out
 }
 
-fn parse_ncx(xml: &str, base: &str) -> Vec<(String, String)> {
+fn parse_ncx(xml: &str, base: &str) -> Vec<(String, String, Option<String>)> {
     let cleaned = xhtml::sanitize(xml);
     let Ok(doc) = roxmltree::Document::parse(&cleaned) else {
         return Vec::new();
@@ -511,9 +532,10 @@ fn parse_ncx(xml: &str, base: &str) -> Vec<(String, String)> {
             .find(|n| n.is_element() && n.tag_name().name() == "content")
             .and_then(|n| n.attribute("src"))
             .unwrap_or("");
-        let path = resolve(base, src);
+        let (path, anchor) = split_fragment(src);
+        let path = resolve(base, path);
         if !label.trim().is_empty() && !path.is_empty() {
-            out.push((label, path));
+            out.push((label, path, anchor));
         }
     }
     out
@@ -556,5 +578,43 @@ mod tests {
     fn dirname_of_entry() {
         assert_eq!(dir_of("OEBPS/Text/c1.xhtml"), "OEBPS/Text");
         assert_eq!(dir_of("c1.xhtml"), "");
+    }
+
+    #[test]
+    fn nav_preserves_fragments() {
+        let nav = r#"<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="Text/c.xhtml#a">A</a></li><li><a href="Text/c.xhtml#b">B</a></li></ol></nav></body></html>"#;
+        let out = parse_nav(nav, "OEBPS");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].1, "OEBPS/Text/c.xhtml");
+        assert_eq!(out[0].2.as_deref(), Some("a"));
+        assert_eq!(out[1].2.as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn toc_dedupes_consecutive_spine_and_anchor() {
+        let spine = vec!["c.xhtml".to_string()];
+        let raw = vec![
+            (
+                "A".to_string(),
+                "c.xhtml".to_string(),
+                Some("a".to_string()),
+            ),
+            (
+                "A repetido".to_string(),
+                "c.xhtml".to_string(),
+                Some("a".to_string()),
+            ),
+            (
+                "B".to_string(),
+                "c.xhtml".to_string(),
+                Some("b".to_string()),
+            ),
+            ("Sin ancla".to_string(), "c.xhtml".to_string(), None),
+        ];
+        let entries = build_toc(raw, &spine);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].anchor.as_deref(), Some("a"));
+        assert_eq!(entries[1].anchor.as_deref(), Some("b"));
+        assert_eq!(entries[2].anchor, None);
     }
 }

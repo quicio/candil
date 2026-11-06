@@ -32,6 +32,8 @@ pub struct Block {
     /// Ruta dentro del zip (solo para imágenes).
     pub src: Option<String>,
     pub alt: String,
+    /// `id` del elemento que originó el bloque (ancla del índice).
+    pub anchor: Option<String>,
 }
 
 impl Block {
@@ -57,6 +59,7 @@ struct Ctx {
     italic: bool,
     small: bool,
     link: bool,
+    anchor: Option<String>,
 }
 
 impl Default for Ctx {
@@ -67,6 +70,7 @@ impl Default for Ctx {
             italic: false,
             small: false,
             link: false,
+            anchor: None,
         }
     }
 }
@@ -113,14 +117,16 @@ fn parse_lenient(src: &str) -> Vec<Block> {
     let mut small = 0i32;
     let mut link = 0i32;
     let mut kinds: Vec<Kind> = vec![Kind::Para];
+    let mut anchors: Vec<Option<String>> = vec![None];
     let mut lists: Vec<(bool, u32)> = Vec::new();
 
-    let ctx = |kinds: &Vec<Kind>, b: i32, i: i32, s: i32, l: i32| Ctx {
+    let ctx = |kinds: &Vec<Kind>, b: i32, i: i32, s: i32, l: i32, anchor: Option<String>| Ctx {
         kind: *kinds.last().unwrap_or(&Kind::Para),
         bold: b > 0,
         italic: i > 0,
         small: s > 0,
         link: l > 0,
+        anchor,
     };
 
     let bytes = src.as_bytes();
@@ -137,7 +143,14 @@ fn parse_lenient(src: &str) -> Vec<Block> {
         if let Some(rest) = tail.strip_prefix("<![CDATA[") {
             match rest.find("]]>") {
                 Some(e) => {
-                    let c = ctx(&kinds, bold, italic, small, link);
+                    let c = ctx(
+                        &kinds,
+                        bold,
+                        italic,
+                        small,
+                        link,
+                        anchors.last().cloned().flatten(),
+                    );
                     push_text(&mut buf, &rest[..e], &c);
                     i += 9 + e + 3;
                 }
@@ -169,7 +182,14 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                 .to_ascii_lowercase();
 
             if name.is_empty() {
-                let c = ctx(&kinds, bold, italic, small, link);
+                let c = ctx(
+                    &kinds,
+                    bold,
+                    italic,
+                    small,
+                    link,
+                    anchors.last().cloned().flatten(),
+                );
                 push_text(&mut buf, "<", &c);
                 continue;
             }
@@ -208,10 +228,20 @@ fn parse_lenient(src: &str) -> Vec<Block> {
 
             if closing {
                 if blockish {
-                    let c = ctx(&kinds, bold, italic, small, link);
+                    let c = ctx(
+                        &kinds,
+                        bold,
+                        italic,
+                        small,
+                        link,
+                        anchors.last().cloned().flatten(),
+                    );
                     flush(&mut out, &c, &mut buf);
                     if kinds.len() > 1 {
                         kinds.pop();
+                    }
+                    if anchors.len() > 1 {
+                        anchors.pop();
                     }
                     if name == "ul" || name == "ol" {
                         lists.pop();
@@ -233,24 +263,53 @@ fn parse_lenient(src: &str) -> Vec<Block> {
 
             // Apertura
             if blockish {
-                let c = ctx(&kinds, bold, italic, small, link);
+                let c = ctx(
+                    &kinds,
+                    bold,
+                    italic,
+                    small,
+                    link,
+                    anchors.last().cloned().flatten(),
+                );
                 flush(&mut out, &c, &mut buf);
+                let inherited = anchors.last().cloned().flatten();
+                let own = attr(body, "id").filter(|id| !id.trim().is_empty());
+                anchors.push(own.or(inherited));
+            } else if let Some(id) = attr(body, "id").filter(|id| !id.trim().is_empty()) {
+                if let Some(last) = anchors.last_mut() {
+                    *last = Some(id);
+                }
             }
 
             match name.as_str() {
                 "br" => push_break(&mut buf),
                 "hr" => {
-                    let c = ctx(&kinds, bold, italic, small, link);
+                    let c = ctx(
+                        &kinds,
+                        bold,
+                        italic,
+                        small,
+                        link,
+                        anchors.last().cloned().flatten(),
+                    );
                     flush(&mut out, &c, &mut buf);
                     out.push(Block {
                         kind: Kind::Rule,
                         runs: Vec::new(),
                         src: None,
                         alt: String::new(),
+                        anchor: c.anchor.clone(),
                     });
                 }
                 "img" | "image" => {
-                    let c = ctx(&kinds, bold, italic, small, link);
+                    let c = ctx(
+                        &kinds,
+                        bold,
+                        italic,
+                        small,
+                        link,
+                        anchors.last().cloned().flatten(),
+                    );
                     flush(&mut out, &c, &mut buf);
                     let src = if name.as_str() == "img" {
                         attr(body, "src")
@@ -264,6 +323,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         alt: attr(body, "alt")
                             .or_else(|| attr(body, "aria-label"))
                             .unwrap_or_default(),
+                        anchor: c.anchor.clone(),
                     });
                 }
                 "ul" => {
@@ -323,12 +383,26 @@ fn parse_lenient(src: &str) -> Vec<Block> {
         }
 
         let next = src[i..].find('<').map(|e| i + e).unwrap_or(src.len());
-        let c = ctx(&kinds, bold, italic, small, link);
+        let c = ctx(
+            &kinds,
+            bold,
+            italic,
+            small,
+            link,
+            anchors.last().cloned().flatten(),
+        );
         push_text(&mut buf, &src[i..next], &c);
         i = next;
     }
 
-    let c = ctx(&kinds, bold, italic, small, link);
+    let c = ctx(
+        &kinds,
+        bold,
+        italic,
+        small,
+        link,
+        anchors.last().cloned().flatten(),
+    );
     flush(&mut out, &c, &mut buf);
     out
 }
@@ -434,6 +508,13 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
     }
 
     let tag = local(child);
+    let mut local_ctx = ctx.clone();
+    if let Some(id) = child.attribute("id") {
+        if !id.trim().is_empty() {
+            local_ctx.anchor = Some(id.to_string());
+        }
+    }
+    let ctx = &local_ctx;
     match tag.as_str() {
         "head" | "title" | "script" | "style" | "meta" | "link" => {}
         "body" | "html" => {
@@ -573,6 +654,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
                             .or_else(|| image.attribute("title"))
                             .unwrap_or("")
                             .to_string(),
+                        anchor: ctx.anchor.clone(),
                     });
                 }
             }
@@ -585,6 +667,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
                 runs: Vec::new(),
                 src: None,
                 alt: String::new(),
+                anchor: ctx.anchor.clone(),
             });
         }
 
@@ -595,6 +678,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
                 runs: Vec::new(),
                 src: child.attribute("src").map(|s| s.to_string()),
                 alt: child.attribute("alt").unwrap_or("").to_string(),
+                anchor: ctx.anchor.clone(),
             });
         }
 
@@ -688,6 +772,7 @@ fn flush(out: &mut Vec<Block>, ctx: &Ctx, buf: &mut Vec<Run>) {
         runs,
         src: None,
         alt: String::new(),
+        anchor: ctx.anchor.clone(),
     });
 }
 
@@ -1233,5 +1318,15 @@ mod tests {
             .find(|x| x.kind == Kind::Image)
             .expect("imagen svg tolerante");
         assert_eq!(img.src.as_deref(), Some("img/b.png"));
+    }
+
+    #[test]
+    fn anchors_are_captured_in_strict_and_lenient() {
+        let strict = parse(r#"<div id="sec"><h2 id="cap">Cap</h2><p>Texto</p></div>"#);
+        assert_eq!(strict[0].anchor.as_deref(), Some("cap"));
+        assert_eq!(strict[1].anchor.as_deref(), Some("sec"));
+
+        let lenient = parse("<html><body><h2 id=cap>Cap</h2><p>Texto</p></body></html>");
+        assert_eq!(lenient[0].anchor.as_deref(), Some("cap"));
     }
 }

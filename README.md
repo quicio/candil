@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.516.112 B), arranque instantáneo, sin
+Binario final (`dist`): **5.2 MiB** (5.516.128 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -77,8 +77,8 @@ variable con `fonttools`.
 src/
   main.rs    arranque, flags de desarrollo, modo --inspect / --scan
   app.rs     biblioteca, lector, barra, scroll, paneles, entrada
-  epub.rs    zip → container.xml → OPF → spine + índice + portada declarada
-  xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre, tablas, SVG raster)
+  epub.rs    zip → container.xml → OPF → spine + índice con #ancla + portada
+  xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre, tablas, SVG, anclas)
   library.rs índice de carpetas, escaneo incremental y BookEntry
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
@@ -101,7 +101,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 41
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 44
 tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -124,8 +124,8 @@ carpetas y vuelta con `Esc`.
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
-- Índice a nivel de archivo, no de ancla: libros con todo el texto en un solo
-  XHTML y anclas internas colapsan en una entrada.
+- Índice con anclas: ya se conservan los `#fragmento`, pero el salto al bloque
+  exacto dentro del capítulo todavía no está (T3/T4 de M3).
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - Sin búsqueda dentro del libro ni anotaciones.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
@@ -137,8 +137,9 @@ carpetas y vuelta con `Esc`.
 
 - **M2 — Biblioteca (cerrada):** índice, portadas, grilla, búsqueda, orden,
   filtros, carpetas y migración de progreso.
-- **M3 — Anclas (siguiente):** índice por fragmento, saltos dentro del capítulo,
-  progreso por fracción y preferencias por libro.
+- **M3 — Anclas (en curso):** anclas en el modelo y fragmentos del índice ya
+  hechos; faltan saltos dentro del capítulo, enlaces internos, progreso por
+  fracción y preferencias por libro.
 - **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
 
 ## Modo diagnóstico

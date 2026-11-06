@@ -12,7 +12,7 @@ blocks: []
 # Spec 20 — Biblioteca (M2)
 
 > **Estado: implementada.** T1–T11 cerradas el 2026-11-06 y verificadas con 50
-> EPUB (43 reales + 7 copias): 1.65 s, 48/50 portadas (96 %), 41+8 tests y 4
+> EPUB (43 reales + 7 copias): 1.65 s, 48/50 portadas (96 %), 44+8 tests y 4
 > capturas en `docs/img/`. El corpus real de 43 también quedó sin regresiones.
 > Tareas diseñadas para que un agente las ejecute sin contexto previo.
 
@@ -320,6 +320,6 @@ mostrar con un comando cada uno.
 5. `--inspect` sin regresiones sobre el corpus.
 
 Cumplido el 2026-11-06: 50 EPUB en **1.65 s** (0.01 s con caché), **48/50
-portadas (96 %)**, reapertura instantánea, **41 + 8 tests** y capturas en
+portadas (96 %)**, reapertura instantánea, **44 + 8 tests** y capturas en
 `docs/img/`; `--inspect` de los 43 reales: 0 fallos, 0 capítulos vacíos,
 2279/2279 imágenes.

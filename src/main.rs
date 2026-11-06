@@ -135,7 +135,12 @@ fn inspect(path: &str) {
             println!("capítulos: {}", book.spine.len());
             println!("índice  : {} entradas", book.toc.len());
             for e in book.toc.iter().take(12) {
-                println!("   [{:>3}] {}", e.spine, e.title);
+                let anchor = e
+                    .anchor
+                    .as_deref()
+                    .map(|a| format!("#{a}"))
+                    .unwrap_or_default();
+                println!("   [{:>3}] {} {}", e.spine, e.title, anchor);
             }
             println!("\n-- capítulos --");
             let mut empty = Vec::new();

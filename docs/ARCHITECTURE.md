@@ -1,7 +1,7 @@
 ---
 id: architecture
 status: vigente
-version: 1.2.0
+version: 1.3.0
 updated: 2026-11-06
 ---
 
@@ -38,7 +38,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 
 | módulo | hace | no hace |
 |---|---|---|
-| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice, entrega `Block`s y portada declarada | no decide estilos ni layout |
+| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s y portada declarada | no decide estilos ni layout |
 | `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
@@ -54,7 +54,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 ```rust
 pub enum Kind { Para, Heading(u8), Quote, Bullet, Numbered(u32), Rule, Pre, Caption, Image }
 pub struct Run { text: String, bold: bool, italic: bool, small: bool, link: bool }
-pub struct Block { kind: Kind, runs: Vec<Run>, src: Option<String>, alt: String }
+pub struct Block { kind: Kind, runs: Vec<Run>, src: Option<String>, alt: String, anchor: Option<String> }
 ```
 
 Decisiones que lo sostienen:
@@ -64,6 +64,9 @@ Decisiones que lo sostienen:
 - **Estilo inline por run**, no por nodo: alcanza para negrita, itálica, versalitas
   y enlaces.
 - **`src` solo para imágenes**, ya resuelto a ruta interna del zip por `epub.rs`.
+- **`anchor`** guarda el `id` del elemento que originó el bloque (o el del
+  contenedor heredado). `TocEntry.anchor` conserva el `#fragmento`; el salto
+  exacto se resuelve con un mapa por capítulo (ADR-0010).
 - **SVG raster** (`<svg><image href|xlink:href>`): se mapea a `Kind::Image`; el
   SVG vectorial no se rasteriza (ADR-0009).
 - **Tablas y `<dl>`**: no hay `Kind::Table`; cada celda/entrada es un `Para`

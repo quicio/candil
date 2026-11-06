@@ -1,7 +1,7 @@
 ---
 id: roadmap
 status: vigente
-version: 1.2.0
+version: 1.3.0
 updated: 2026-11-06
 ---
 
@@ -15,7 +15,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M1 | Lector | **Hecho** | [10](specs/10-lector-mvp.md) | 43 EPUB abren sin capítulos vacíos; 2279/2279 imágenes; temas y progreso persistentes |
 | M1.1 | Endurecimiento | **Hecho** | [15](specs/15-endurecimiento-lector.md) | Espacios, entidades, pre/tablas, SVG raster y config atómica verificados sobre el corpus |
 | M2 | Biblioteca | **Hecho** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
-| M3 | Lectura fina | Siguiente | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
+| M3 | Lectura fina | **En curso** | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | Futuro | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 
 ## M1 — Lector (terminado)
@@ -35,7 +35,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 41 + 8 con M2); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 44 + 8 con M2/M3); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -65,7 +65,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 41 + 8.
+2279/2279 imágenes. `cargo test`: 44 + 8.
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -90,7 +90,12 @@ Criterio de salida, medible:
 4. `cargo test` verde + capturas de estantería vacía, llena y filtrada.
 5. `--inspect` sobre el corpus sin regresiones.
 
-## M3 — Lectura fina
+## M3 — Lectura fina (en curso)
+
+Estado 2026-11-06: T1/T2 de spec 30 hechas — `Block.anchor`, fragmentos en
+`TocEntry` y dedupe por `(spine, anchor)`; `flores-del-mal` ya lista 8 entradas.
+Pendiente: salto intra/intercapítulo (T3/T4), enlaces internos (T5) y
+`Progress`/preferencias por libro (spec 35).
 
 - Índice por ancla: entradas con `#fragmento`, salto al bloque con ese `id`.
 - Preferencias por libro (tema, tamaño, interlineado) sin perder las globales.

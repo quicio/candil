@@ -1,8 +1,8 @@
 ---
 id: roadmap
 status: vigente
-version: 1.0.0
-updated: 2026-11-03
+version: 1.2.0
+updated: 2026-11-06
 ---
 
 # Roadmap
@@ -12,8 +12,9 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
 |---|---|---|---|---|
-| M1 | Lector | **Hecho** | [10](specs/10-lector-mvp.md) | 44 EPUB abren sin capítulos vacíos; imágenes resueltas; temas y progreso persistentes |
-| M2 | Biblioteca | Siguiente | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
+| M1 | Lector | **Hecho** | [10](specs/10-lector-mvp.md) | 43 EPUB abren sin capítulos vacíos; 2279/2279 imágenes; temas y progreso persistentes |
+| M1.1 | Endurecimiento | **Hecho** | [15](specs/15-endurecimiento-lector.md) | Espacios, entidades, pre/tablas, SVG raster y config atómica verificados sobre el corpus |
+| M2 | Biblioteca | **En curso** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
 | M3 | Lectura fina | Después | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | Futuro | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 
@@ -26,10 +27,38 @@ Contrato vigente, detallado en `specs/10-lector-mvp.md`: parseo OPF+spine,
 Deuda conocida y aceptada: índice por archivo (no por ancla), sin CSS del libro,
 sin paginado.
 
-## M2 — Biblioteca (el trabajo siguiente)
+## M1.1 — Endurecimiento (terminado)
 
-Objetivo: dejar de abrir un archivo por vez. Una estantería que indexa carpetas
-del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
+Spec [15](specs/15-endurecimiento-lector.md). Cerró los bordes que la auditoría
+del 2026-11-05 encontró en libros reales: espacios en límites inline, entidades
+Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
+celdas, `<svg><image>` raster y escritura atómica de `config.json`.
+
+Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
+25 unit + 7 integración al cerrar M1.1 (hoy 38 + 8 con M2); clippy sin
+warnings. Capturas de `flores-del-mal`
+(título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
+
+## M2 — Biblioteca (en curso)
+
+Implementado y medido el 2026-11-06 sobre `~/Libros` (43 EPUB):
+
+- Modelo `library.json` con `schema_version`, rutas canónicas, `size`/`mtime`,
+  `missing` y progreso; escritura atómica compartida en `src/store.rs`.
+- Escaneo recursivo incremental: **1.57 s** la primera vez, **0.02 s** con caché.
+- Portadas cacheadas: **41/43 (95,3 %)**, **4,2 MB** en `covers/`.
+- Pantalla con grilla, apertura, `Esc` para volver, búsqueda incremental, 4
+  órdenes y 4 filtros; estados vacío/sin resultados; marcador cuando no hay
+  portada.
+- `--scan <carpeta>` para probar el núcleo sin UI; `--resume` para abrir el
+  último libro (el arranque normal es la biblioteca).
+
+Pendiente para cerrar: T8 (migración de progreso a `library.json`), T9 completo
+(quitar carpetas, contador de errores), T10 (`--screen library`/`--library-path`
+y captura filtrada) y T11 (medir 50 libros y cerrar métricas).
+
+Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
+carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
 
 Entra:
 
@@ -64,6 +93,8 @@ Criterio de salida, medible:
 
 ## Orden de ataque recomendado
 
+0. M1.1 cerrado (spec 15): no construir la biblioteca sobre texto pegado o SVG
+   vacío.
 1. M2 tareas 1–3 (modelo + escaneo + portadas) sin UI: se prueban con `cargo test`.
 2. M2 tareas 4–6 (pantalla, orden/filtro, apertura): primeras capturas.
 3. M2 tareas 7–9 (migración, carpetas vigiladas, estados vacíos): cierre.

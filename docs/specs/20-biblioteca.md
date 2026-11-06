@@ -1,17 +1,20 @@
 ---
 id: spec-20
 title: Biblioteca — índice, estantería y apertura
-status: draft
-version: 1.0.0
-updated: 2026-11-03
+status: aprobada
+version: 1.2.0
+updated: 2026-11-06
 milestone: M2
-depends_on: [adr-0007, adr-0008, spec-10, spec-21]
+depends_on: [adr-0007, adr-0008, spec-10, spec-15, spec-21]
 blocks: []
 ---
 
 # Spec 20 — Biblioteca (M2)
 
-> **Estado: draft.** Requiere revisión de Hugo antes de implementar.
+> **Estado: aprobada e implementada parcialmente.** T1–T7 y parte de T9 están
+> hechas y probadas contra `~/Libros` (43 EPUB). Faltan T8 (migración de
+> progreso), el resto de T9 (quitar carpetas/contador de errores), T10
+> (`--screen library`/`--library-path`) y T11 (cierre métrico).
 > Tareas diseñadas para que un agente las ejecute sin contexto previo.
 
 ## Objetivo
@@ -33,7 +36,8 @@ manuales, watcher del sistema, sincronización, copia de archivos.
 
 ```rust
 // src/library.rs
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct BookEntry {
     pub path: String,          // ruta absoluta canónica, también es la clave
     pub title: String,
@@ -42,21 +46,49 @@ pub struct BookEntry {
     pub cover: Option<String>, // ruta relativa dentro del dir de datos: "covers/<hash>.png"
     pub size: u64,
     pub mtime: i64,            // segundos
-    pub progress: Progress,    // reusa config::Progress
+    pub chapters: usize,       // total del spine; permite mostrar progreso
+    pub progress: Progress,    // reusa config::Progress (M3 lo cambia a ratio)
     pub added: i64,
     pub last_opened: Option<i64>,
     pub missing: bool,         // el archivo ya no está
     pub error: Option<String>, // el libro no se pudo leer al importar
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct Library {
+    pub schema_version: u32,           // 1; migraciones futuras
     pub folders: Vec<String>,          // carpetas vigiladas
     pub books: Vec<BookEntry>,
+    #[serde(skip)] pub data_dir: PathBuf, // inyectable en tests
 }
 ```
 
 Rutas de datos: `dirs::config_dir()/lector/{library.json, covers/}`.
+La escritura usa `src/store.rs` (temporal + `rename`) y un JSON corrupto se
+renombra a `library.json.corrupt-<epoch>` antes de arrancar vacío.
+
+### Estado de implementación (2026-11-06)
+
+| tarea | estado | evidencia |
+|---|---|---|
+| T1 modelo/persistencia | hecha | `library.json` atómico, `schema_version`, rutas canónicas |
+| T2 metadatos | hecha | título/autor/idioma, `size`/`mtime`, errores no propagados |
+| T3 escaneo | hecha | 43 EPUB: 1.57 s la primera vez; 0.02 s con caché |
+| T4 portadas | hecha | 41/43 (95,3 %), 4,2 MB en `covers/` |
+| T5 pantalla | hecha | grilla, portadas, apertura, estados vacíos |
+| T6 orden/filtro/búsqueda | hecha | 4 órdenes, 4 filtros, búsqueda incremental |
+| T7 navegación | hecha | `Esc` vuelve, `last_opened`, título de ventana, `--resume` |
+| T8 migración de progreso | pendiente | hoy se sincroniza desde `config.json` al arrancar |
+| T9 carpetas/estados | parcial | añadir/refrescar/quitar libro; falta quitar carpeta y contador de errores |
+| T10 verificación visual | parcial | `--shot` sin path captura la biblioteca; falta `--screen`/`--library-path` |
+| T11 cierre | pendiente | falta medir 50 EPUB y actualizar criterios finales |
+
+Notas de implementación: `Library::load_from(path)` recibe el archivo (no el
+directorio); `with_data_dir` permite inyectar `covers/` en tests. `from_path` no
+extrae portada; `from_path_with_cover` se usa desde el escaneo. `scan_folder`
+marca `missing` para los libros que ya no están. `--scan <carpeta>` es el banco de
+pruebas sin abrir la UI.
 
 ## UI
 
@@ -72,16 +104,17 @@ Rutas de datos: `dirs::config_dir()/lector/{library.json, covers/}`.
 └─────────────────────────────────────────────────────────┘
 ```
 
-- `Esc` en el lector vuelve a la biblioteca; `Esc` en la biblioteca sin overlay no
-  hace nada.
+- `Esc` en el lector vuelve a la biblioteca; `Esc` en la biblioteca limpia la
+  búsqueda (si hay una).
 - Click en una portada abre el libro. Click derecho: "Mostrar en Finder",
   "Quitar de la biblioteca" (no borra el archivo).
 - Barra superior: buscador (título, autor, nombre de archivo), orden
   (`Reciente / Título / Autor / Añadido`), filtro (`Todos / Leyendo / Sin empezar /
-  Terminados / Faltantes`).
+  Faltantes`; "Terminados" queda para M3).
 - Estados vacíos: sin carpetas ("Añadí una carpeta"), carpeta sin EPUB ("No hay
   libros acá"), búsqueda sin resultados ("Nada coincide con «x»").
-- Progreso a la vista: barra fina bajo el título + %.
+- Progreso a la vista: barra fina bajo el título + % (por capítulo; el ratio
+  exacto llega con M3).
 
 ## Tareas
 

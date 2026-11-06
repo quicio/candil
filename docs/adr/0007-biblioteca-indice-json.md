@@ -1,8 +1,8 @@
 ---
 id: adr-0007
-status: propuesta
-version: 1.0.0
-updated: 2026-11-03
+status: aceptada
+version: 1.1.0
+updated: 2026-11-06
 ---
 
 # ADR-0007 — La biblioteca indexa carpetas, no copia archivos
@@ -74,3 +74,11 @@ Malas:
 - El corpus supera 5.000 libros → SQLite.
 - Se quiere detectar archivos movidos → agregar hash parcial (primeros 64 KB) a la
   identidad.
+
+## Implementación (2026-11-06)
+
+`src/library.rs` implementa T1–T3: rutas canónicas, `schema_version: 1`,
+`library.json` atómico vía `src/store.rs`, escaneo recursivo sin symlinks e
+incremental por `size` + `mtime`. Medido sobre 43 EPUB: 1.57 s la primera vez y
+0.02 s con caché. `missing` se marca al reescanear una carpeta. La portada y la
+pantalla quedan en ADR-0008 y spec 20.

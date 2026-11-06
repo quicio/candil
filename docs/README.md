@@ -1,8 +1,8 @@
 ---
 id: docs-index
 status: vigente
-version: 1.0.0
-updated: 2026-11-03
+version: 1.2.0
+updated: 2026-11-06
 ---
 
 # Documentación
@@ -22,8 +22,9 @@ Orden de lectura para un agente nuevo:
 | id | título | estado |
 |---|---|---|
 | [10](specs/10-lector-mvp.md) | Lector — contrato del MVP | implementada |
-| [20](specs/20-biblioteca.md) | Biblioteca — índice, estantería y apertura | **draft (siguiente a revisar)** |
-| [21](specs/21-metadatos-y-portadas.md) | Metadatos y portadas | draft |
+| [15](specs/15-endurecimiento-lector.md) | Endurecimiento del lector | **implementada** |
+| [20](specs/20-biblioteca.md) | Biblioteca — índice, estantería y apertura | **aprobada; T1–T7 hechas, faltan T8–T11** |
+| [21](specs/21-metadatos-y-portadas.md) | Metadatos y portadas | **implementada** |
 | [30](specs/30-indice-por-ancla.md) | Índice por ancla | draft |
 | [35](specs/35-preferencias-por-libro.md) | Preferencias por libro y progreso estable | draft |
 | [40](specs/40-busqueda.md) | Búsqueda dentro del libro | borrador inicial |
@@ -39,8 +40,9 @@ Orden de lectura para un agente nuevo:
 | [0004](adr/0004-tipografia-literata.md) | Literata embebida, instanciada | aceptada |
 | [0005](adr/0005-persistencia-json.md) | Configuración y progreso en JSON | aceptada |
 | [0006](adr/0006-perfiles-compilacion.md) | Tres perfiles de compilación | aceptada |
-| [0007](adr/0007-biblioteca-indice-json.md) | La biblioteca indexa carpetas, no copia | propuesta |
-| [0008](adr/0008-portadas-cache.md) | Portadas: extraer, reducir, cachear | propuesta |
+| [0007](adr/0007-biblioteca-indice-json.md) | La biblioteca indexa carpetas, no copia | aceptada |
+| [0008](adr/0008-portadas-cache.md) | Portadas: extraer, reducir, cachear | aceptada |
+| [0009](adr/0009-robustez-parser-sin-dependencias.md) | Robustez del parser sin dependencias nuevas | aceptada |
 
 ## Flujo
 

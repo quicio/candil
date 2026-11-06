@@ -2,8 +2,8 @@
 id: spec-10
 title: Lector — contrato del MVP
 status: implementada
-version: 1.0.0
-updated: 2026-11-03
+version: 1.2.0
+updated: 2026-11-06
 milestone: M1
 depends_on: [adr-0001, adr-0002, adr-0004, adr-0005]
 ---
@@ -12,6 +12,10 @@ depends_on: [adr-0001, adr-0002, adr-0004, adr-0005]
 
 Spec retroactiva: describe lo que ya está implementado y verificado. Su función es
 congelar el contrato para que M2/M3 no lo rompan sin darse cuenta.
+
+> **M1.1 (spec 15, 2026-11-05):** corrigió espacios en límites inline, entidades
+> Latin-1/griegas/matemáticas, `<pre>`, tablas/`<dl>`, SVG raster y la escritura
+> atómica de `config.json`. Este contrato sigue vigente, con esas correcciones.
 
 ## Comportamiento garantizado
 
@@ -39,13 +43,13 @@ congelar el contrato para que M2/M3 no lo rompan sin darse cuenta.
 ## Verificación (reproducible)
 
 ```bash
-cargo test                                        # 14 unit + 6 integración
+cargo test                                        # 38 unit + 8 integración
 cargo run --profile fast -- --inspect <libro>     # metadatos, spine, bloques, imágenes
 cargo run --profile fast -- --shot /tmp/p.png --chapter 13 <libro>
 ```
 
-Estado medido el 2026-11-03: 44 EPUB abiertos sin error, 2168/2168 imágenes
-resueltas, 0 capítulos vacíos salvo portadas/mapas (solo imagen).
+Estado medido el 2026-11-05: 43 EPUB abiertos sin error, 2279/2279 imágenes
+resueltas (incluye `<svg><image>` raster), 0 capítulos vacíos.
 
 ## Fuera de alcance (a propósito)
 
@@ -61,5 +65,5 @@ resueltas, 0 capítulos vacíos salvo portadas/mapas (solo imagen).
 |---|---|---|
 | índice por archivo, no por ancla | libros con todo en un XHTML tienen 1 entrada | M3 / spec 30 |
 | offset en píxeles | cambiar fuente descoloca la posición | spec 35 |
-| sin detección de capítulos vacíos por imagen | capítulos `[]` confunden al índice | aceptado |
+| capítulos sin texto ni imagen | raro; `--inspect` los lista | aceptado |
 | `Result<T, String>` | sin tipos de error | si crece, enum + thiserror |

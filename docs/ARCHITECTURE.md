@@ -1,8 +1,8 @@
 ---
 id: architecture
 status: vigente
-version: 1.0.0
-updated: 2026-11-03
+version: 1.2.0
+updated: 2026-11-06
 ---
 
 # Arquitectura
@@ -38,11 +38,14 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 
 | módulo | hace | no hace |
 |---|---|---|
-| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice, entrega `Block`s por capítulo | no decide estilos ni layout |
-| `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers (estricto y tolerante) | no abre archivos ni conoce el zip |
-| `app.rs` | ventana, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
+| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice, entrega `Block`s y portada declarada | no decide estilos ni layout |
+| `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
+| `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
+| `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
+| `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
+| `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
-| `config.rs` | settings + progreso en `config.json` | no conoce el contenido |
+| `config.rs` | settings + progreso en `config.json` con escritura atómica | no conoce el contenido |
 | `fonts.rs` | registra Literata en 4 familias + monoespaciada | no decide tamaños |
 | `lib.rs` | expone módulos para tests de integración | — |
 
@@ -61,6 +64,10 @@ Decisiones que lo sostienen:
 - **Estilo inline por run**, no por nodo: alcanza para negrita, itálica, versalitas
   y enlaces.
 - **`src` solo para imágenes**, ya resuelto a ruta interna del zip por `epub.rs`.
+- **SVG raster** (`<svg><image href|xlink:href>`): se mapea a `Kind::Image`; el
+  SVG vectorial no se rasteriza (ADR-0009).
+- **Tablas y `<dl>`**: no hay `Kind::Table`; cada celda/entrada es un `Para`
+  propio para que el texto no se pegue.
 
 ### Cómo agregar un `Kind` nuevo
 
@@ -84,13 +91,25 @@ frame desde `settings.column_width` y el ancho disponible.
 
 Imágenes: se decodifican con `image` y se suben a textura la primera vez que
 aparecen; el caché (`HashMap<ruta, TextureHandle>`) se vacía al cambiar de
-capítulo. Presupuesto: un capítulo a la vez.
+capítulo. Las que venían envueltas en `<svg><image>` llegan como `Kind::Image` y
+siguen el mismo camino. Presupuesto: un capítulo a la vez.
+
+## Biblioteca
+
+`app.rs` arranca en `Screen::Library` salvo que se pase un EPUB o `--resume`.
+La grilla es responsiva (`ancho / 180`), con portada cacheada, título, autor y
+progreso por capítulo. Las portadas se cargan como texturas la primera vez y se
+cachean en `library_textures`; el escaneo y la lista se hacen en el hilo de UI
+(43 libros ≈ 1.6 s la primera vez, aceptado en M2). Click abre el libro; `Esc` en
+el lector vuelve y persiste progreso. La búsqueda/orden/filtro se calculan en
+memoria sobre `Library::books`.
 
 ## Estado de la app
 
-`Lector` guarda: libro abierto (`Book`), capítulo actual, bloques del capítulo,
-texturas, `Config`, offset de scroll, altura del viewport (para paginar con
-teclado), flags de panel y estado de guardado diferido.
+`Lector` guarda: pantalla (`Library`/`Reader`), biblioteca, libro abierto
+(`Book`), capítulo actual, bloques del capítulo, texturas del lector y de
+portadas, `Config`, offset de scroll, altura del viewport, flags de panel y estado
+de guardado diferido.
 
 Regla de oro: **el scroll es del lector, no del EPUB**. Se guarda por libro como
 `{chapter, offset}` en píxeles; si cambia el tamaño de fuente, el offset es
@@ -100,17 +119,23 @@ aproximado (limitación aceptada, ver M3).
 
 `~/Library/Application Support/lector/config.json` (macOS; `dirs::config_dir()`
 en el resto). Se guarda con debounce de 700 ms cuando hay cambios, y en
-`on_exit`. Si el JSON está corrupto, se arranca con valores por defecto: nunca
-se bloquea el arranque por configuración.
+`on_exit`. `src/store.rs` centraliza la escritura atómica: temporal → `sync_all` →
+`rename`, de modo que un corte no deja el JSON a medias. Si el JSON está corrupto,
+se renombra a `<archivo>.corrupt-<epoch>`, se arranca con valores por defecto y se
+avisa en un toast: nunca se bloquea el arranque.
 
-M2 agrega `library.json` en el mismo directorio (ADR-0007) y las portadas en
-`covers/<hash>.png`.
+`library.json` vive en el mismo directorio y usa el mismo helper. Guarda
+`schema_version`, carpetas vigiladas y una entrada por libro con ruta canónica,
+metadatos, `size`/`mtime`, progreso y estado `missing`. Las portadas van a
+`covers/<fnv1a>.png` (ADR-0007/0008). El arranque normal muestra la biblioteca;
+`--resume` reabre el último libro.
 
 ## Errores
 
 Hoy: `Result<T, String>` con mensajes en español pensados para el usuario. Se
 muestran en un toast, nunca en un `panic`. Si el manejo de errores crece, el paso
-siguiente es `thiserror` con un enum `LectorError` (ver ADR pendiente en M2).
+siguiente es `thiserror` con un enum `LectorError`; la decisión requiere su ADR
+(no está tomada).
 
 ## Rendimiento
 

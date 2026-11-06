@@ -1,8 +1,8 @@
 ---
 id: conventions
 status: vigente
-version: 1.0.0
-updated: 2026-11-03
+version: 1.2.0
+updated: 2026-11-06
 ---
 
 # Convenciones
@@ -10,10 +10,12 @@ updated: 2026-11-03
 ## Código
 
 - `cargo fmt` es obligatorio; `cargo fmt --check` debe pasar.
-- Cero warnings: `cargo build` sin warnings. Un warning es deuda que después
-  nadie limpia.
+- Cero warnings: `cargo build` y `cargo clippy --all-targets -- -D warnings` sin
+  warnings. Un warning es deuda que después nadie limpia.
 - Sin `unwrap()`/`expect()` sobre datos del usuario (archivos, zip, XML). Sí en
   tests.
+- Tests y capturas no escriben en la configuración real: usar un `HOME` temporal
+  o un directorio de datos explícito.
 - Errores como `Result<T, String>` con mensaje accionable en español
   ("no pude leer X: ..."), mostrados en UI.
 - Identificadores: inglés para conceptos genéricos (`Book`, `Block`, `Settings`),
@@ -24,11 +26,19 @@ updated: 2026-11-03
 ## Tests
 
 - Unitarios en el mismo archivo (`#[cfg(test)] mod tests`), para funciones puras.
-- Integración en `tests/`, contra el fixture `tests/fixtures/mini.epub`
-  (regenerable con `python3 scripts/make_fixture.py`).
-- El fixture cubre a propósito: XHTML válido, HTML roto, imagen relativa, ancla.
+- Integración en `tests/`, contra los fixtures `tests/fixtures/mini.epub` y
+  `tests/fixtures/edge.epub` (regenerables con `python3 scripts/make_fixture.py`,
+  con fecha fija para que el binario no cambie).
+- El fixture `mini` cubre el contrato M1: XHTML válido, HTML roto, imagen
+  relativa, ancla.
+- El fixture `edge` cubre los bordes de M1.1: espacios inline, entidades,
+  `<pre>`, tabla/`<dl>`, SVG raster y `nav` dentro del spine.
 - Ningún test depende de libros del disco del usuario.
+- La biblioteca se testea con `Library::with_data_dir` (cubre en directorio
+  temporal), nunca contra la config real; `--scan` es para medir el corpus.
 - Un cambio de parser sin test nuevo es un cambio incompleto.
+- Un cambio de escaneo/persistencia de la biblioteca se mide con `--scan` y se
+  reporta tiempo, fallos y portadas.
 
 ## Commits
 
@@ -67,7 +77,7 @@ supersede con uno nuevo (`supersedes: 0003`).
 
 - Dependencia nueva = ADR obligatorio (peso, licencia, mantenimiento, alternativa
   stdlib o código propio).
-- Binario `dist` objetivo: < 8 MB. Hoy 5.1 MB.
+- Binario `dist` objetivo: < 8 MB. Hoy 5.499.488 B (medido 2026-11-06).
 - Arranque objetivo: < 300 ms en frío.
 - Disco: no acumular `target/` de varios perfiles (ver HANDOFF; el disco de la
   máquina trabaja al límite).

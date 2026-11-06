@@ -1,9 +1,9 @@
 ---
 id: spec-21
 title: Metadatos y portadas
-status: draft
-version: 1.0.0
-updated: 2026-11-03
+status: implementada
+version: 1.2.0
+updated: 2026-11-06
 milestone: M2
 depends_on: [adr-0008, spec-20]
 ---
@@ -12,6 +12,10 @@ depends_on: [adr-0008, spec-20]
 
 Detalle de la tarea T4 de la spec 20. Se puede implementar y testear sin UI.
 
+> Implementada el 2026-11-06. Resultados sobre `~/Libros`: **41/43 portadas
+> (95,3 %)**, **4,2 MB** en `covers/`, primera extracción incluida en un escaneo
+> de 1,57 s. `series`/`publisher` quedan para M3.
+
 ## Resolución de la portada
 
 Cascada, se corta en la primera que exista **y** decodifique:
@@ -19,21 +23,22 @@ Cascada, se corta en la primera que exista **y** decodifique:
 1. `manifest item` con `properties` que contenga `cover-image` (EPUB3).
 2. `metadata meta name="cover"` → su `content` es un `id` del manifest (EPUB2/Calibre).
 3. `meta property="cover"` / `name="cover"` apuntando a una ruta.
-4. Primer `img` del primer documento del spine que tenga uno.
+4. Primer `<img>` (o `<svg><image>`) del primer documento del spine que tenga uno.
 
 Validaciones antes de aceptar:
 
 - Los bytes decodifican con `image::load_from_memory`.
-- Relación de aspecto resultante ≤ 2.0 de alto/ancho (descarta mapas y banners
+- Relación de aspecto resultante ≤ 2.0 de ancho/alto (descarta mapas y banners
   apaisados que algunos libros declaran como portada).
 - Si falla cualquiera, se sigue con el siguiente candidato de la cascada.
 
 ## Derivados
 
-- Miniatura: **alto 320 px**, ancho proporcional (`image::imageops::resize`,
-  filtro `Lanczos3`), guardada como PNG en `covers/<hash>.png`.
-- `hash` = `DefaultHasher` sobre la ruta canónica del libro, formateado `{:016x}`.
-  Determinista entre arranques (misma versión de Rust) y sin dependencias.
+- Miniatura: **alto 320 px como máximo**, ancho proporcional (`image::imageops`,
+  filtro `Lanczos3`), guardada como PNG en `covers/<hash>.png`. **No se agranda**
+  una imagen más chica que 320.
+- `hash` = FNV-1a de 64 bits sobre la ruta canónica del libro, formateado
+  `{:016x}`. Es estable entre versiones de Rust (a diferencia de `DefaultHasher`).
 - Si el PNG existe y `mtime` del libro no cambió: no se regenera.
 - Si el libro cambia (`mtime` distinto): se regenera y se sobrescribe.
 
@@ -60,44 +65,51 @@ es M3.
 **Archivos:** `src/epub.rs` (agregar método), `src/library.rs` (tests).
 
 **Pasos**
-1. Test sobre `tests/fixtures/mini.epub`: no declara portada → `cover_bytes()`
-   devuelve el primer `<img>` del capítulo 1 (`OEBPS/Images/punto.png`).
-2. Crear un segundo fixture con portada declarada por `properties="cover-image"`
-   (`scripts/make_fixture.py` gana un flag `--with-cover`) y testear que la
-   devuelve.
-3. Implementar en `Book`: `cover_bytes(&mut self) -> Option<(Vec<u8>, String)>`
-   con la cascada 1→4 y las validaciones.
+1. Test sobre `tests/fixtures/mini.epub`: declara `properties="cover-image"` →
+   `cover_bytes()` devuelve `OEBPS/Images/punto.png`. Test equivalente sobre
+   `edge.epub` para el fallback `<svg><image>`.
+2. El segundo fixture es `edge.epub` (fallback SVG); no hace falta un tercero.
+3. Implementado en `Book`: `cover_bytes(&mut self) -> Option<Vec<u8>>` con la
+   cascada 1→4, validación de decodificación y aspecto.
 
-**Criterio:** dos tests verdes (con y sin portada declarada).
+**Criterio:** tests verdes para portada declarada y fallback SVG.
 
 ### T4.2 — Miniatura y caché
 
 **Archivos:** `src/covers.rs` (nuevo, `pub mod covers;` en `lib.rs`).
 
 **Pasos**
-1. Test: `thumbnail(png_2x2, 320)` devuelve imagen con alto 320 y ancho ≥ 1.
-2. Test: `cover_path_for(dir, "/libro.epub")` es estable entre llamadas.
-3. Implementar `thumbnail(&[u8], height) -> Option<Vec<u8>>` (PNG de salida) y
-   `write_cover(dir, hash, png) -> io::Result<()>`.
-4. Test de idempotencia con archivo temporal: segunda llamada no reescribe
-   (`mtime` del PNG igual).
+1. Test: una imagen de 10×20 no se agranda; una de 400×600 se reduce a alto 320.
+2. Test: `cover_path_for(dir, "/libro.epub")` es estable entre llamadas y cambia
+   con otra ruta.
+3. Implementado `thumbnail(&[u8], height) -> Option<Vec<u8>>` (PNG de salida) y
+   `write_cover(path, png) -> io::Result<()>`.
+4. La idempotencia la resuelve el escaneo: si `size`/`mtime` no cambian, ni
+   siquiera se abre el EPUB.
 
-**Criterio:** miniatura correcta, ruta estable, sin reescrituras innecesarias.
+**Criterio:** miniatura correcta, sin upscaling, ruta estable, sin reescrituras
+innecesarias.
 
 ### T4.3 — Conectar con el escaneo
 
 **Archivos:** `src/library.rs`.
 
 **Pasos**
-1. En `BookEntry::from_path`, tras abrir el libro, generar miniatura si falta.
+1. `BookEntry::from_path` extrae metadatos; `from_path_with_cover` recibe el
+   directorio de `covers/` inyectable y genera la miniatura.
 2. Si la portada falla, `cover = None` y la UI dibuja el marcador tipográfico.
-3. Test: escanear el fixture produce `cover.is_some()`; escanear un EPUB sin
-   imágenes produce `cover.is_none()` sin error.
+3. Tests: escanear los fixtures produce `cover.is_some()` y una portada por
+   libro; un EPUB corrupto no propaga el error.
 
 **Criterio:** estantería con portadas reales y marcador donde no hay.
 
-## Mediciones a reportar
+## Mediciones (2026-11-06)
 
-- % de libros con portada sobre el corpus (objetivo ≥ 90% de los que declaran).
-- Tamaño medio y total de `covers/`.
-- Tiempo de escaneo con y sin caché de portadas.
+| métrica | resultado |
+|---|---|
+| portadas sobre `~/Libros` | **41/43 (95,3 %)** |
+| libros que declaran portada | 39 + 2 fallback; 2 sin candidata |
+| tamaño total de `covers/` | **4,2 MB** (~98 KB/libro) |
+| escaneo primera vez | **1,57 s** (43 EPUB, metadatos + portadas) |
+| escaneo con caché | **0.02 s** (43 sin cambios) |
+| miniaturas | alto máximo 320, sin upscaling |

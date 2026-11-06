@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -90,6 +91,12 @@ jobs:
           chmod +x dist/candil-* 2>/dev/null || true
           cd dist
           sha256sum * > SHA256SUMS.txt
+
+      - name: Borrar release existente (re-tags)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false || true
 
       - name: Crear release
         uses: softprops/action-gh-release@v2

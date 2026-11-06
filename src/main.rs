@@ -1,7 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use lector::app;
 use lector::epub;
+use lector::library::Library;
 use lector::xhtml;
 
 fn main() -> eframe::Result<()> {
@@ -10,6 +12,12 @@ fn main() -> eframe::Result<()> {
     if let Some(pos) = args.iter().position(|a| a == "--inspect") {
         let path = args.get(pos + 1).cloned().unwrap_or_default();
         inspect(&path);
+        return Ok(());
+    }
+
+    if let Some(pos) = args.iter().position(|a| a == "--scan") {
+        let path = args.get(pos + 1).cloned().unwrap_or_default();
+        scan_library(&path);
         return Ok(());
     }
 
@@ -29,6 +37,10 @@ fn main() -> eframe::Result<()> {
             "--panel" => {
                 dev.panel = args.get(i + 1).cloned();
                 i += 2;
+            }
+            "--resume" => {
+                dev.resume = true;
+                i += 1;
             }
             other => {
                 path = Some(PathBuf::from(other));
@@ -50,6 +62,50 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| Ok(Box::new(app::Lector::new(cc, path, dev)))),
     )
+}
+
+/// Indexa una carpeta en `library.json` y extrae portadas. Es el banco de
+/// pruebas de M2 antes de que exista la pantalla de biblioteca.
+fn scan_library(dir: &str) {
+    if dir.is_empty() {
+        eprintln!("uso: lector --scan <carpeta>");
+        return;
+    }
+    let start = Instant::now();
+    let (mut lib, warning) = Library::load_with_report();
+    if let Some(warning) = warning {
+        eprintln!("aviso: {warning}");
+    }
+
+    let stats = lib.scan_folder(Path::new(dir));
+    if let Err(e) = lib.save() {
+        eprintln!("no pude guardar la biblioteca: {e}");
+    }
+
+    let covers = lib.books.iter().filter(|b| b.cover.is_some()).count();
+    println!("biblioteca : {}", Library::file().display());
+    println!("carpeta    : {dir}");
+    println!(
+        "encontrados: {} | nuevos: {} | actualizados: {} | sin cambios: {} | fallos: {}",
+        stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
+    );
+    println!(
+        "libros     : {} | portadas: {covers}/{}",
+        lib.books.len(),
+        lib.books.len()
+    );
+    println!("tiempo     : {:.2} s", start.elapsed().as_secs_f64());
+    for b in lib.books.iter().take(10) {
+        let cover = if b.cover.is_some() {
+            "portada"
+        } else {
+            "sin portada"
+        };
+        println!("- {} — {} [{cover}]", b.title, b.author);
+    }
+    if let Some(err) = lib.books.iter().find_map(|b| b.error.as_deref()) {
+        println!("primer error: {err}");
+    }
 }
 
 /// Modo diagnóstico: valida el parseo sin abrir ventana.

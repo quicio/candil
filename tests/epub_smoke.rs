@@ -97,3 +97,17 @@ fn archivo_inexistente_da_error_legible() {
     };
     assert!(e.contains("no pude leer"), "{e}");
 }
+
+#[test]
+fn portada_declarada_y_fallback_de_imagen() {
+    let mut mini = abrir();
+    assert!(mini.cover_bytes().is_some(), "mini declara cover-image");
+
+    let mut edge =
+        Book::open(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edge.epub"))
+            .expect("edge debe abrir");
+    assert!(
+        edge.cover_bytes().is_some(),
+        "edge no declara portada: debe caer al <svg><image>"
+    );
+}

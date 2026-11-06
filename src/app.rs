@@ -1,7 +1,7 @@
 //! Ventana y lectura: barra mínima, columna centrada, scroll continuo.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use eframe::egui::text::{LayoutJob, TextFormat};
@@ -10,17 +10,89 @@ use eframe::egui::{
     Vec2,
 };
 
-use crate::config::{Config, Progress, Settings};
+use crate::config::{self, Config, Progress, Settings};
 use crate::epub::Book;
 use crate::fonts;
+use crate::library::Library;
 use crate::theme::{self, Theme, THEMES};
 use crate::xhtml::{Block, Kind};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Screen {
+    Library,
+    Reader,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LibraryOrder {
+    Recent,
+    Title,
+    Author,
+    Added,
+}
+
+impl LibraryOrder {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Recent => "Reciente",
+            Self::Title => "Título",
+            Self::Author => "Autor",
+            Self::Added => "Añadido",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LibraryFilter {
+    All,
+    Reading,
+    Unread,
+    Missing,
+}
+
+impl LibraryFilter {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "Todos",
+            Self::Reading => "Leyendo",
+            Self::Unread => "Sin empezar",
+            Self::Missing => "Faltantes",
+        }
+    }
+}
+
+struct CardData {
+    index: usize,
+    path: String,
+    title: String,
+    author: String,
+    cover: Option<(egui::TextureId, Vec2)>,
+    chapters: usize,
+    chapter: usize,
+    missing: bool,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CardAction {
+    Open,
+    Remove,
+}
+
+const CARD_W: f32 = 168.0;
+const CARD_COVER_H: f32 = 232.0;
+
 pub struct Lector {
+    screen: Screen,
     book: Option<Book>,
     chapter: usize,
     blocks: Vec<Block>,
     textures: HashMap<String, egui::TextureHandle>,
+    library: Library,
+    library_textures: HashMap<String, egui::TextureHandle>,
+    library_search: String,
+    library_order: LibraryOrder,
+    library_filter: LibraryFilter,
     cfg: Config,
     scroll: f32,
     max_scroll: f32,
@@ -34,6 +106,7 @@ pub struct Lector {
     last_save: Instant,
     dev: DevOpts,
     shot_frames: u32,
+    window_title: String,
 }
 
 /// Banderas de desarrollo: captura e inspección visual sin tocar la UI.
@@ -42,12 +115,30 @@ pub struct DevOpts {
     pub shot: Option<PathBuf>,
     pub chapter: Option<usize>,
     pub panel: Option<String>,
+    /// Reabre el último libro en vez de arrancar en la biblioteca.
+    pub resume: bool,
 }
 
 impl Lector {
     pub fn new(cc: &eframe::CreationContext<'_>, path: Option<PathBuf>, dev: DevOpts) -> Self {
         fonts::install(&cc.egui_ctx);
-        let cfg = Config::load();
+        let (cfg, cfg_warning) = Config::load_with_report();
+        let (mut library, library_warning) = Library::load_with_report();
+        // El progreso vive en config.json durante M2; la biblioteca lo muestra.
+        for entry in &mut library.books {
+            if let Some(progress) = cfg.progress.get(&entry.path) {
+                entry.progress = *progress;
+            }
+        }
+        // "Recientes" viejo de config.json alimenta el orden sin migrar el archivo.
+        let now = crate::library::now();
+        for (index, path) in cfg.recent.iter().enumerate() {
+            if let Some(entry) = library.books.iter_mut().find(|b| b.path == *path) {
+                if entry.last_opened.is_none() {
+                    entry.last_opened = Some(now - index as i64);
+                }
+            }
+        }
         let th = theme::theme(cfg.settings.theme);
         th.apply(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style()).clone();
@@ -62,11 +153,18 @@ impl Lector {
         cc.egui_ctx.set_style(style);
 
         let theme_idx = cfg.settings.theme;
+        let warning = cfg_warning.or(library_warning);
         let mut app = Self {
+            screen: Screen::Library,
             book: None,
             chapter: 0,
             blocks: Vec::new(),
             textures: HashMap::new(),
+            library,
+            library_textures: HashMap::new(),
+            library_search: String::new(),
+            library_order: LibraryOrder::Recent,
+            library_filter: LibraryFilter::All,
             cfg,
             scroll: 0.0,
             max_scroll: 0.0,
@@ -74,16 +172,23 @@ impl Lector {
             viewport_h: 600.0,
             show_toc: false,
             show_settings: false,
-            status: None,
+            status: warning.map(|msg| (msg, Instant::now())),
             applied_theme: Some(theme_idx),
             dirty: false,
             last_save: Instant::now(),
             dev,
             shot_frames: 0,
+            window_title: "lector".into(),
         };
         app.applied_theme = Some(app.cfg.settings.theme);
 
-        let target = path.or_else(|| app.cfg.last_book.clone().map(PathBuf::from));
+        let target = path.or_else(|| {
+            if app.dev.resume {
+                app.cfg.last_book.clone().map(PathBuf::from)
+            } else {
+                None
+            }
+        });
         if let Some(p) = target {
             if p.exists() {
                 app.open(p);
@@ -95,27 +200,49 @@ impl Lector {
     // -- libro ---------------------------------------------------------------
 
     fn open(&mut self, path: PathBuf) {
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
         match Book::open(&path) {
             Ok(book) => {
                 let key = book.path.to_string_lossy().to_string();
-                let prog = self.cfg.progress.get(&key).copied().unwrap_or_default();
+                let prog = self
+                    .cfg
+                    .progress
+                    .get(&key)
+                    .copied()
+                    .or_else(|| {
+                        self.library
+                            .books
+                            .iter()
+                            .find(|b| b.path == key)
+                            .map(|b| b.progress)
+                    })
+                    .unwrap_or_default();
                 let n = book.spine.len();
-                let title = book.title.clone();
-                let author = book.author.clone();
                 self.chapter = prog.chapter.min(n.saturating_sub(1));
                 self.book = Some(book);
+                self.screen = Screen::Reader;
                 self.cfg.last_book = Some(key.clone());
                 self.cfg.touch_recent(&key);
+                if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
+                    entry.progress = prog;
+                    entry.last_opened = Some(crate::library::now());
+                    entry.missing = false;
+                }
+                self.save_library();
                 if let Some(ch) = self.dev.chapter {
                     self.chapter = ch.min(n.saturating_sub(1));
                 }
-                self.load_chapter(self.chapter, prog.offset);
+                let offset = if self.dev.chapter.is_some() || prog.chapter != self.chapter {
+                    0.0
+                } else {
+                    prog.offset
+                };
+                self.load_chapter(self.chapter, offset);
                 match self.dev.panel.as_deref() {
                     Some("toc") => self.show_toc = true,
                     Some("settings") => self.show_settings = true,
                     _ => {}
                 }
-                let _ = (title, author);
                 self.dirty = true;
             }
             Err(e) => {
@@ -143,7 +270,8 @@ impl Lector {
             None => return,
         };
         let cur = self.chapter as i64;
-        let next = (cur + index).clamp(0, n as i64 - 1) as usize;
+        let last = n.saturating_sub(1) as i64;
+        let next = (cur + index).clamp(0, last) as usize;
         if next != self.chapter {
             self.load_chapter(next, 0.0);
         }
@@ -165,20 +293,62 @@ impl Lector {
     }
 
     fn persist(&mut self) {
-        if let (Some(book), true) = (&self.book, self.dirty) {
+        if let Some(book) = &self.book {
             let key = book.path.to_string_lossy().to_string();
-            self.cfg.progress.insert(
-                key,
-                Progress {
-                    chapter: self.chapter,
-                    offset: self.scroll,
-                },
-            );
+            let progress = Progress {
+                chapter: self.chapter,
+                offset: self.scroll,
+            };
+            self.cfg.progress.insert(key.clone(), progress);
+            if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
+                entry.progress = progress;
+                entry.last_opened = Some(crate::library::now());
+            }
         }
         self.cfg.settings.clamp();
-        self.cfg.save();
-        self.dirty = false;
+
+        let mut ok = true;
+        if let Err(e) = self.cfg.save() {
+            self.status = Some((
+                format!("No pude guardar la configuración: {e}"),
+                Instant::now(),
+            ));
+            ok = false;
+        }
+        if self.book.is_some() {
+            if let Err(e) = self.library.save() {
+                self.status = Some((
+                    format!("No pude guardar la biblioteca: {e}"),
+                    Instant::now(),
+                ));
+                ok = false;
+            }
+        }
+        self.dirty = !ok;
         self.last_save = Instant::now();
+    }
+
+    fn save_library(&mut self) {
+        if let Err(e) = self.library.save() {
+            self.status = Some((
+                format!("No pude guardar la biblioteca: {e}"),
+                Instant::now(),
+            ));
+        }
+    }
+
+    fn say(&mut self, message: impl Into<String>) {
+        self.status = Some((message.into(), Instant::now()));
+    }
+
+    fn go_library(&mut self) {
+        self.persist();
+        self.screen = Screen::Library;
+        self.book = None;
+        self.blocks.clear();
+        self.textures.clear();
+        self.show_toc = false;
+        self.show_settings = false;
     }
 
     // -- entrada -------------------------------------------------------------
@@ -247,8 +417,14 @@ impl Lector {
         }
 
         if key_esc {
-            self.show_toc = false;
-            self.show_settings = false;
+            if self.show_toc || self.show_settings {
+                self.show_toc = false;
+                self.show_settings = false;
+            } else if self.screen == Screen::Reader {
+                self.go_library();
+            } else {
+                self.library_search.clear();
+            }
         }
 
         if self.book.is_none() || typing {
@@ -280,10 +456,12 @@ impl Lector {
         }
         if plus {
             self.cfg.settings.font_size += 1.0;
+            self.cfg.settings.clamp();
             self.dirty = true;
         }
         if minus {
             self.cfg.settings.font_size -= 1.0;
+            self.cfg.settings.clamp();
             self.dirty = true;
         }
         if key_t {
@@ -298,56 +476,275 @@ impl Lector {
 
     // -- pantallas -----------------------------------------------------------
 
-    fn open_screen(&mut self, ctx: &egui::Context, th: &Theme) {
+    fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
+        let mut add_folder = false;
+        let mut rescan = false;
+        let mut open_path: Option<PathBuf> = None;
+        let mut remove: Option<usize> = None;
+
+        egui::TopBottomPanel::top("library-bar")
+            .exact_height(44.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(th.panel)
+                    .inner_margin(egui::Margin::symmetric(10, 6)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.label(RichText::new("lector").size(15.0).color(th.fg));
+                    if ui.button("Añadir carpeta…").clicked() {
+                        add_folder = true;
+                    }
+                    if ui.button("Refrescar").clicked() {
+                        rescan = true;
+                    }
+                    ui.add_space(6.0);
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.library_search)
+                            .hint_text("Buscar título, autor…")
+                            .desired_width(220.0),
+                    );
+                    if ctx.input(|i| {
+                        (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
+                    }) {
+                        response.request_focus();
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt("library-filter")
+                            .selected_text(self.library_filter.label())
+                            .show_ui(ui, |ui| {
+                                for filter in [
+                                    LibraryFilter::All,
+                                    LibraryFilter::Reading,
+                                    LibraryFilter::Unread,
+                                    LibraryFilter::Missing,
+                                ] {
+                                    ui.selectable_value(
+                                        &mut self.library_filter,
+                                        filter,
+                                        filter.label(),
+                                    );
+                                }
+                            });
+                        egui::ComboBox::from_id_salt("library-order")
+                            .selected_text(self.library_order.label())
+                            .show_ui(ui, |ui| {
+                                for order in [
+                                    LibraryOrder::Recent,
+                                    LibraryOrder::Title,
+                                    LibraryOrder::Author,
+                                    LibraryOrder::Added,
+                                ] {
+                                    ui.selectable_value(
+                                        &mut self.library_order,
+                                        order,
+                                        order.label(),
+                                    );
+                                }
+                            });
+                    });
+                });
+            });
+
+        let indices = self.visible_books();
+        let cards = self.cards(&indices, ctx);
+        let empty = self.library.books.is_empty();
+
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(90.0);
-                    ui.label(RichText::new("lector").size(46.0).color(th.fg));
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new("EPUB, sin adornos")
-                            .size(15.0)
-                            .color(th.dim)
-                            .italics(),
-                    );
-                    ui.add_space(46.0);
-                    if ui
-                        .button(RichText::new("  Abrir un EPUB…  ").size(15.0))
-                        .clicked()
-                    {
-                        if let Some(p) = rfd::FileDialog::new()
-                            .add_filter("EPUB", &["epub"])
-                            .pick_file()
+                if empty {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(90.0);
+                        ui.label(
+                            RichText::new("Tu biblioteca está vacía")
+                                .size(24.0)
+                                .color(th.fg),
+                        );
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("Añadí una carpeta con archivos .epub.")
+                                .size(13.5)
+                                .color(th.dim),
+                        );
+                        ui.add_space(22.0);
+                        if ui
+                            .button(RichText::new("  Añadir carpeta…  ").size(15.0))
+                            .clicked()
                         {
-                            self.open(p);
+                            add_folder = true;
                         }
-                    }
-                    ui.add_space(10.0);
-                    ui.label(
-                        RichText::new("o arrastrá un archivo .epub a esta ventana")
-                            .size(13.0)
-                            .color(th.dim),
-                    );
-
-                    let recent = self.cfg.recent.clone();
-                    if !recent.is_empty() {
-                        ui.add_space(52.0);
-                        ui.label(RichText::new("Recientes").size(12.5).color(th.dim));
-                        ui.add_space(6.0);
-                        for r in recent.iter().take(6) {
-                            let name = PathBuf::from(r)
-                                .file_stem()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_else(|| r.clone());
-                            if ui.link(RichText::new(name).size(14.0)).clicked() {
-                                self.open(PathBuf::from(r));
+                        ui.add_space(8.0);
+                        if ui
+                            .button(RichText::new("  Abrir un EPUB…  ").size(15.0))
+                            .clicked()
+                        {
+                            if let Some(p) = rfd::FileDialog::new()
+                                .add_filter("EPUB", &["epub"])
+                                .pick_file()
+                            {
+                                open_path = Some(p);
                             }
                         }
-                    }
-                });
+                        ui.add_space(18.0);
+                        ui.label(
+                            RichText::new("o arrastrá un archivo .epub a esta ventana")
+                                .size(12.5)
+                                .color(th.dim),
+                        );
+                    });
+                    return;
+                }
+
+                if indices.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(100.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "Nada coincide con «{}»",
+                                self.library_search.trim()
+                            ))
+                            .size(18.0)
+                            .color(th.fg),
+                        );
+                    });
+                    return;
+                }
+
+                egui::ScrollArea::vertical()
+                    .id_salt("library-grid")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add_space(12.0);
+                        let cols = ((ui.available_width() - 24.0) / (CARD_W + 18.0))
+                            .floor()
+                            .max(1.0) as usize;
+                        for row in cards.chunks(cols) {
+                            ui.horizontal_top(|ui| {
+                                for card in row {
+                                    match library_card(ui, card, th) {
+                                        Some(CardAction::Open) => {
+                                            open_path = Some(PathBuf::from(&card.path));
+                                        }
+                                        Some(CardAction::Remove) => remove = Some(card.index),
+                                        None => {}
+                                    }
+                                }
+                            });
+                            ui.add_space(16.0);
+                        }
+                        ui.add_space(24.0);
+                    });
             });
+
+        if add_folder {
+            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                let stats = self.library.scan_folder(&dir);
+                self.library_textures.clear();
+                self.save_library();
+                if stats.found == 0 {
+                    self.say(format!("No hay EPUB en {}", dir.display()));
+                } else {
+                    self.say(format!(
+                        "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
+                        stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
+                    ));
+                }
+            }
+        }
+        if rescan {
+            let stats = self.library.rescan();
+            self.library_textures.clear();
+            self.save_library();
+            self.say(format!(
+                "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
+                stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
+            ));
+        }
+        if let Some(index) = remove {
+            if index < self.library.books.len() {
+                self.library.books.remove(index);
+                self.save_library();
+            }
+        }
+        if let Some(path) = open_path {
+            self.open(path);
+        }
+    }
+
+    fn visible_books(&self) -> Vec<usize> {
+        let query = collate(self.library_search.trim());
+        let mut out: Vec<usize> = self
+            .library
+            .books
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| match self.library_filter {
+                LibraryFilter::All => true,
+                LibraryFilter::Reading => b.progress.chapter > 0 || b.progress.offset > 0.0,
+                LibraryFilter::Unread => b.progress.chapter == 0 && b.progress.offset <= 0.0,
+                LibraryFilter::Missing => b.missing,
+            })
+            .filter(|(_, b)| {
+                query.is_empty()
+                    || collate(&b.title).contains(&query)
+                    || collate(&b.author).contains(&query)
+                    || collate(&b.path).contains(&query)
+            })
+            .map(|(index, _)| index)
+            .collect();
+
+        match self.library_order {
+            LibraryOrder::Recent => out.sort_by(|&a, &b| {
+                let ba = &self.library.books[a];
+                let bb = &self.library.books[b];
+                bb.last_opened
+                    .unwrap_or(bb.added)
+                    .cmp(&ba.last_opened.unwrap_or(ba.added))
+                    .then_with(|| collate(&ba.title).cmp(&collate(&bb.title)))
+            }),
+            LibraryOrder::Title => out.sort_by(|&a, &b| {
+                collate(&self.library.books[a].title).cmp(&collate(&self.library.books[b].title))
+            }),
+            LibraryOrder::Author => out.sort_by(|&a, &b| {
+                let ba = &self.library.books[a];
+                let bb = &self.library.books[b];
+                collate(&ba.author)
+                    .cmp(&collate(&bb.author))
+                    .then_with(|| collate(&ba.title).cmp(&collate(&bb.title)))
+            }),
+            LibraryOrder::Added => out.sort_by(|&a, &b| {
+                self.library.books[b]
+                    .added
+                    .cmp(&self.library.books[a].added)
+            }),
+        }
+        out
+    }
+
+    fn cards(&mut self, indices: &[usize], ctx: &egui::Context) -> Vec<CardData> {
+        let data_dir = self.library.data_dir.clone();
+        indices
+            .iter()
+            .filter_map(|&index| {
+                let entry = self.library.books.get(index)?.clone();
+                let cover = entry
+                    .cover
+                    .as_deref()
+                    .and_then(|rel| cover_texture(ctx, &mut self.library_textures, &data_dir, rel));
+                Some(CardData {
+                    index,
+                    path: entry.path,
+                    title: entry.title,
+                    author: entry.author,
+                    cover,
+                    chapters: entry.chapters,
+                    chapter: entry.progress.chapter,
+                    missing: entry.missing,
+                    error: entry.error,
+                })
+            })
+            .collect()
     }
 
     fn top_bar(&mut self, ctx: &egui::Context, th: &Theme) {
@@ -524,30 +921,36 @@ impl Lector {
                 ui.add_space(4.0);
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut s.font_size, 13.0..=32.0)
+                        egui::Slider::new(&mut s.font_size, config::FONT_MIN..=config::FONT_MAX)
                             .text("tamaño")
                             .step_by(0.5),
                     )
                     .changed();
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut s.line_height, 1.2..=2.2)
+                        egui::Slider::new(&mut s.line_height, config::LINE_MIN..=config::LINE_MAX)
                             .text("interlineado")
                             .step_by(0.02),
                     )
                     .changed();
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut s.column_width, 420.0..=1100.0)
-                            .text("ancho de columna")
-                            .step_by(10.0),
+                        egui::Slider::new(
+                            &mut s.column_width,
+                            config::COLUMN_MIN..=config::COLUMN_MAX,
+                        )
+                        .text("ancho de columna")
+                        .step_by(10.0),
                     )
                     .changed();
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut s.paragraph_space, 0.0..=1.5)
-                            .text("espacio entre párrafos")
-                            .step_by(0.05),
+                        egui::Slider::new(
+                            &mut s.paragraph_space,
+                            config::PARAGRAPH_MIN..=config::PARAGRAPH_MAX,
+                        )
+                        .text("espacio entre párrafos")
+                        .step_by(0.05),
                     )
                     .changed();
 
@@ -583,9 +986,11 @@ impl Lector {
             return;
         }
         egui::Area::new(egui::Id::new("toast"))
-            .anchor(egui::Align2::CENTER_TOP, Vec2::new(0.0, 52.0))
+            .anchor(egui::Align2::CENTER_BOTTOM, Vec2::new(0.0, -24.0))
             .interactable(false)
             .show(ctx, |ui| {
+                let max_w = (ctx.screen_rect().width() - 32.0).clamp(120.0, 620.0);
+                ui.set_max_width(max_w);
                 egui::Frame::new()
                     .fill(th.panel)
                     .stroke(Stroke::new(1.0, th.dim.gamma_multiply(0.4)))
@@ -676,11 +1081,6 @@ impl Lector {
         let _ = colw;
         self.toc_window(ctx, th);
         self.settings_window(ctx, th);
-        self.status_toast(ctx, th);
-
-        if self.dirty && self.last_save.elapsed() > Duration::from_millis(700) {
-            self.persist();
-        }
     }
 
     fn screenshot(&mut self, ctx: &egui::Context) {
@@ -726,16 +1126,30 @@ impl eframe::App for Lector {
             self.applied_theme = Some(self.cfg.settings.theme);
         }
 
+        let title = match self.screen {
+            Screen::Library => "lector — biblioteca".to_string(),
+            Screen::Reader => self
+                .book
+                .as_ref()
+                .map(|book| format!("lector — {}", book.title))
+                .unwrap_or_else(|| "lector".to_string()),
+        };
+        if self.window_title != title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
+
         self.handle_input(ctx);
 
-        if self.book.is_none() {
-            self.open_screen(ctx, &th);
-            self.status_toast(ctx, &th);
-            if self.dirty && self.last_save.elapsed() > Duration::from_millis(700) {
-                self.persist();
-            }
-        } else {
-            self.reader(ctx, &th);
+        match self.screen {
+            Screen::Library => self.library_screen(ctx, &th),
+            Screen::Reader => self.reader(ctx, &th),
+        }
+
+        self.status_toast(ctx, &th);
+
+        if self.dirty && self.last_save.elapsed() > Duration::from_millis(700) {
+            self.persist();
         }
 
         self.screenshot(ctx);
@@ -757,6 +1171,204 @@ fn truncate(s: &str, max_chars: usize) -> String {
     let mut out: String = s.chars().take(max_chars.saturating_sub(1)).collect();
     out.push('…');
     out
+}
+
+fn collate(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' | 'ã' | 'å' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' | 'õ' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'ñ' => 'n',
+            'ç' => 'c',
+            _ => c,
+        })
+        .collect()
+}
+
+fn pad_to(ui: &mut Ui, top: f32, height: f32) {
+    let used = (ui.cursor().top() - top).max(0.0);
+    if used < height {
+        ui.add_space(height - used);
+    }
+}
+
+fn cover_texture(
+    ctx: &egui::Context,
+    cache: &mut HashMap<String, egui::TextureHandle>,
+    data_dir: &Path,
+    relative: &str,
+) -> Option<(egui::TextureId, Vec2)> {
+    let path = data_dir.join(relative);
+    let key = path.to_string_lossy().to_string();
+    if let Some(handle) = cache.get(&key) {
+        return Some((handle.id(), handle.size_vec2()));
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    let image = image::load_from_memory(&bytes).ok()?;
+    let rgba = image.to_rgba8();
+    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let color = egui::ColorImage::from_rgba_unmultiplied([w, h], rgba.as_ref());
+    let handle = ctx.load_texture(key.clone(), color, egui::TextureOptions::LINEAR);
+    let id = handle.id();
+    let size = handle.size_vec2();
+    cache.insert(key, handle);
+    Some((id, size))
+}
+
+fn reveal_in_finder(path: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+    }
+}
+
+fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> {
+    let mut action = None;
+    let response = ui.allocate_ui_with_layout(
+        Vec2::new(CARD_W, 0.0),
+        Layout::top_down(Align::Center),
+        |ui| {
+            ui.set_width(CARD_W);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            if let Some((id, size)) = card.cover {
+                let scale = (CARD_W / size.x).min(CARD_COVER_H / size.y);
+                let shown = size * scale;
+                ui.add_space(((CARD_COVER_H - shown.y) * 0.5).max(0.0));
+                ui.add(egui::Image::new(egui::load::SizedTexture::new(id, shown)));
+                ui.add_space(((CARD_COVER_H - shown.y) * 0.5).max(0.0));
+            } else {
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new(CARD_W, CARD_COVER_H), Sense::hover());
+                ui.painter().rect_filled(rect, 6.0, th.panel);
+                let initial = card
+                    .title
+                    .chars()
+                    .next()
+                    .unwrap_or('?')
+                    .to_uppercase()
+                    .to_string();
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    initial,
+                    FontId::new(42.0, fonts::family(true, false)),
+                    th.dim,
+                );
+            }
+
+            ui.add_space(6.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(CARD_W, 34.0),
+                Layout::top_down(Align::Center),
+                |ui| {
+                    let top = ui.cursor().top();
+                    ui.label(
+                        RichText::new(truncate(&card.title, 48))
+                            .size(12.5)
+                            .color(th.fg),
+                    );
+                    pad_to(ui, top, 34.0);
+                },
+            );
+            ui.allocate_ui_with_layout(
+                Vec2::new(CARD_W, 16.0),
+                Layout::top_down(Align::Center),
+                |ui| {
+                    let top = ui.cursor().top();
+                    if !card.author.is_empty() {
+                        ui.label(
+                            RichText::new(truncate(&card.author, 26))
+                                .size(11.0)
+                                .color(th.dim),
+                        );
+                    }
+                    pad_to(ui, top, 16.0);
+                },
+            );
+            ui.allocate_ui_with_layout(
+                Vec2::new(CARD_W, 24.0),
+                Layout::top_down(Align::Center),
+                |ui| {
+                    let top = ui.cursor().top();
+                    if card.missing {
+                        ui.label(
+                            RichText::new("Falta")
+                                .size(10.5)
+                                .color(Color32::from_rgb(180, 80, 70)),
+                        );
+                    } else if card.error.is_some() {
+                        ui.label(
+                            RichText::new("Error al abrir")
+                                .size(10.5)
+                                .color(Color32::from_rgb(180, 80, 70)),
+                        );
+                    } else if card.chapters > 0 {
+                        let fraction = (card.chapter as f32 / card.chapters as f32).clamp(0.0, 1.0);
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::new(CARD_W, 3.0), Sense::hover());
+                        ui.painter()
+                            .rect_filled(rect, 1.5, th.dim.gamma_multiply(0.25));
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(
+                                rect.min,
+                                Vec2::new(CARD_W * fraction, rect.height()),
+                            ),
+                            1.5,
+                            th.accent,
+                        );
+                        ui.label(
+                            RichText::new(format!("{}%", (fraction * 100.0).round() as u32))
+                                .size(10.0)
+                                .color(th.dim),
+                        );
+                    }
+                    pad_to(ui, top, 24.0);
+                },
+            );
+        },
+    );
+
+    let rect = response.response.rect;
+    let response = ui.interact(
+        rect,
+        ui.id().with(("library-card", card.index)),
+        Sense::click(),
+    );
+    if response.clicked() {
+        action = Some(CardAction::Open);
+    }
+    let response = if let Some(error) = &card.error {
+        response.on_hover_text(error.clone())
+    } else if card.missing {
+        response.on_hover_text("El archivo ya no está")
+    } else {
+        response
+    };
+    response.context_menu(|ui| {
+        if ui.button("Mostrar en Finder").clicked() {
+            reveal_in_finder(&card.path);
+            ui.close();
+        }
+        if ui.button("Quitar de la biblioteca").clicked() {
+            action = Some(CardAction::Remove);
+            ui.close();
+        }
+    });
+    action
 }
 
 #[allow(clippy::too_many_arguments)]

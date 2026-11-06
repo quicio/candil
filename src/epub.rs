@@ -1,10 +1,11 @@
 //! Lectura del contenedor EPUB: zip → container.xml → OPF → spine + índice.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use image::GenericImageView;
 use zip::ZipArchive;
 
 use crate::xhtml::{self, Block};
@@ -31,6 +32,7 @@ pub struct Book {
     pub toc: Vec<TocEntry>,
     archive: ZipArchive<File>,
     titles: HashMap<usize, String>,
+    cover_candidates: Vec<String>,
 }
 
 impl Book {
@@ -67,6 +69,7 @@ impl Book {
         let mut title = String::new();
         let mut author = String::new();
         let mut lang = String::new();
+        let mut cover_meta: Option<String> = None;
         if let Some(md) = doc
             .descendants()
             .find(|n| n.is_element() && n.tag_name().name() == "metadata")
@@ -76,6 +79,20 @@ impl Book {
                     "title" if title.is_empty() => title = node_text(n),
                     "creator" if author.is_empty() => author = node_text(n),
                     "language" if lang.is_empty() => lang = node_text(n),
+                    "meta" => {
+                        let name = n.attribute("name").unwrap_or("");
+                        let prop = n.attribute("property").unwrap_or("");
+                        let is_cover = name.eq_ignore_ascii_case("cover")
+                            || prop.eq_ignore_ascii_case("cover")
+                            || prop.eq_ignore_ascii_case("cover-image");
+                        if is_cover && cover_meta.is_none() {
+                            cover_meta = n
+                                .attribute("content")
+                                .or_else(|| n.attribute("href"))
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty());
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -106,11 +123,36 @@ impl Book {
             );
         }
 
-        // Spine
+        // Portada declarada: `properties="cover-image"` (EPUB3) y
+        // `meta name="cover"` (EPUB2/Calibre). El fallback a la primera imagen
+        // del spine se resuelve en `cover_bytes()`.
+        let mut cover_candidates: Vec<String> = Vec::new();
+        if let Some(item) = manifest
+            .values()
+            .find(|m| m.props.split_whitespace().any(|p| p == "cover-image"))
+        {
+            cover_candidates.push(item.path.clone());
+        }
+        if let Some(meta) = cover_meta {
+            if let Some(item) = manifest.get(&meta) {
+                cover_candidates.push(item.path.clone());
+            } else {
+                let path = resolve(&base, &meta);
+                if !path.is_empty() {
+                    cover_candidates.push(path);
+                }
+            }
+        }
+        let mut seen_covers = HashSet::new();
+        cover_candidates.retain(|path| seen_covers.insert(path.clone()));
+
+        // Spine. Se descarta el documento `nav` (el índice) cuando hay otros
+        // capítulos: algunos EPUB lo meten en el spine y se ve como una página
+        // en blanco. Si el libro solo tiene ese documento, se conserva.
         let spine_node = doc
             .descendants()
             .find(|n| n.is_element() && n.tag_name().name() == "spine");
-        let mut spine = Vec::new();
+        let mut spine_items: Vec<(String, bool)> = Vec::new();
         let mut toc_id = None;
         if let Some(sp) = spine_node {
             toc_id = sp.attribute("toc").map(|s| s.to_string());
@@ -121,11 +163,18 @@ impl Book {
                 let idref = iref.attribute("idref").unwrap_or_default();
                 if let Some(item) = manifest.get(idref) {
                     if !item.path.is_empty() {
-                        spine.push(item.path.clone());
+                        let is_nav = item.props.split_whitespace().any(|p| p == "nav");
+                        spine_items.push((item.path.clone(), is_nav));
                     }
                 }
             }
         }
+        let has_reading_content = spine_items.iter().any(|(_, is_nav)| !is_nav);
+        let spine: Vec<String> = spine_items
+            .into_iter()
+            .filter(|(_, is_nav)| !has_reading_content || !is_nav)
+            .map(|(path, _)| path)
+            .collect();
         if spine.is_empty() {
             return Err("el libro no declara capítulos legibles".into());
         }
@@ -186,6 +235,7 @@ impl Book {
             toc: entries,
             archive,
             titles: HashMap::new(),
+            cover_candidates,
         })
     }
 
@@ -242,6 +292,59 @@ impl Book {
     /// Bytes de un recurso interno (imágenes, css, fuentes).
     pub fn resource(&mut self, path: &str) -> Option<Vec<u8>> {
         read_entry(&mut self.archive, path)
+    }
+
+    /// Primer candidato de portada que decodifica y tiene aspecto de portada.
+    ///
+    /// Orden: declarada en el OPF; si no hay, la primera imagen de los primeros
+    /// documentos del spine (incluye `<svg><image>`).
+    pub fn cover_bytes(&mut self) -> Option<Vec<u8>> {
+        let declared = self.cover_candidates.clone();
+        if let Some(bytes) = self.valid_cover(&declared) {
+            return Some(bytes);
+        }
+
+        let mut fallback: Vec<String> = Vec::new();
+        for i in 0..self.spine.len().min(4) {
+            let blocks = self.chapter_blocks(i);
+            let mut found = false;
+            for block in blocks
+                .iter()
+                .filter(|b| b.kind == crate::xhtml::Kind::Image)
+            {
+                if let Some(src) = &block.src {
+                    if !fallback.contains(src) {
+                        fallback.push(src.clone());
+                    }
+                    found = true;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+        self.valid_cover(&fallback)
+    }
+
+    fn valid_cover(&mut self, paths: &[String]) -> Option<Vec<u8>> {
+        for path in paths {
+            let Some(bytes) = self.resource(path) else {
+                continue;
+            };
+            let Ok(img) = image::load_from_memory(&bytes) else {
+                continue;
+            };
+            let (w, h) = img.dimensions();
+            if w == 0 || h == 0 {
+                continue;
+            }
+            // Un mapa/banner apaisado no es una portada.
+            if (w as f32 / h as f32) > 2.0 {
+                continue;
+            }
+            return Some(bytes);
+        }
+        None
     }
 }
 

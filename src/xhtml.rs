@@ -48,6 +48,7 @@ impl Block {
 // ---------------------------------------------------------------------------
 
 const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
+const SVG_NS: &str = "http://www.w3.org/2000/svg";
 
 #[derive(Clone)]
 struct Ctx {
@@ -126,18 +127,18 @@ fn parse_lenient(src: &str) -> Vec<Block> {
     let mut i = 0usize;
     while i < src.len() {
         let tail = &src[i..];
-        if tail.starts_with("<!--") {
-            match tail[4..].find("-->") {
+        if let Some(rest) = tail.strip_prefix("<!--") {
+            match rest.find("-->") {
                 Some(e) => i += 4 + e + 3,
                 None => break,
             }
             continue;
         }
-        if tail.starts_with("<![CDATA[") {
-            match tail[9..].find("]]>") {
+        if let Some(rest) = tail.strip_prefix("<![CDATA[") {
+            match rest.find("]]>") {
                 Some(e) => {
                     let c = ctx(&kinds, bold, italic, small, link);
-                    push_text(&mut buf, &tail[9..9 + e], &c);
+                    push_text(&mut buf, &rest[..e], &c);
                     i += 9 + e + 3;
                 }
                 None => break,
@@ -186,10 +187,18 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     | "html"
                     | "figure"
                     | "figcaption"
+                    | "table"
+                    | "thead"
+                    | "tbody"
+                    | "tfoot"
                     | "tr"
                     | "td"
+                    | "th"
+                    | "caption"
+                    | "dl"
                     | "dd"
                     | "dt"
+                    | "svg"
                     | "blockquote"
                     | "ul"
                     | "ol"
@@ -216,6 +225,7 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     "i" | "em" | "cite" => italic = (italic - 1).max(0),
                     "small" | "sup" | "sub" => small = (small - 1).max(0),
                     "a" => link = (link - 1).max(0),
+                    "th" | "dt" => bold = (bold - 1).max(0),
                     _ => {}
                 }
                 continue;
@@ -239,14 +249,21 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                         alt: String::new(),
                     });
                 }
-                "img" => {
+                "img" | "image" => {
                     let c = ctx(&kinds, bold, italic, small, link);
                     flush(&mut out, &c, &mut buf);
+                    let src = if name.as_str() == "img" {
+                        attr(body, "src")
+                    } else {
+                        attr(body, "xlink:href").or_else(|| attr(body, "href"))
+                    };
                     out.push(Block {
                         kind: Kind::Image,
                         runs: Vec::new(),
-                        src: attr(body, "src"),
-                        alt: attr(body, "alt").unwrap_or_default(),
+                        src,
+                        alt: attr(body, "alt")
+                            .or_else(|| attr(body, "aria-label"))
+                            .unwrap_or_default(),
                     });
                 }
                 "ul" => {
@@ -272,7 +289,11 @@ fn parse_lenient(src: &str) -> Vec<Block> {
                     italic += 1;
                 }
                 "pre" => kinds.push(Kind::Pre),
-                "figcaption" => kinds.push(Kind::Caption),
+                "figcaption" | "caption" => kinds.push(Kind::Caption),
+                "th" | "dt" => {
+                    kinds.push(Kind::Para);
+                    bold += 1;
+                }
                 "head" | "title" | "script" | "style" => {}
                 other => {
                     if let Some(level) = heading_level(other) {
@@ -391,6 +412,10 @@ fn is_xhtml_ish(n: roxmltree::Node) -> bool {
     }
 }
 
+fn is_svg_ish(n: roxmltree::Node) -> bool {
+    n.tag_name().namespace() == Some(SVG_NS)
+}
+
 fn visit(node: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut Vec<Run>) {
     for child in node.children() {
         visit_node(child, out, ctx, buf);
@@ -404,7 +429,7 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
         }
         return;
     }
-    if !child.is_element() || !is_xhtml_ish(child) {
+    if !child.is_element() || (!is_xhtml_ish(child) && !is_svg_ish(child)) {
         return;
     }
 
@@ -487,6 +512,72 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
             flush(out, &c, buf);
         }
 
+        // Tablas y listas de definición: no hay render tabular, pero cada
+        // celda/entrada es un bloque propio (antes se pegaban todas).
+        "table" | "thead" | "tbody" | "tfoot" | "tr" => {
+            flush(out, ctx, buf);
+            visit(child, out, ctx, buf);
+            flush(out, ctx, buf);
+        }
+
+        "td" | "th" => {
+            flush(out, ctx, buf);
+            let mut c = ctx.clone();
+            c.kind = Kind::Para;
+            if tag == "th" {
+                c.bold = true;
+            }
+            visit(child, out, &c, buf);
+            flush(out, &c, buf);
+        }
+
+        "caption" => {
+            flush(out, ctx, buf);
+            let mut c = ctx.clone();
+            c.kind = Kind::Caption;
+            visit(child, out, &c, buf);
+            flush(out, &c, buf);
+        }
+
+        "dl" | "dt" | "dd" => {
+            flush(out, ctx, buf);
+            let mut c = ctx.clone();
+            c.kind = Kind::Para;
+            if tag == "dt" {
+                c.bold = true;
+            }
+            visit(child, out, &c, buf);
+            flush(out, &c, buf);
+        }
+
+        // Portadas y mapas de EPUB reales envuelven un raster en
+        // <svg><image xlink:href="..."/></svg>. No se rasterizan vectores.
+        "svg" => {
+            flush(out, ctx, buf);
+            let image = child
+                .descendants()
+                .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("image"));
+            if let Some(image) = image {
+                let src = image
+                    .attributes()
+                    .find(|a| a.name().eq_ignore_ascii_case("href"))
+                    .map(|a| a.value().to_string())
+                    .filter(|s| !s.trim().is_empty());
+                if let Some(src) = src {
+                    out.push(Block {
+                        kind: Kind::Image,
+                        runs: Vec::new(),
+                        src: Some(src),
+                        alt: image
+                            .attribute("aria-label")
+                            .or_else(|| image.attribute("title"))
+                            .unwrap_or("")
+                            .to_string(),
+                    });
+                }
+            }
+        }
+
         "hr" => {
             flush(out, ctx, buf);
             out.push(Block {
@@ -538,12 +629,25 @@ fn visit_node(child: roxmltree::Node, out: &mut Vec<Block>, ctx: &Ctx, buf: &mut
 }
 
 fn push_text(buf: &mut Vec<Run>, raw: &str, ctx: &Ctx) {
-    let text = normalize_ws(raw);
+    let is_pre = ctx.kind == Kind::Pre;
+    // `<pre>` conserva saltos e indentación: son contenido, no separación.
+    let mut text = if is_pre {
+        raw.to_string()
+    } else {
+        normalize_ws(raw)
+    };
     if text.is_empty() {
         return;
     }
     // Une con el run anterior si comparte estilo.
     if let Some(last) = buf.last_mut() {
+        // Un espacio de frontera nunca se duplica, aunque cambie el estilo.
+        if !is_pre && last.text.ends_with(' ') && text.starts_with(' ') {
+            text.remove(0);
+            if text.is_empty() {
+                return;
+            }
+        }
         if last.bold == ctx.bold
             && last.italic == ctx.italic
             && last.small == ctx.small
@@ -587,21 +691,21 @@ fn flush(out: &mut Vec<Block>, ctx: &Ctx, buf: &mut Vec<Run>) {
     });
 }
 
-/// Colapsa todo espacio en blanco del fuente (incluidos saltos de línea) a un
-/// espacio simple: en XHTML el salto solo significa separación, nunca párrafo.
+/// Colapsa el whitespace interno a un espacio simple, pero **conserva** un
+/// espacio en los bordes: entre dos runs inline un espacio del fuente no puede
+/// desaparecer. `flush` recorta los extremos del bloque.
 fn normalize_ws(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let mut prev_space = true;
+    let mut in_space = false;
     for ch in s.chars() {
-        let is_space = ch.is_whitespace();
-        if is_space {
-            if !prev_space {
+        if ch.is_whitespace() {
+            if !in_space {
                 out.push(' ');
+                in_space = true;
             }
-            prev_space = true;
         } else {
             out.push(ch);
-            prev_space = false;
+            in_space = false;
         }
     }
     out
@@ -622,10 +726,12 @@ fn push_break(buf: &mut Vec<Run>) {
 // ---------------------------------------------------------------------------
 
 pub fn sanitize(src: &str) -> String {
+    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
     let mut s = strip_doctype(src);
     s = replace_entities(&s);
     // Espacio no separable: egui no corta ahí, pero tampoco queremos NBSP raros.
-    s.replace('\u{a0}', " ")
+    // El soft hyphen no sirve sin hyphenation y ensucia búsquedas/copiar.
+    s.replace('\u{a0}', " ").replace('\u{ad}', "")
 }
 
 fn strip_doctype(src: &str) -> String {
@@ -705,37 +811,254 @@ fn decode_numeric(name: &str) -> Option<String> {
     char::from_u32(code).map(|c| c.to_string())
 }
 
-fn named(name: &str) -> Option<String> {
-    // Se emiten referencias numéricas, no caracteres literales: un `&quot;`
+/// Entidades HTML que aparecen en EPUB reales. No es la lista completa de
+/// HTML5 (~2.200): cubre Latin-1, griego, matemáticas y puntuación comunes.
+/// Lo desconocido queda literal para que sea visible y depurable.
+const NAMED_ENTITIES: &[(&str, &str)] = &[
+    // XML / básicas. Se emiten como referencias numéricas: un `&quot;`
     // reemplazado por `"` dentro de un atributo rompe el XML.
-    let s = match name {
-        "amp" => "&#38;",
-        "lt" => "&#60;",
-        "gt" => "&#62;",
-        "quot" => "&#34;",
-        "apos" => "&#39;",
-        "nbsp" => " ",
-        "mdash" => "\u{2014}",
-        "ndash" => "\u{2013}",
-        "hellip" => "\u{2026}",
-        "lsquo" => "\u{2018}",
-        "rsquo" => "\u{2019}",
-        "ldquo" => "\u{201c}",
-        "rdquo" => "\u{201d}",
-        "laquo" => "\u{ab}",
-        "raquo" => "\u{bb}",
-        "iexcl" => "\u{a1}",
-        "iquest" => "\u{bf}",
-        "deg" => "\u{b0}",
-        "middot" => "\u{b7}",
-        "bull" => "\u{2022}",
-        "trade" => "\u{2122}",
-        "copy" => "\u{a9}",
-        "reg" => "\u{ae}",
-        "shy" => "",
-        _ => return None,
-    };
-    Some(s.to_string())
+    ("amp", "&#38;"),
+    ("lt", "&#60;"),
+    ("gt", "&#62;"),
+    ("quot", "&#34;"),
+    ("apos", "&#39;"),
+    ("nbsp", " "),
+    ("shy", ""),
+    ("ensp", "\u{2002}"),
+    ("emsp", "\u{2003}"),
+    ("thinsp", "\u{2009}"),
+    ("zwnj", ""),
+    ("zwj", ""),
+    // Puntuación y símbolos.
+    ("ndash", "\u{2013}"),
+    ("mdash", "\u{2014}"),
+    ("hellip", "\u{2026}"),
+    ("lsquo", "\u{2018}"),
+    ("rsquo", "\u{2019}"),
+    ("sbquo", "\u{201a}"),
+    ("ldquo", "\u{201c}"),
+    ("rdquo", "\u{201d}"),
+    ("bdquo", "\u{201e}"),
+    ("laquo", "\u{ab}"),
+    ("raquo", "\u{bb}"),
+    ("lsaquo", "\u{2039}"),
+    ("rsaquo", "\u{203a}"),
+    ("dagger", "\u{2020}"),
+    ("Dagger", "\u{2021}"),
+    ("bull", "\u{2022}"),
+    ("permil", "\u{2030}"),
+    ("prime", "\u{2032}"),
+    ("Prime", "\u{2033}"),
+    ("oline", "\u{203e}"),
+    ("frasl", "\u{2044}"),
+    ("sect", "\u{a7}"),
+    ("para", "\u{b6}"),
+    ("middot", "\u{b7}"),
+    ("copy", "\u{a9}"),
+    ("reg", "\u{ae}"),
+    ("trade", "\u{2122}"),
+    ("euro", "\u{20ac}"),
+    ("cent", "\u{a2}"),
+    ("pound", "\u{a3}"),
+    ("yen", "\u{a5}"),
+    ("curren", "\u{a4}"),
+    ("brvbar", "\u{a6}"),
+    ("uml", "\u{a8}"),
+    ("macr", "\u{af}"),
+    ("acute", "\u{b4}"),
+    ("cedil", "\u{b8}"),
+    ("not", "\u{ac}"),
+    ("plusmn", "\u{b1}"),
+    ("times", "\u{d7}"),
+    ("divide", "\u{f7}"),
+    ("frac12", "\u{bd}"),
+    ("frac14", "\u{bc}"),
+    ("frac34", "\u{be}"),
+    ("sup1", "\u{b9}"),
+    ("sup2", "\u{b2}"),
+    ("sup3", "\u{b3}"),
+    ("micro", "\u{b5}"),
+    ("deg", "\u{b0}"),
+    ("iexcl", "\u{a1}"),
+    ("iquest", "\u{bf}"),
+    ("ordf", "\u{aa}"),
+    ("ordm", "\u{ba}"),
+    // Latin-1 y Latin Extended que aparecen en libros en español.
+    ("aacute", "\u{e1}"),
+    ("agrave", "\u{e0}"),
+    ("acirc", "\u{e2}"),
+    ("atilde", "\u{e3}"),
+    ("auml", "\u{e4}"),
+    ("aring", "\u{e5}"),
+    ("aelig", "\u{e6}"),
+    ("ccedil", "\u{e7}"),
+    ("eacute", "\u{e9}"),
+    ("egrave", "\u{e8}"),
+    ("ecirc", "\u{ea}"),
+    ("euml", "\u{eb}"),
+    ("iacute", "\u{ed}"),
+    ("igrave", "\u{ec}"),
+    ("icirc", "\u{ee}"),
+    ("iuml", "\u{ef}"),
+    ("eth", "\u{f0}"),
+    ("ntilde", "\u{f1}"),
+    ("oacute", "\u{f3}"),
+    ("ograve", "\u{f2}"),
+    ("ocirc", "\u{f4}"),
+    ("otilde", "\u{f5}"),
+    ("ouml", "\u{f6}"),
+    ("oslash", "\u{f8}"),
+    ("uacute", "\u{fa}"),
+    ("ugrave", "\u{f9}"),
+    ("ucirc", "\u{fb}"),
+    ("uuml", "\u{fc}"),
+    ("yacute", "\u{fd}"),
+    ("yuml", "\u{ff}"),
+    ("thorn", "\u{fe}"),
+    ("szlig", "\u{df}"),
+    ("Aacute", "\u{c1}"),
+    ("Agrave", "\u{c0}"),
+    ("Acirc", "\u{c2}"),
+    ("Atilde", "\u{c3}"),
+    ("Auml", "\u{c4}"),
+    ("Aring", "\u{c5}"),
+    ("AElig", "\u{c6}"),
+    ("Ccedil", "\u{c7}"),
+    ("Eacute", "\u{c9}"),
+    ("Egrave", "\u{c8}"),
+    ("Ecirc", "\u{ca}"),
+    ("Euml", "\u{cb}"),
+    ("Iacute", "\u{cd}"),
+    ("Igrave", "\u{cc}"),
+    ("Icirc", "\u{ce}"),
+    ("Iuml", "\u{cf}"),
+    ("ETH", "\u{d0}"),
+    ("Ntilde", "\u{d1}"),
+    ("Oacute", "\u{d3}"),
+    ("Ograve", "\u{d2}"),
+    ("Ocirc", "\u{d4}"),
+    ("Otilde", "\u{d5}"),
+    ("Ouml", "\u{d6}"),
+    ("Oslash", "\u{d8}"),
+    ("Uacute", "\u{da}"),
+    ("Ugrave", "\u{d9}"),
+    ("Ucirc", "\u{db}"),
+    ("Uuml", "\u{dc}"),
+    ("Yacute", "\u{dd}"),
+    ("Yuml", "\u{178}"),
+    ("THORN", "\u{de}"),
+    ("OElig", "\u{152}"),
+    ("oelig", "\u{153}"),
+    ("Scaron", "\u{160}"),
+    ("scaron", "\u{161}"),
+    ("fnof", "\u{192}"),
+    ("circ", "\u{2c6}"),
+    ("tilde", "\u{2dc}"),
+    // Griego.
+    ("alpha", "\u{3b1}"),
+    ("beta", "\u{3b2}"),
+    ("gamma", "\u{3b3}"),
+    ("delta", "\u{3b4}"),
+    ("epsilon", "\u{3b5}"),
+    ("zeta", "\u{3b6}"),
+    ("eta", "\u{3b7}"),
+    ("theta", "\u{3b8}"),
+    ("iota", "\u{3b9}"),
+    ("kappa", "\u{3ba}"),
+    ("lambda", "\u{3bb}"),
+    ("mu", "\u{3bc}"),
+    ("nu", "\u{3bd}"),
+    ("xi", "\u{3be}"),
+    ("omicron", "\u{3bf}"),
+    ("pi", "\u{3c0}"),
+    ("rho", "\u{3c1}"),
+    ("sigmaf", "\u{3c2}"),
+    ("sigma", "\u{3c3}"),
+    ("tau", "\u{3c4}"),
+    ("upsilon", "\u{3c5}"),
+    ("phi", "\u{3c6}"),
+    ("chi", "\u{3c7}"),
+    ("psi", "\u{3c8}"),
+    ("omega", "\u{3c9}"),
+    ("Alpha", "\u{391}"),
+    ("Beta", "\u{392}"),
+    ("Gamma", "\u{393}"),
+    ("Delta", "\u{394}"),
+    ("Epsilon", "\u{395}"),
+    ("Zeta", "\u{396}"),
+    ("Eta", "\u{397}"),
+    ("Theta", "\u{398}"),
+    ("Iota", "\u{399}"),
+    ("Kappa", "\u{39a}"),
+    ("Lambda", "\u{39b}"),
+    ("Mu", "\u{39c}"),
+    ("Nu", "\u{39d}"),
+    ("Xi", "\u{39e}"),
+    ("Omicron", "\u{39f}"),
+    ("Pi", "\u{3a0}"),
+    ("Rho", "\u{3a1}"),
+    ("Sigma", "\u{3a3}"),
+    ("Tau", "\u{3a4}"),
+    ("Upsilon", "\u{3a5}"),
+    ("Phi", "\u{3a6}"),
+    ("Chi", "\u{3a7}"),
+    ("Psi", "\u{3a8}"),
+    ("Omega", "\u{3a9}"),
+    // Matemáticas.
+    ("le", "\u{2264}"),
+    ("ge", "\u{2265}"),
+    ("ne", "\u{2260}"),
+    ("equiv", "\u{2261}"),
+    ("asymp", "\u{2248}"),
+    ("infin", "\u{221e}"),
+    ("sum", "\u{2211}"),
+    ("prod", "\u{220f}"),
+    ("radic", "\u{221a}"),
+    ("int", "\u{222b}"),
+    ("part", "\u{2202}"),
+    ("nabla", "\u{2207}"),
+    ("isin", "\u{2208}"),
+    ("notin", "\u{2209}"),
+    ("ni", "\u{220b}"),
+    ("sub", "\u{2282}"),
+    ("sup", "\u{2283}"),
+    ("subset", "\u{2282}"),
+    ("supset", "\u{2283}"),
+    ("and", "\u{2227}"),
+    ("or", "\u{2228}"),
+    ("cap", "\u{2229}"),
+    ("cup", "\u{222a}"),
+    ("forall", "\u{2200}"),
+    ("exist", "\u{2203}"),
+    ("empty", "\u{2205}"),
+    ("there4", "\u{2234}"),
+    ("sim", "\u{223c}"),
+    ("cong", "\u{2245}"),
+    ("prop", "\u{221d}"),
+    ("perp", "\u{22a5}"),
+    ("ang", "\u{2220}"),
+    ("sdot", "\u{22c5}"),
+    ("lowast", "\u{2217}"),
+    ("minus", "\u{2212}"),
+    ("plus", "\u{2b}"),
+    ("larr", "\u{2190}"),
+    ("uarr", "\u{2191}"),
+    ("rarr", "\u{2192}"),
+    ("darr", "\u{2193}"),
+    ("harr", "\u{2194}"),
+    ("crarr", "\u{21b5}"),
+    ("lArr", "\u{21d0}"),
+    ("uArr", "\u{21d1}"),
+    ("rArr", "\u{21d2}"),
+    ("dArr", "\u{21d3}"),
+    ("hArr", "\u{21d4}"),
+];
+
+fn named(name: &str) -> Option<String> {
+    NAMED_ENTITIES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, value)| (*value).to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -831,5 +1154,84 @@ mod tests {
         let b = parse(src);
         assert_eq!(b.len(), 1, "{b:?}");
         assert_eq!(b[0].text(), "sí");
+    }
+
+    #[test]
+    fn inline_boundaries_keep_a_single_space() {
+        assert_eq!(
+            parse("<p><b>Hola</b> <i>mundo</i></p>")[0].text(),
+            "Hola mundo"
+        );
+        assert_eq!(parse("<p>Hola<b> mundo</b></p>")[0].text(), "Hola mundo");
+        assert_eq!(parse("<p>a <em> b </em> c</p>")[0].text(), "a b c");
+        // Sin espacio en el fuente no se inventa uno.
+        assert_eq!(parse("<p>uno<em>dos</em>tres</p>")[0].text(), "unodostres");
+    }
+
+    #[test]
+    fn latin1_greek_and_math_entities_decode() {
+        let t = parse("<p>caf&eacute; ni&ntilde;o &le; &omega; &Phi;</p>")[0].text();
+        assert_eq!(t, "caf\u{e9} ni\u{f1}o \u{2264} \u{3c9} \u{3a6}");
+    }
+
+    #[test]
+    fn soft_hyphen_and_bom_are_removed() {
+        assert_eq!(parse("\u{feff}<p>a&shy;b c\u{ad}d</p>")[0].text(), "ab cd");
+    }
+
+    #[test]
+    fn pre_preserves_whitespace_and_newlines() {
+        let b = parse("<pre>def f(x):\n    return x</pre>");
+        assert_eq!(b[0].kind, Kind::Pre);
+        assert_eq!(b[0].text(), "def f(x):\n    return x");
+    }
+
+    #[test]
+    fn tables_and_definition_lists_do_not_glue() {
+        let b = parse("<table><tr><td>celda uno</td><td>celda dos</td></tr></table><dl><dt>t\u{e9}rmino</dt><dd>definici\u{f3}n</dd></dl>");
+        let texts: Vec<String> = b.iter().map(|x| x.text()).collect();
+        assert!(texts.iter().any(|t| t == "celda uno"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "celda dos"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "t\u{e9}rmino"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "definici\u{f3}n"), "{texts:?}");
+        assert!(
+            !texts.iter().any(|t| t.contains("celda unocelda")),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn table_header_and_caption_are_separate() {
+        let b = parse(
+            "<table><caption>Leyenda</caption><tr><th>Encabezado</th><td>dato</td></tr></table>",
+        );
+        assert!(b
+            .iter()
+            .any(|x| x.kind == Kind::Caption && x.text() == "Leyenda"));
+        let th = b
+            .iter()
+            .find(|x| x.text() == "Encabezado")
+            .expect("encabezado");
+        assert!(th.runs.iter().all(|r| r.bold), "{:?}", th.runs);
+        assert!(b.iter().any(|x| x.text() == "dato"));
+    }
+
+    #[test]
+    fn svg_image_is_extracted_in_strict_and_lenient() {
+        let strict = r#"<html xmlns="http://www.w3.org/1999/xhtml" xmlns:xlink="http://www.w3.org/1999/xlink"><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><image xlink:href="img/a.png" width="2" height="2"/></svg></body></html>"#;
+        let b = parse(strict);
+        let img = b
+            .iter()
+            .find(|x| x.kind == Kind::Image)
+            .expect("imagen svg");
+        assert_eq!(img.src.as_deref(), Some("img/a.png"));
+
+        let lenient = r#"<html><body><svg><image xlink:href="img/b.png"></svg></body></html>"#;
+        let b = parse(lenient);
+        let img = b
+            .iter()
+            .find(|x| x.kind == Kind::Image)
+            .expect("imagen svg tolerante");
+        assert_eq!(img.src.as_deref(), Some("img/b.png"));
     }
 }

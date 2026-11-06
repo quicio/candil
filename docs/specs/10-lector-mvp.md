@@ -43,7 +43,7 @@ congelar el contrato para que M2/M3 no lo rompan sin darse cuenta.
 ## Verificación (reproducible)
 
 ```bash
-cargo test                                        # 38 unit + 8 integración
+cargo test                                        # 41 unit + 8 integración
 cargo run --profile fast -- --inspect <libro>     # metadatos, spine, bloques, imágenes
 cargo run --profile fast -- --shot /tmp/p.png --chapter 13 <libro>
 ```

@@ -62,6 +62,9 @@ pub struct Config {
     pub settings: Settings,
     pub last_book: Option<String>,
     pub recent: Vec<String>,
+    /// Compatibilidad: el progreso se migra a `library.json` en M2. No se
+    /// vuelve a escribir acá.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub progress: BTreeMap<String, Progress>,
 }
 

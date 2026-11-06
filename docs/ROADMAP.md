@@ -14,7 +14,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 |---|---|---|---|---|
 | M1 | Lector | **Hecho** | [10](specs/10-lector-mvp.md) | 43 EPUB abren sin capítulos vacíos; 2279/2279 imágenes; temas y progreso persistentes |
 | M1.1 | Endurecimiento | **Hecho** | [15](specs/15-endurecimiento-lector.md) | Espacios, entidades, pre/tablas, SVG raster y config atómica verificados sobre el corpus |
-| M2 | Biblioteca | **En curso** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
+| M2 | Biblioteca | **Casi cerrada** | [20](specs/20-biblioteca.md), [21](specs/21-metadatos-y-portadas.md) | Escanear una carpeta de 50 EPUB en ≤ 5 s y verla como estantería con portadas, orden, filtro y apertura |
 | M3 | Lectura fina | Después | [30](specs/30-indice-por-ancla.md), [35](specs/35-preferencias-por-libro.md) | Click en cualquier entrada del índice aterriza en el párrafo exacto, incluso si todo el libro es un solo XHTML |
 | M4 | Extras | Futuro | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 
@@ -35,13 +35,14 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 38 + 8 con M2); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 41 + 8 con M2); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
-## M2 — Biblioteca (en curso)
+## M2 — Biblioteca (casi cerrada)
 
-Implementado y medido el 2026-11-06 sobre `~/Libros` (43 EPUB):
+Implementado y medido el 2026-11-06 sobre `~/Libros` (43 EPUB en la medición; hoy
+quedaron 40 tras limpiar duplicados):
 
 - Modelo `library.json` con `schema_version`, rutas canónicas, `size`/`mtime`,
   `missing` y progreso; escritura atómica compartida en `src/store.rs`.
@@ -53,9 +54,13 @@ Implementado y medido el 2026-11-06 sobre `~/Libros` (43 EPUB):
 - `--scan <carpeta>` para probar el núcleo sin UI; `--resume` para abrir el
   último libro (el arranque normal es la biblioteca).
 
-Pendiente para cerrar: T8 (migración de progreso a `library.json`), T9 completo
-(quitar carpetas, contador de errores), T10 (`--screen library`/`--library-path`
-y captura filtrada) y T11 (medir 50 libros y cerrar métricas).
+- Migración de progreso a `library.json` (T8): `config.json` ya no recibe nuevas
+  posiciones y las viejas se vuelcan al arrancar/después de escanear.
+- Gestión de carpetas y errores (T9): chips con `×` para dejar de vigilar,
+  contador de errores con tooltip y estados vacíos diferenciados.
+
+Pendiente para cerrar: T10 (`--screen library`/`--library-path` y captura
+filtrada) y T11 (medir 50 libros y cerrar métricas).
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.

@@ -5,7 +5,7 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros.
 
-Binario final (`dist`): **5.2 MiB** (5.499.504 B), arranque instantáneo, sin
+Binario final (`dist`): **5.2 MiB** (5.516.080 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -63,9 +63,9 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 ## Temas y tipografía
 
 Cinco presets prearmados (Papel, Noche, Claro, Ámbar, Contraste) y ajustes de
-tamaño, interlineado, ancho de columna y espacio entre párrafos. Todo se guarda
-en `~/Library/Application Support/lector/config.json` junto con el progreso de
-lectura por libro.
+tamaño, interlineado, ancho de columna y espacio entre párrafos. Los ajustes se
+guardan en `~/Library/Application Support/lector/config.json`; el progreso de los
+libros indexados vive en `library.json`, junto a las portadas.
 
 Tipografía: Literata (OFL) embebida en cuatro variantes — regular, itálica,
 bold, bold-itálica — más semibold para títulos, instanciadas desde la fuente
@@ -83,7 +83,7 @@ src/
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
   theme.rs   presets de color
-  config.rs  preferencias y progreso (JSON atómico)
+  config.rs  preferencias en config.json (progreso migrado a library.json)
   fonts.rs   carga de familias en egui
 ```
 
@@ -101,14 +101,16 @@ mapeo de `<svg><image>` a `Kind::Image`.
 
 Probado contra 43 EPUB reales (Calibre, Sigil, OCR, Anna's Archive, 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 38
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 41
 tests unitarios y 8 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
 
-La biblioteca (M2, en curso) indexa `~/Libros` en **1.57 s** la primera vez y
-**0.02 s** con caché; **41/43 portadas (95,3 %)** y **4,2 MB** en `covers/`.
-Pantalla con grilla, búsqueda, orden, filtros y vuelta con `Esc`.
+La biblioteca (M2, casi cerrada) indexa `~/Libros` en **1.57 s** la primera vez y
+**0.02 s** con caché; en la medición de 43 EPUB mostró **41 portadas (95,3 %)** y
+**4,2 MB** en `covers/`. Hoy `~/Libros` tiene 40 libros y los 40 con portada.
+Pantalla con grilla, búsqueda, orden, filtros, gestión de carpetas y vuelta con
+`Esc`.
 
 ## Limitaciones conocidas
 
@@ -119,14 +121,14 @@ Pantalla con grilla, búsqueda, orden, filtros y vuelta con `Esc`.
 - Sin búsqueda dentro del libro ni anotaciones.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
-- La biblioteca todavía no migra el progreso viejo a `library.json`, no permite
-  quitar carpetas y no tiene watcher: se refresca a mano.
+- La biblioteca no tiene watcher: se refresca a mano.
 - El filtro “Terminados” y el progreso por fracción llegan con M3.
 
 ## Roadmap
 
-- **M2 — Biblioteca (en curso):** índice, portadas y pantalla hechos; faltan
-  migración de progreso, gestión de carpetas y cierre visual.
+- **M2 — Biblioteca (casi cerrada):** índice, portadas, pantalla, migración de
+  progreso y gestión de carpetas hechos; faltan T10/T11 (verificación y medición
+  con 50 libros).
 - **M3 — Anclas:** índice por fragmento, saltos dentro del capítulo.
 - **M4 — Extras:** búsqueda en el libro, marcadores, exportar citas.
 

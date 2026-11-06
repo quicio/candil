@@ -128,12 +128,16 @@ pub struct DevOpts {
 impl Lector {
     pub fn new(cc: &eframe::CreationContext<'_>, path: Option<PathBuf>, dev: DevOpts) -> Self {
         fonts::install(&cc.egui_ctx);
-        let (cfg, cfg_warning) = Config::load_with_report();
+        let (mut cfg, cfg_warning) = Config::load_with_report();
         let (mut library, library_warning) = Library::load_with_report();
-        // El progreso vive en config.json durante M2; la biblioteca lo muestra.
-        for entry in &mut library.books {
-            if let Some(progress) = cfg.progress.get(&entry.path) {
-                entry.progress = *progress;
+        let migrated = library.migrate_progress_from(&mut cfg);
+        let mut warning = cfg_warning.or(library_warning);
+        if migrated > 0 {
+            if let Err(e) = library.save() {
+                warning = Some(format!("no pude guardar la biblioteca: {e}"));
+            }
+            if let Err(e) = cfg.save() {
+                warning = Some(format!("no pude guardar la configuración: {e}"));
             }
         }
         // "Recientes" viejo de config.json alimenta el orden sin migrar el archivo.
@@ -159,7 +163,6 @@ impl Lector {
         cc.egui_ctx.set_style(style);
 
         let theme_idx = cfg.settings.theme;
-        let warning = cfg_warning.or(library_warning);
         let mut app = Self {
             screen: Screen::Library,
             book: None,
@@ -210,18 +213,15 @@ impl Lector {
         match Book::open(&path) {
             Ok(book) => {
                 let key = book.path.to_string_lossy().to_string();
-                let prog = self
-                    .cfg
-                    .progress
-                    .get(&key)
-                    .copied()
-                    .or_else(|| {
-                        self.library
-                            .books
-                            .iter()
-                            .find(|b| b.path == key)
-                            .map(|b| b.progress)
-                    })
+                let library_progress = self
+                    .library
+                    .books
+                    .iter()
+                    .find(|b| b.path == key)
+                    .map(|b| b.progress);
+                let prog = library_progress
+                    .filter(|p| p.chapter > 0 || p.offset > 0.0)
+                    .or_else(|| self.cfg.progress.get(&key).copied())
                     .unwrap_or_default();
                 let n = book.spine.len();
                 self.chapter = prog.chapter.min(n.saturating_sub(1));
@@ -305,7 +305,6 @@ impl Lector {
                 chapter: self.chapter,
                 offset: self.scroll,
             };
-            self.cfg.progress.insert(key.clone(), progress);
             if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
                 entry.progress = progress;
                 entry.last_opened = Some(crate::library::now());
@@ -340,6 +339,16 @@ impl Lector {
                 format!("No pude guardar la biblioteca: {e}"),
                 Instant::now(),
             ));
+        }
+    }
+
+    fn migrate_progress(&mut self) {
+        let migrated = self.library.migrate_progress_from(&mut self.cfg);
+        if migrated > 0 {
+            self.save_library();
+            if let Err(e) = self.cfg.save() {
+                self.say(format!("No pude guardar la configuración: {e}"));
+            }
         }
     }
 
@@ -487,17 +496,23 @@ impl Lector {
         let mut rescan = false;
         let mut open_path: Option<PathBuf> = None;
         let mut remove: Option<usize> = None;
+        let mut remove_folder: Option<String> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
         let book_count = self.library.books.len() - missing_count;
-        let count_label = if missing_count > 0 {
-            format!(
-                "{book_count} libros · {missing_count} falta{}",
-                if missing_count == 1 { "" } else { "s" }
-            )
-        } else {
-            format!("{book_count} libros")
-        };
+        let error_count = self
+            .library
+            .books
+            .iter()
+            .filter(|b| b.error.is_some())
+            .count();
+        let error_details = self
+            .library
+            .books
+            .iter()
+            .filter_map(|b| b.error.as_ref().map(|e| format!("{}: {e}", b.title)))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         egui::TopBottomPanel::top("library-bar")
             .show_separator_line(false)
@@ -511,7 +526,34 @@ impl Lector {
                 ui.horizontal_centered(|ui| {
                     ui.label(RichText::new("lector").size(16.0).strong().color(th.fg));
                     ui.add_space(2.0);
-                    ui.label(RichText::new(&count_label).size(11.0).color(th.dim));
+                    ui.label(
+                        RichText::new(format!("{book_count} libros"))
+                            .size(11.0)
+                            .color(th.dim),
+                    );
+                    if missing_count > 0 {
+                        ui.label(
+                            RichText::new(format!(
+                                "· {missing_count} falta{}",
+                                if missing_count == 1 { "" } else { "s" }
+                            ))
+                            .size(11.0)
+                            .color(th.dim),
+                        );
+                    }
+                    if error_count > 0 {
+                        let response = ui.label(
+                            RichText::new(format!(
+                                "· {error_count} error{}",
+                                if error_count == 1 { "" } else { "es" }
+                            ))
+                            .size(11.0)
+                            .color(Color32::from_rgb(190, 92, 82)),
+                        );
+                        if !error_details.is_empty() {
+                            response.on_hover_text(error_details.clone());
+                        }
+                    }
                     ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(4.0);
@@ -580,9 +622,62 @@ impl Lector {
                 });
             });
 
+        if !self.library.folders.is_empty() {
+            let folders = self.library.folders.clone();
+            egui::TopBottomPanel::top("library-folders")
+                .show_separator_line(false)
+                .exact_height(34.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(th.bg)
+                        .inner_margin(egui::Margin::symmetric(16, 6)),
+                )
+                .show(ctx, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Carpetas").size(10.5).color(th.dim));
+                        for folder in &folders {
+                            let name = Path::new(folder)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_else(|| folder.clone());
+                            egui::Frame::new()
+                                .fill(th.panel)
+                                .corner_radius(5.0)
+                                .inner_margin(egui::Margin::symmetric(8, 2))
+                                .show(ui, |ui| {
+                                    ui.horizontal_centered(|ui| {
+                                        ui.label(
+                                            RichText::new(name.clone()).size(10.5).color(th.fg),
+                                        )
+                                        .on_hover_text(folder);
+                                        let remove_response = ui
+                                            .small_button(RichText::new("×").size(11.0))
+                                            .on_hover_text("Dejar de vigilar");
+                                        if remove_response.clicked() {
+                                            remove_folder = Some(folder.clone());
+                                        }
+                                    });
+                                });
+                        }
+                    });
+                });
+        }
+
         let indices = self.visible_books();
         let cards = self.cards(&indices, ctx);
         let empty = self.library.books.is_empty();
+        let has_folders = !self.library.folders.is_empty();
+        let (empty_title, empty_subtitle) = if has_folders {
+            (
+                "No hay EPUB en las carpetas vigiladas",
+                "Probá Refrescar o añadí otra carpeta.",
+            )
+        } else {
+            (
+                "Tu biblioteca está vacía",
+                "Añadí una carpeta con archivos .epub.",
+            )
+        };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
@@ -590,23 +685,24 @@ impl Lector {
                 if empty {
                     ui.vertical_centered(|ui| {
                         ui.add_space(90.0);
-                        ui.label(
-                            RichText::new("Tu biblioteca está vacía")
-                                .size(24.0)
-                                .color(th.fg),
-                        );
+                        ui.label(RichText::new(empty_title).size(24.0).color(th.fg));
                         ui.add_space(8.0);
-                        ui.label(
-                            RichText::new("Añadí una carpeta con archivos .epub.")
-                                .size(13.5)
-                                .color(th.dim),
-                        );
+                        ui.label(RichText::new(empty_subtitle).size(13.5).color(th.dim));
                         ui.add_space(22.0);
                         if ui
                             .button(RichText::new("  Añadir carpeta…  ").size(15.0))
                             .clicked()
                         {
                             add_folder = true;
+                        }
+                        if has_folders {
+                            ui.add_space(8.0);
+                            if ui
+                                .button(RichText::new("  Refrescar  ").size(14.0))
+                                .clicked()
+                            {
+                                rescan = true;
+                            }
                         }
                         ui.add_space(8.0);
                         if ui
@@ -679,6 +775,7 @@ impl Lector {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                 let stats = self.library.scan_folder(&dir);
                 self.library_textures.clear();
+                self.migrate_progress();
                 self.save_library();
                 if stats.found == 0 {
                     self.say(format!("No hay EPUB en {}", dir.display()));
@@ -693,11 +790,17 @@ impl Lector {
         if rescan {
             let stats = self.library.rescan();
             self.library_textures.clear();
+            self.migrate_progress();
             self.save_library();
             self.say(format!(
                 "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
                 stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
             ));
+        }
+        if let Some(folder) = remove_folder {
+            self.library.unwatch_folder(&folder);
+            self.save_library();
+            self.say(format!("Dejé de vigilar {folder}"));
         }
         if let Some(index) = remove {
             if index < self.library.books.len() {
@@ -1300,7 +1403,10 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
             let (cover_rect, _) =
                 ui.allocate_exact_size(Vec2::new(CARD_W, CARD_COVER_H), Sense::hover());
             ui.painter().rect_filled(cover_rect, 7.0, th.panel);
-            if let Some((id, size)) = card.cover {
+            if let Some((id, size)) = card
+                .cover
+                .filter(|(_, size)| size.x >= 32.0 && size.y >= 32.0)
+            {
                 let scale = ((CARD_W - 10.0) / size.x)
                     .min((CARD_COVER_H - 10.0) / size.y)
                     .min(1.0);

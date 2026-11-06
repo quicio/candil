@@ -1,8 +1,8 @@
 ---
 id: adr-0005
 status: aceptada
-version: 1.0.0
-updated: 2026-11-03
+version: 1.1.0
+updated: 2026-11-06
 ---
 
 # ADR-0005 — Configuración y progreso en JSON
@@ -47,3 +47,18 @@ o falta, se arranca con `Default` — nunca se bloquea el arranque.
 
 - La biblioteca supera ~5.000 libros (ADR-0007 define el mismo umbral).
 - Se necesita búsqueda full-text (ahí sí conviene un índice aparte).
+
+## Enmienda (2026-11-06) — el progreso vive en `library.json`
+
+M2 cambia la propiedad del progreso: `library.json` es la fuente para los libros
+indexados y `config.json` deja de recibir nuevas entradas. El campo `progress` se
+mantiene en `Config` con `#[serde(default)]` para leer archivos viejos; al
+arrancar (y después de cada escaneo) `Library::migrate_progress_from` vuelca las
+claves que coinciden con una entrada, no pisa un progreso más nuevo de la
+biblioteca y deja las claves de libros no indexados para cuando se agregue su
+carpeta.
+
+La escritura de ambos archivos pasa por `src/store.rs` (temporal + `rename` +
+backup de corruptos), así que la garantía atómica de este ADR se mantiene. Esta
+enmienda no supersede el ADR: solo documenta el cambio de dueño del progreso que
+pedía la spec 20 (T8).

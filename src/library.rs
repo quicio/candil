@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::Progress;
+use crate::config::{Config, Progress};
 use crate::covers;
 use crate::epub::Book;
 use crate::store;
@@ -195,6 +195,43 @@ impl Library {
         } else {
             self.books.push(entry);
         }
+    }
+
+    /// Migra `config.progress` a las entradas de la biblioteca y vacía las
+    /// claves migradas. No pisa un progreso que la biblioteca ya tenga.
+    pub fn migrate_progress_from(&mut self, cfg: &mut Config) -> usize {
+        if cfg.progress.is_empty() || self.books.is_empty() {
+            return 0;
+        }
+        let keys: Vec<String> = cfg.progress.keys().cloned().collect();
+        let mut migrated = 0;
+        for key in keys {
+            let canonical = std::fs::canonicalize(&key)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| key.clone());
+            let Some(index) = self
+                .books
+                .iter()
+                .position(|b| b.path == canonical || b.path == key)
+            else {
+                continue;
+            };
+            let Some(progress) = cfg.progress.remove(&key) else {
+                continue;
+            };
+            let entry = &mut self.books[index];
+            if entry.progress.chapter == 0 && entry.progress.offset <= 0.0 {
+                entry.progress = progress;
+                migrated += 1;
+            }
+        }
+        migrated
+    }
+
+    /// Deja de vigilar una carpeta. Las entradas de sus libros se conservan:
+    /// quitar una carpeta no borra nada del disco ni de la biblioteca.
+    pub fn unwatch_folder(&mut self, folder: &str) {
+        self.folders.retain(|f| f != folder);
     }
 
     /// Escanea una carpeta recursivamente, sin seguir symlinks. La primera vez
@@ -545,5 +582,74 @@ mod tests {
 
         assert_eq!(lib.books.len(), 1);
         assert_eq!(lib.books[0].title, "B");
+    }
+
+    #[test]
+    fn migra_progreso_desde_config() {
+        let mut lib = Library::default();
+        lib.upsert(BookEntry {
+            path: "/libro.epub".into(),
+            ..BookEntry::default()
+        });
+        let mut cfg = Config::default();
+        cfg.progress.insert(
+            "/libro.epub".into(),
+            Progress {
+                chapter: 7,
+                offset: 42.0,
+            },
+        );
+
+        assert_eq!(lib.migrate_progress_from(&mut cfg), 1);
+        assert!(cfg.progress.is_empty());
+        assert_eq!(lib.books[0].progress.chapter, 7);
+        assert_eq!(lib.books[0].progress.offset, 42.0);
+    }
+
+    #[test]
+    fn migracion_no_pisa_progreso_y_conserva_huerfanos() {
+        let mut lib = Library::default();
+        lib.upsert(BookEntry {
+            path: "/a.epub".into(),
+            progress: Progress {
+                chapter: 3,
+                offset: 10.0,
+            },
+            ..BookEntry::default()
+        });
+        let mut cfg = Config::default();
+        cfg.progress.insert(
+            "/a.epub".into(),
+            Progress {
+                chapter: 9,
+                offset: 99.0,
+            },
+        );
+        cfg.progress.insert(
+            "/b.epub".into(),
+            Progress {
+                chapter: 1,
+                offset: 1.0,
+            },
+        );
+
+        assert_eq!(lib.migrate_progress_from(&mut cfg), 0);
+        assert!(!cfg.progress.contains_key("/a.epub"));
+        assert!(cfg.progress.contains_key("/b.epub"));
+        assert_eq!(lib.books[0].progress.chapter, 3);
+    }
+
+    #[test]
+    fn dejar_de_vigilar_conserva_los_libros() {
+        let mut lib = Library::default();
+        lib.folders.push("/x".into());
+        lib.upsert(BookEntry {
+            path: "/x/a.epub".into(),
+            ..BookEntry::default()
+        });
+
+        lib.unwatch_folder("/x");
+        assert!(lib.folders.is_empty());
+        assert_eq!(lib.books.len(), 1);
     }
 }

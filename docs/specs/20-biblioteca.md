@@ -11,10 +11,10 @@ blocks: []
 
 # Spec 20 — Biblioteca (M2)
 
-> **Estado: aprobada e implementada parcialmente.** T1–T7 y parte de T9 están
-> hechas y probadas contra `~/Libros` (43 EPUB). Faltan T8 (migración de
-> progreso), el resto de T9 (quitar carpetas/contador de errores), T10
-> (`--screen library`/`--library-path`) y T11 (cierre métrico).
+> **Estado: aprobada e implementada parcialmente.** T1–T9 están hechas y
+> probadas contra `~/Libros` (43 EPUB). Faltan T10 (`--screen
+> library`/`--library-path` y las 4 capturas) y T11 (medir 50 EPUB y cerrar
+> métricas).
 > Tareas diseñadas para que un agente las ejecute sin contexto previo.
 
 ## Objetivo
@@ -79,8 +79,8 @@ renombra a `library.json.corrupt-<epoch>` antes de arrancar vacío.
 | T5 pantalla | hecha | grilla, portadas, apertura, estados vacíos |
 | T6 orden/filtro/búsqueda | hecha | 4 órdenes, 4 filtros, búsqueda incremental |
 | T7 navegación | hecha | `Esc` vuelve, `last_opened`, título de ventana, `--resume` |
-| T8 migración de progreso | pendiente | hoy se sincroniza desde `config.json` al arrancar |
-| T9 carpetas/estados | parcial | añadir/refrescar/quitar libro; falta quitar carpeta y contador de errores |
+| T8 migración de progreso | hecha | `config.progress` se vuelca a `library.json` al arrancar y tras escanear; solo quedan huérfanos de libros no indexados |
+| T9 carpetas/estados | hecha | chips de carpetas con `×`, contador `N errores` con tooltip, faltantes y estados vacíos |
 | T10 verificación visual | parcial | `--shot` sin path captura la biblioteca; falta `--screen`/`--library-path` |
 | T11 cierre | pendiente | falta medir 50 EPUB y actualizar criterios finales |
 
@@ -89,6 +89,13 @@ directorio); `with_data_dir` permite inyectar `covers/` en tests. `from_path` no
 extrae portada; `from_path_with_cover` se usa desde el escaneo. `scan_folder`
 marca `missing` para los libros que ya no están. `--scan <carpeta>` es el banco de
 pruebas sin abrir la UI.
+
+T8/T9 (2026-11-06): `Library::migrate_progress_from` vacía las claves migradas de
+`config.json` y no pisa un progreso más nuevo de la biblioteca; las claves de
+libros no indexados quedan como huérfanas para cuando se agregue su carpeta. La
+biblioteca ya no escribe `progress` en `config.json`. `unwatch_folder` quita una
+carpeta vigilada sin borrar sus entradas; la UI muestra chips de carpetas con `×`
+y un contador de errores con tooltip.
 
 ## UI
 

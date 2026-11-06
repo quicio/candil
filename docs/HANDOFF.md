@@ -14,8 +14,9 @@ propia, temas prearmados. egui/eframe para la ventana, parser XHTML propio para
 el contenido. Sin webview, sin motor CSS.
 
 **M1 (lector) y M1.1 (endurecimiento, spec 15) están terminados y verificados.**
-**M2 (biblioteca) está en curso:** el núcleo y la pantalla funcionan; faltan
-migración de progreso, cierre de carpetas/errores y verificación final (spec 20).
+**M2 (biblioteca) está casi cerrada:** núcleo, pantalla, migración de progreso y
+gestión de carpetas/errores funcionan; faltan la verificación T10/T11 (flags y
+capturas reproducibles, medición con 50 EPUB y cierre de métricas).
 
 ## Estado medido (no estimado)
 
@@ -27,14 +28,18 @@ el mismo):
 | corpus real | 43 EPUB, 0 errores de parseo | `--inspect` sobre `~/Libros/*.epub` |
 | capítulos vacíos | 0 | ídem (M1.1 corrigió SVG y nav en spine) |
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
-| biblioteca | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` |
+| biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 38 unit + 8 integración | `cargo test` |
+| tests | 41 unit + 8 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 5.499.504 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 5.516.080 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
+
+La medición de biblioteca se hizo con 43 EPUB. Después `~/Libros` quedó en 40
+(limpieza manual de duplicados); hoy la biblioteca tiene 40 entradas y 40
+portadas. Los números de 43/41 siguen siendo válidos para el corpus de prueba.
 
 El corpus cambió desde M1 (antes 44 libros/2168 imágenes): las métricas viejas
 no se comparan directamente. Para reproducir, usar `--inspect` y anotar la fecha.
@@ -57,7 +62,7 @@ src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
-src/config.rs  settings y progreso en JSON (escritura atómica)
+src/config.rs  settings en config.json (progreso legado, ya migrado a library.json)
 src/fonts.rs   familias Literata en egui
 ```
 
@@ -115,6 +120,8 @@ flotante tapando texto) solo aparecieron así.
    Lo mismo vale para `library.json` (`src/store.rs`).
 8. **La biblioteca indexa, no copia**: las entradas usan la ruta canónica; si un
    archivo desaparece se marca `missing` y no se borra la entrada.
+9. **El progreso de libros indexados vive en `library.json`**; `config.progress`
+   solo se conserva para leer archivos viejos y no recibe escrituras nuevas.
 
 ## Definición de terminado (por tarea)
 

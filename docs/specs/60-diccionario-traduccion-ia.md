@@ -1,18 +1,18 @@
 ---
 id: spec-60
 title: Consulta de selección — diccionario, traducción e IA
-status: draft
-version: 0.1.0
+status: aprobada
+version: 1.0.0
 updated: 2026-11-06
 milestone: M6
-depends_on: [spec-30, spec-45, adr-0005]
+depends_on: [spec-30, spec-45, spec-65, adr-0005]
 ---
 
 # Spec 60 — Consulta de selección: diccionario, traducción e IA
 
-> **Estado: borrador de diseño.** No se implementa hasta decidir proveedores,
-> privacidad y la dependencia HTTP (ADR pendiente). La selección de texto ya
-> existe desde M4: esta spec la reutiliza.
+> **Estado: aprobada el 2026-11-06.** Las decisiones de proveedores,
+> privacidad e historial están cerradas. Falta el ADR-0011 de la dependencia
+> HTTP y la implementación. La selección de texto ya existe desde M4.
 
 ## Objetivo
 
@@ -25,7 +25,30 @@ Seleccionar una palabra o frase y consultarla sin salir del lector:
    referencias o traducción comentada.
 
 La consulta es **explícita**: nada se envía a la red por seleccionar texto. El
-usuario elige Diccionario, Traducir o Analizar con IA.
+usuario elige Diccionario, Traducir o Analizar con IA. Las consultas online
+están **apagadas por defecto** y se habilitan desde Configuración.
+
+## Decisiones aprobadas (2026-11-06)
+
+- **Diccionario:** Wiktionary REST; fallback inglés `dictionaryapi.dev`.
+- **Traducción:** gratuita, **MyMemory** por defecto; LibreTranslate queda como
+  alternativa configurable. Sin claves en el MVP.
+- **IA:** **OpenCode Go** por suscripción, API OpenAI-compatible:
+  - base `https://opencode.ai/inference/go/openai/v1`;
+  - `POST /chat/completions` con `Authorization: Bearer …`;
+  - clave en `OPENCODE_API_KEY` (solo entorno);
+  - modelo por defecto `deepseek-v4.1-flash`, configurable;
+  - header `x-opencode-session` estable por sesión y
+    `User-Agent: lector/<versión>` (OpenCode Go pide identificarse como cliente
+    propio, no como una librería HTTP genérica).
+- **Claves:** solo variables de entorno; nunca en `config.json` ni en logs.
+- **Online:** `online_enabled = false` por defecto; se activa explícitamente en
+  Configuración y la primera consulta muestra un aviso.
+- **IA:** solo prompts predefinidos (sin pregunta libre) en el MVP.
+- **Historial:** persistente en disco (`consultas.json`), con límite, borrado y
+  sin claves; ver sección Historial.
+- **Traducción:** solo se muestra en el panel; **no reemplaza** el texto del
+  libro. Un modo bilingüe que sustituya el texto queda fuera de alcance.
 
 ## Experiencia
 
@@ -40,7 +63,7 @@ selección en el lector
                  │ Consulta                     │
                  │ “the sleep of reason…”       │
                  │ EN → ES          [×]         │
-                 │ [Diccionario] [Traducción] [IA]│
+                 │ [Diccionario] [Traducción] [IA] [Historial]│
                  │                              │
                  │ …resultado…                  │
                  │ Fuente: Wiktionary · MyMemory│
@@ -49,7 +72,8 @@ selección en el lector
 
 - `Consultar` se agrega a la barra flotante de selección (o atajo `K`).
 - Una palabra sin espacios abre Diccionario por defecto; una frase abre
-  Traducción. Las tres pestañas están siempre disponibles.
+  Traducción. Las cuatro pestañas (Diccionario, Traducción, IA e Historial)
+  están disponibles según el estado.
 - El panel se puede dejar abierto mientras se lee; al seleccionar otra frase se
   actualiza el texto y se cancela/ignora la consulta anterior.
 - El idioma de origen se toma de `Book.lang` (normalizando `en-US`/`en-GB` a
@@ -64,43 +88,50 @@ selección en el lector
 - Acción `Consultar` + panel con pestañas Diccionario y Traducción.
 - Diccionario online: **Wiktionary REST** (multilingüe, sin clave).
   Fallback inglés: **dictionaryapi.dev**.
-- Traducción online: **MyMemory** (sin clave) por defecto; la interfaz queda
-  preparada para LibreTranslate/DeepL.
+- Traducción online: **MyMemory** (sin clave) por defecto; LibreTranslate
+  opcional en Configuración. DeepL/Google quedan para fase 3.
 - Cache en memoria por `(proveedor, idioma, texto, destino)`, para no repetir
   llamadas mientras el libro está abierto.
+- Historial persistente en `consultas.json` (ver sección Historial), visible en
+  la pestaña Historial del panel.
 - Estados: cargando, sin red, rate limit, error del proveedor, sin resultados.
 - Atribución visible y enlace a la fuente.
 - Nada se envía hasta que el usuario pulsa una pestaña/botón.
 
 ### Fase 2 — Análisis con IA
 
-- Proveedor **OpenAI-compatible** configurable (OpenAI, OpenRouter, Ollama,
-  LM Studio): `base_url`, `model`, timeout.
-- Clave desde variable de entorno (`LECTOR_AI_KEY`/`OPENAI_API_KEY`) o desde un
-  archivo `ai-key` en el directorio de datos con permisos `0600`; nunca en
-  `config.json` ni en logs. Las apps abiertas desde Finder no heredan el entorno
-  del shell, así que el archivo es el camino práctico para uso diario.
+- **OpenCode Go** por defecto (`base_url`, `model` y timeout configurables en
+  Configuración). La app no gestiona la suscripción: usa la clave del entorno.
+- Clave **solo** desde `OPENCODE_API_KEY`; nunca en `config.json`, logs ni URL.
+  Si falta, la pestaña IA explica cómo definirla y no hace la petición.
+- Header `x-opencode-session`: un id aleatorio/estable generado al arrancar la
+  app (timestamp + pid + contador; sin dependencia nueva) para cumplir el
+  requisito del proveedor.
 - Botones de prompt: “Explicar en contexto”, “Gramática”, “Resumir”, “Traducir
   y explicar”. El texto seleccionado y el párrafo contenedor se envían como
   **datos delimitados** (el libro es contenido no confiable: no se ejecutan
   instrucciones que aparezcan dentro).
 - Respuesta en texto plano seleccionable/copiable; sin render Markdown en MVP.
 - Petición en un hilo de trabajo + `mpsc`; la UI muestra “Analizando…” y no se
-  congela. Timeout y cancelación por cierre o nueva selección.
-- Etiqueta visible “Generado por IA” y proveedor/modelo usado.
+  congela. Timeout, cancelación por cierre o nueva selección y request id para
+  descartar respuestas viejas.
+- Etiqueta visible “Generado por IA” y proveedor/modelo usado. Si el proveedor
+  devuelve error de cuota/429, se muestra el mensaje sin reintentar en loop.
 
 ### Fase 3 — Futuro
 
 - Más proveedores (DeepL, LibreTranslate propio, Google).
-- Historial de consultas y cache persistente opcional.
-- Claves en Keychain/libsecret en vez de variables de entorno.
+- Cache persistente opcional (el historial ya es persistente).
+- Claves en Keychain/libsecret además de variables de entorno (Finder no hereda
+  el entorno del shell).
 - Diccionario offline (sistema o paquete local) y “abrir en el Diccionario”.
 - Streaming de la respuesta y markdown renderizado.
 
 ## Fuera de alcance
 
 - Chat libre con el libro o con la biblioteca entera.
-- Traducir el EPUB completo o generar una edición bilingüe.
+- Traducir el EPUB completo, reemplazar el texto del libro o generar una edición
+  bilingüe.
 - Enviar automáticamente notas, subrayados o el libro a un proveedor.
 - Sincronización de consultas entre dispositivos.
 - Cuentas propias, facturación o gestión de suscripciones.
@@ -132,13 +163,53 @@ pub struct ConsultaResult {
 }
 ```
 
-- `Settings`/`Config` suman una sección `consulta` (sin secretos):
-  `target_lang`, `translation_provider`, `dictionary_provider`,
-  `ai_base_url`, `ai_model`, `ai_max_tokens`, `online_enabled`.
-- El cache es un `HashMap` en memoria del `Lector`; no se escribe en disco en
-  el MVP.
+- `Config` suma una sección `consulta` (sin secretos), editable desde el centro
+  de configuración de la spec 65: `online_enabled`, `target_lang`,
+  `translation_provider`, `dictionary_provider`, `ai_base_url`, `ai_model`,
+  `ai_max_tokens`, `history_limit`.
+- El cache de resultados es un `HashMap` en memoria del `Lector`.
+- El historial es persistente en `consultas.json` (ver abajo).
 - La selección ya trae `chapter`, `block`, `start`, `end`, `quote`; la consulta
   no modifica `annotations.json`.
+
+## Historial en disco
+
+Archivo separado `consultas.json`, escritura atómica con `src/store.rs` y
+`schema_version: 1`. No se mezcla con `annotations.json` ni `library.json`.
+
+```rust
+pub struct ConsultaEntry {
+    pub id: u64,
+    pub created: i64,
+    pub kind: ConsultaKind,
+    pub provider: String,      // "Wiktionary", "MyMemory", "OpenCode Go"
+    pub model: Option<String>, // solo IA
+    pub source_lang: String,
+    pub target_lang: String,
+    pub book: String,          // ruta canónica
+    pub book_title: String,
+    pub chapter: usize,
+    pub block: usize,
+    pub quote: String,         // selección, no el párrafo completo
+    pub response: String,      // texto plano recortado a ~8 KB
+    pub error: Option<String>,
+}
+
+pub struct ConsultaHistory {
+    pub schema_version: u32, // 1
+    pub items: Vec<ConsultaEntry>,
+}
+```
+
+- Se guarda una entrada por consulta completada (también los errores, sin
+  respuesta) para poder reintentar.
+- **No se guarda** el párrafo de contexto, las claves ni el EPUB completo.
+- Retención por defecto: 200 entradas o ~2 MB; al superar, se eliminan las más
+  viejas. El límite es configurable y se puede poner en 0 para no guardar.
+- La pestaña **Historial** del panel muestra fecha, tipo, cita y proveedor;
+  click reabre el resultado. “Limpiar historial” pide confirmación y borra el
+  archivo (o lo vacía).
+- El historial es local; no se sincroniza ni se envía a los proveedores.
 
 ## Red, hilos y dependencias
 
@@ -149,28 +220,40 @@ pub struct ConsultaResult {
   descartar respuestas viejas. Nada de `block_on` en el hilo de UI.
 - **JSON**: `serde_json` ya existe.
 - **Sin webview** ni HTML del proveedor: se parsea JSON y se muestra texto.
-- **Sin claves en `config.json`**: variable de entorno o archivo `ai-key`
-  (`0600`) en el MVP. Si no hay clave, IA muestra cómo configurarla y no hace la
-  petición.
+- **Sin claves en `config.json`**: solo `OPENCODE_API_KEY` en el entorno. Si no
+  hay clave, IA muestra cómo configurarla y no hace la petición. Las apps
+  abiertas desde Finder pueden no heredar el entorno; se documenta lanzar desde
+  terminal y se deja Keychain para fase 3.
 
 ### Endpoints candidatos (a validar en la implementación)
 
 - Wiktionary: `GET https://{lang}.wiktionary.org/api/rest_v1/page/definition/{word}`
 - Dictionary API (inglés): `GET https://api.dictionaryapi.dev/api/v2/entries/en/{word}`
 - MyMemory: `GET https://api.mymemory.translated.net/get?q=...&langpair=en|es`
-- IA: `POST {base_url}/chat/completions` con `Authorization: Bearer …`.
+- IA (OpenCode Go): `POST https://opencode.ai/inference/go/openai/v1/chat/completions`
+  con `Authorization: Bearer $OPENCODE_API_KEY`, `x-opencode-session` estable por
+  sesión, `User-Agent: lector/<versión>` y
+  `model: "deepseek-v4.1-flash"` por defecto.
+- Lista de modelos: `GET https://opencode.ai/inference/go/v1/models` (fase
+  posterior; en el MVP el modelo es un campo de texto con default).
 
 ## Privacidad y seguridad
 
 - La primera vez que se usa una consulta online, un aviso explica que el texto
   seleccionado y (para IA) el párrafo se envían al proveedor elegido.
-- `online_enabled` en `config.json` permite desactivar toda salida a red.
-- No se envían rutas, notas, historial ni el EPUB completo.
+- `online_enabled` arranca en **false**; se activa desde Configuración y la
+  primera consulta muestra un aviso. Desactivarlo bloquea toda salida a red
+  (diccionario, traducción e IA).
+- No se envían rutas, notas, historial ni el EPUB completo. El historial local
+  no se manda a ningún proveedor; solo se envía el texto de la consulta actual.
 - Las claves no se muestran, no se escriben en logs y no viajan en la URL.
 - Los errores HTTP no incluyen la clave; se trunca el cuerpo del error.
 - Rate limit local: una consulta en vuelo por panel; botones deshabilitados
   mientras carga.
 - La respuesta de IA se muestra como sugerencia, no como hecho; el libro manda.
+- La traducción se muestra **solo en el panel**: el texto del libro, los
+  offsets de anotaciones y el progreso no se tocan. Un modo bilingüe que
+  reemplace el texto queda fuera de alcance.
 
 ## UI y atajos
 
@@ -180,8 +263,9 @@ pub struct ConsultaResult {
 - Si no hay selección, el panel muestra “Seleccioná una palabra o frase”.
 - Si el texto supera ~2.000 caracteres, se recorta para la petición y se avisa
   (la selección completa sigue visible).
-- Diccionario y traducción comparten el mismo panel; no se abren ventanas
-  separadas por proveedor.
+- Diccionario, traducción, IA e historial comparten el mismo panel; no se abren
+  ventanas separadas por proveedor.
+- La pestaña Historial solo está disponible si `history_limit > 0`.
 
 ## Tests
 
@@ -193,6 +277,7 @@ pub struct ConsultaResult {
 - Request id: una respuesta vieja no pisa la consulta nueva.
 - Prompt de IA: delimitación del texto del libro y longitud máxima.
 - Parseo de la respuesta OpenAI-compatible y errores (`401`, `429`, timeout).
+- Historial: roundtrip, retención por límite, limpieza y archivo corrupto.
 - UI con proveedor mock y `--shot` (sin red real).
 - `cargo test`, clippy y `scripts/check.sh` verdes.
 
@@ -206,7 +291,9 @@ pub struct ConsultaResult {
 4. Ninguna petición sale sin click explícito; la clave no está en `config.json`.
 5. Seleccionar una frase y pedir análisis a la IA no congela la UI, se puede
    cerrar el panel y la respuesta vieja no aparece.
-6. Tests con fixtures/mocks y `dist` sigue por debajo de 8 MB.
+6. El historial sobrevive un reinicio, se puede limpiar y no contiene claves ni
+   el párrafo completo.
+7. Tests con fixtures/mocks y `dist` sigue por debajo de 8 MB.
 
 ## Riesgos y mitigaciones
 
@@ -220,30 +307,34 @@ pub struct ConsultaResult {
 | Inyección de prompt desde el libro | delimitar el pasaje y decir explícitamente que es dato, no instrucción |
 | Libro en idioma desconocido | permitir elegir origen/destino manualmente |
 | Selección gigante | tope de ~2.000 caracteres para la petición |
+| Historial con texto sensible | archivo local, límite, borrado y aviso; no se envía a proveedores |
+| OpenCode Go cambia modelos/headers | base/model configurables; `x-opencode-session` estable; errores claros |
+| Uso de la suscripción para lectura | el usuario verifica los términos/límites de OpenCode Go; la app solo envía fragmentos explícitos |
 
-## Decisiones abiertas para Hugo
+## Decisiones cerradas y pendientes operativos
 
-1. ¿Proveedor de diccionario preferido: Wiktionary + dictionaryapi.dev, o el
-   Diccionario del sistema en macOS?
-2. ¿Traducción gratuita (MyMemory/LibreTranslate) o con clave (DeepL/Google)?
-3. ¿Proveedor de IA: OpenAI, Anthropic, OpenRouter, Ollama local? ¿La app debe
-   asumir `base_url` + `model` configurables?
-4. ¿Claves por variable de entorno, archivo `ai-key` con permisos `0600` o
-   Keychain desde el inicio? (Finder no hereda el entorno del shell.)
-5. ¿El análisis de IA debe incluir una pregunta libre del usuario o solo los
-   prompts predefinidos?
-6. ¿Guardar historial de consultas en disco (privacidad) o solo en memoria?
-7. ¿La traducción debe poder reemplazar el texto del libro o solo mostrarse en
-   el panel? (Recomendado: solo panel.)
-8. ¿`online_enabled` arranca en `true` con aviso en la primera consulta, o en
-   `false` hasta que el usuario lo active explícitamente?
+Cerradas el 2026-11-06: Wiktionary, traducción gratuita (MyMemory), IA con
+OpenCode Go, clave por entorno, online apagado por defecto, prompts predefinidos,
+historial en disco y traducción solo en el panel.
+
+Pendiente antes de codear:
+
+1. **ADR-0011** de la dependencia HTTP (`ureq` + `rustls` propuesto) y medición
+   del aumento de `dist` (presupuesto < 8 MB).
+2. Verificar en la práctica el endpoint/modelo de OpenCode Go y el header
+   `x-opencode-session` con la clave del usuario.
+3. Implementar el centro de configuración de la **spec 65** para
+   `online_enabled`, proveedores, idioma, modelo, clave (estado) e historial.
+4. Decidir si el historial se exporta a Markdown en una fase posterior (no en el
+   MVP).
 
 ## Orden de implementación propuesto
 
 1. `ADR-0011` HTTP + medición de `dist`.
-2. T1: acción `Consultar`, panel y modelo de consulta (sin red).
-3. T2: proveedor de diccionario + parseo + fixtures.
-4. T3: traducción + idioma destino + cache.
-5. T4: hilo de trabajo, request id, errores y estados.
-6. T5: IA OpenAI-compatible + prompts + configuración sin secretos.
-7. T6: privacidad/UX, capturas y docs.
+2. Spec 65: centro de configuración (puede ir antes o en paralelo a T1).
+3. T1: acción `Consultar`, panel y modelo de consulta (sin red).
+4. T2: proveedor de diccionario + parseo + fixtures.
+5. T3: traducción + idioma destino + cache + historial.
+6. T4: hilo de trabajo, request id, errores y estados.
+7. T5: OpenCode Go + prompts + estado de la clave.
+8. T6: privacidad/UX, capturas y docs.

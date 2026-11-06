@@ -182,9 +182,10 @@ porcentaje del libro o número de capítulo.
   anotaciones global es una lista plana (sin búsqueda dentro de las notas).
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
-- Diccionario, traducción y análisis con IA están **en diseño** (spec 60), no
-  implementados: hoy se puede copiar la selección y consultarla fuera del
-  lector.
+- Diccionario, traducción y análisis con IA están **en diseño** (specs 60/65),
+  no implementados: hoy se puede copiar la selección y consultarla fuera del
+  lector. La red estará apagada por defecto y la clave de OpenCode Go vivirá solo
+  en `OPENCODE_API_KEY`.
 
 ## Roadmap
 
@@ -196,9 +197,10 @@ porcentaje del libro o número de capítulo.
   libro (spec 40).
 - **M5 — Segunda etapa (cerrada):** anotaciones globales, tres colores, export
   Markdown (spec 50) y navegación por porcentaje/capítulo (spec 55).
-- **M6 — Consultas externas (en diseño):** diccionario, traducción y análisis
-  con IA sobre la selección (spec 60). Pendiente de decidir proveedores,
-  privacidad y la dependencia HTTP (ADR-0011).
+- **M6 — Consultas y configuración (en diseño):** diccionario con Wiktionary,
+  traducción gratuita con MyMemory, análisis con **OpenCode Go** e historial en
+  disco (spec 60); centro de configuración para estos ajustes y el resto del
+  programa (spec 65). Pendiente ADR-0011 y medir `dist`.
 
 ## Modo diagnóstico
 

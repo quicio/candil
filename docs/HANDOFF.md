@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.8.0
+version: 1.9.0
 updated: 2026-11-06
 ---
 
@@ -23,9 +23,12 @@ M4 (extras) y M5 (segunda etapa) están cerrados.** M3 incluye anclas/saltos
 Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
 export a PDF/DOCX y búsqueda dentro de las notas.
 
-**M6 está en diseño:** la spec 60 define diccionario, traducción y análisis con
-IA sobre la selección. No hay código ni red todavía; antes de implementar hay
-que decidir proveedores, privacidad y la dependencia HTTP (ADR-0011).
+**M6 está en diseño:** la spec 60 (aprobada) define diccionario con Wiktionary,
+traducción gratuita con MyMemory, análisis con **OpenCode Go** e historial en
+disco; **online apagado por defecto**, clave solo por entorno y traducción solo
+en el panel. La spec 65 (aprobada) define el centro de configuración para estos
+ajustes y el resto del programa. No hay código ni red todavía; antes de
+implementar hay que escribir el ADR-0011 y medir `dist`.
 
 ## Estado medido (no estimado)
 

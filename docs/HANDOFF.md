@@ -41,8 +41,9 @@ origen.
 `openspec/` es la fuente de verdad para cambios nuevos. El cambio activo es
 `consolidar-ux-ui` (sistema de diseño, biblioteca, lector, paneles y
 accesibilidad). `docs/specs/` queda como archivo histórico de M1–M6.
-La Fase 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches) está implementada;
-las fases 2–5 siguen abiertas.
+Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches) y 2
+(biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
+en segundo plano) están implementadas; las fases 3–5 siguen abiertas.
 
 ## Estado medido (no estimado)
 
@@ -59,9 +60,9 @@ el mismo):
 | capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 96 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 98 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 6.680.704 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 6.714.144 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -131,6 +132,14 @@ cargo run --profile fast -- --shot /tmp/p.png --export-md /tmp/destacados.md lib
 cargo run --profile fast -- --shot /tmp/p.png --panel config libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind diccionario --consulta-run libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind historial libro.epub
+
+# QA de la biblioteca: tamaño, foco, modales y escaneo
+cargo run --profile fast -- --shot /tmp/p.png --screen library --size 720x600
+cargo run --profile fast -- --shot /tmp/p.png --screen library --focus-card
+cargo run --profile fast -- --shot /tmp/p.png --screen library --confirm-remove
+cargo run --profile fast -- --shot /tmp/p.png --screen library --confirm-folder
+cargo run --profile fast -- --shot /tmp/p.png --screen library --recover
+cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
 
 # test live (no corre en el gate normal)
 cargo test --lib red_real_wiktionary_y_mymemory -- --ignored

@@ -223,6 +223,9 @@ impl Theme {
         style.visuals = visuals;
         style.spacing.item_spacing = eframe::egui::vec2(space::SM, 6.0);
         style.spacing.button_padding = eframe::egui::vec2(10.0, 6.0);
+        // Sin animaciones de apertura/hover: la interfaz cambia de estado sin
+        // movimiento y las capturas son deterministas.
+        style.animation_time = 0.0;
         ctx.set_style(style);
     }
 }

@@ -30,6 +30,33 @@ fn main() -> eframe::Result<()> {
                 dev.shot = args.get(i + 1).map(PathBuf::from);
                 i += 2;
             }
+            "--size" => {
+                dev.size = args.get(i + 1).and_then(|s| {
+                    let (w, h) = s.split_once('x')?;
+                    Some((w.parse().ok()?, h.parse().ok()?))
+                });
+                i += 2;
+            }
+            "--recover" => {
+                dev.recover = true;
+                i += 1;
+            }
+            "--confirm-remove" => {
+                dev.confirm_remove = true;
+                i += 1;
+            }
+            "--confirm-folder" => {
+                dev.confirm_folder = true;
+                i += 1;
+            }
+            "--rescan" => {
+                dev.rescan = true;
+                i += 1;
+            }
+            "--focus-card" => {
+                dev.focus_card = true;
+                i += 1;
+            }
             "--chapter" => {
                 dev.chapter = args.get(i + 1).and_then(|s| s.parse().ok());
                 i += 2;
@@ -99,9 +126,10 @@ fn main() -> eframe::Result<()> {
         }
     }
 
+    let (window_w, window_h) = dev.size.unwrap_or((980.0, 780.0));
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([980.0, 780.0])
+            .with_inner_size([window_w, window_h])
             .with_min_inner_size([420.0, 360.0])
             .with_app_id("candil"),
         ..Default::default()

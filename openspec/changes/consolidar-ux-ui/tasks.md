@@ -12,16 +12,16 @@
 
 ## 2. Biblioteca
 
-- [ ] 2.1 Reestructurar la cabecera de biblioteca en dos niveles: identidad + búsqueda + acción primaria + overflow; segunda fila para carpetas, orden y filtro. Verificación: `--shot --screen library` a 980×780 sin solapamientos.
-- [ ] 2.2 Implementar el menú overflow con `Refrescar`, `Configuración` y `Carpetas`; conservar los atajos existentes. Verificación: teclado y mouse abren/cierran el menú y las acciones funcionan.
-- [ ] 2.3 Hacer que la búsqueda mantenga el foco y el ancho flexible; eliminar el solapamiento con `Orden` en 980 px y 720 px. Verificación: capturas en ambos anchos.
-- [ ] 2.4 Compactar orden/filtro en controles con valor visible y etiquetas solo cuando haya espacio. Verificación: los cuatro filtros y cuatro órdenes siguen accesibles.
-- [ ] 2.5 Extraer `library_card` a un componente con cover, título, autor, progreso y estados hover/focus. Verificación: la tarjeta abre con click y con Enter/Espacio cuando tiene foco.
-- [ ] 2.6 Mejorar el estado vacío: una acción primaria `Añadir carpeta`, una secundaria `Abrir un EPUB` y la pista de arrastre. Verificación: captura de `library-empty` y recorrido por teclado.
-- [ ] 2.7 Implementar estado de error de EPUB con detalle y acciones `Ver detalle` / `Quitar de la biblioteca`; confirmar la eliminación y aclarar que el archivo no se borra. Verificación: `library-error` muestra el detalle y la acción.
-- [ ] 2.8 Implementar estado `missing` con acción `Ubicar archivo…` o `Quitar de la biblioteca`, sin borrar el EPUB. Verificación: fixture con archivo faltante y captura.
-- [ ] 2.9 Añadir confirmación al quitar una carpeta y mantener los chips solo cuando existan carpetas. Verificación: quitar carpeta no borra libros ni archivos.
-- [ ] 2.10 Añadir feedback de escaneo (estado busy + resumen) sin bloquear la ventana. Verificación: `--scan` y `Refrescar` muestran el resumen y la UI responde.
+- [x] 2.1 Reestructurar la cabecera de biblioteca en dos niveles: identidad + búsqueda + acción primaria + overflow; segunda fila para carpetas, orden y filtro. Verificación: `--shot --screen library` a 980×780 sin solapamientos.
+- [x] 2.2 Implementar el menú overflow con `Refrescar`, `Configuración` y `Carpetas`; conservar los atajos existentes. Verificación: teclado y mouse abren/cierran el menú y las acciones funcionan.
+- [x] 2.3 Hacer que la búsqueda mantenga el foco y el ancho flexible; eliminar el solapamiento con `Orden` en 980 px y 720 px. Verificación: capturas en ambos anchos.
+- [x] 2.4 Compactar orden/filtro en controles con valor visible y etiquetas solo cuando haya espacio. Verificación: los cuatro filtros y cuatro órdenes siguen accesibles.
+- [x] 2.5 Extraer `library_card` a un componente con cover, título, autor, progreso y estados hover/focus. Verificación: la tarjeta abre con click y con Enter/Espacio cuando tiene foco.
+- [x] 2.6 Mejorar el estado vacío: una acción primaria `Añadir carpeta`, una secundaria `Abrir un EPUB` y la pista de arrastre. Verificación: captura de `library-empty` y recorrido por teclado.
+- [x] 2.7 Implementar estado de error de EPUB con detalle y acciones `Ver detalle` / `Quitar de la biblioteca`; confirmar la eliminación y aclarar que el archivo no se borra. Verificación: `library-error` muestra el detalle y la acción.
+- [x] 2.8 Implementar estado `missing` con acción `Ubicar archivo…` o `Quitar de la biblioteca`, sin borrar el EPUB. Verificación: fixture con archivo faltante y captura.
+- [x] 2.9 Añadir confirmación al quitar una carpeta y mantener los chips solo cuando existan carpetas. Verificación: quitar carpeta no borra libros ni archivos.
+- [x] 2.10 Añadir feedback de escaneo (estado busy + resumen) sin bloquear la ventana. Verificación: `--scan` y `Refrescar` muestran el resumen y la UI responde.
 
 ## 3. Lector y paneles
 

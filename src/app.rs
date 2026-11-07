@@ -18,7 +18,7 @@ use crate::consulta::{
 };
 use crate::epub::Book;
 use crate::fonts;
-use crate::library::Library;
+use crate::library::{Library, ScanStats};
 use crate::search;
 use crate::theme::{self, Theme, THEMES};
 use crate::ui as widgets;
@@ -85,6 +85,8 @@ struct CardData {
 enum CardAction {
     Open,
     Remove,
+    Locate,
+    Recover,
 }
 
 /// Selección activa de texto dentro de un bloque, lista para destacar.
@@ -166,6 +168,11 @@ pub struct Lector {
     textures: HashMap<String, egui::TextureHandle>,
     library: Library,
     library_textures: HashMap<String, egui::TextureHandle>,
+    scan_rx: Option<Receiver<(Library, ScanStats)>>,
+    scanning: bool,
+    confirm_remove_book: Option<usize>,
+    confirm_remove_folder: Option<String>,
+    confirm_recover_book: Option<usize>,
     library_search: String,
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
@@ -238,6 +245,18 @@ pub struct Lector {
 #[derive(Debug, Clone, Default)]
 pub struct DevOpts {
     pub shot: Option<PathBuf>,
+    /// Tamaño de ventana para capturas responsivas (`WxH`).
+    pub size: Option<(f32, f32)>,
+    /// Abre el diálogo de recuperación del primer EPUB roto/faltante.
+    pub recover: bool,
+    /// Abre la confirmación de quitar el primer libro.
+    pub confirm_remove: bool,
+    /// Abre la confirmación de dejar de vigilar la primera carpeta.
+    pub confirm_folder: bool,
+    /// Dispara un reescaneo al abrir (capturas del estado busy).
+    pub rescan: bool,
+    /// Pone foco de teclado en la primera tarjeta (capturas de foco).
+    pub focus_card: bool,
     pub chapter: Option<usize>,
     pub panel: Option<String>,
     /// Reabre el último libro en vez de arrancar en la biblioteca.
@@ -315,6 +334,24 @@ impl Lector {
         cc.egui_ctx.set_style(style);
 
         let theme_idx = cfg.settings.theme;
+        let initial_recover = if dev.recover {
+            library
+                .books
+                .iter()
+                .position(|b| b.missing || b.error.is_some())
+        } else {
+            None
+        };
+        let initial_remove = if dev.confirm_remove && !library.books.is_empty() {
+            Some(0)
+        } else {
+            None
+        };
+        let initial_folder = if dev.confirm_folder {
+            library.folders.first().cloned()
+        } else {
+            None
+        };
         let initial_search = dev.search.clone().unwrap_or_default();
         let initial_book_search = dev.book_search.clone().unwrap_or_default();
         let mut app = Self {
@@ -325,6 +362,11 @@ impl Lector {
             textures: HashMap::new(),
             library,
             library_textures: HashMap::new(),
+            scan_rx: None,
+            scanning: false,
+            confirm_remove_book: initial_remove,
+            confirm_remove_folder: initial_folder,
+            confirm_recover_book: initial_recover,
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
@@ -725,6 +767,32 @@ impl Lector {
                 format!("No pude guardar la biblioteca: {e}"),
                 Instant::now(),
             ));
+        }
+    }
+
+    fn relink_book(&mut self, index: usize, path: PathBuf) {
+        let old_path = self.library.books.get(index).map(|b| b.path.clone());
+        match self.library.relink(index, &path) {
+            Ok(new_path) => {
+                if let Some(old_path) = old_path {
+                    let changed = self.annotations.rekey(&old_path, &new_path);
+                    if changed > 0 {
+                        self.save_annotations();
+                    }
+                    if let Some(recent) =
+                        self.cfg.recent.iter_mut().find(|p| p.as_str() == old_path)
+                    {
+                        *recent = new_path.clone();
+                        if let Err(e) = self.cfg.save() {
+                            self.say(format!("No pude guardar la configuración: {e}"));
+                        }
+                    }
+                }
+                self.library_textures.clear();
+                self.save_library();
+                self.say("Libro reubicado en la biblioteca.");
+            }
+            Err(e) => self.say(e),
         }
     }
 
@@ -2766,11 +2834,68 @@ impl Lector {
 
     // -- pantallas -----------------------------------------------------------
 
+    fn start_scan(&mut self, folder: Option<PathBuf>, ctx: &egui::Context) {
+        if self.scanning {
+            return;
+        }
+        self.save_library();
+        let mut library = self.library.clone();
+        let (tx, rx) = mpsc::channel();
+        self.scan_rx = Some(rx);
+        self.scanning = true;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let stats = if let Some(folder) = folder {
+                library.scan_folder(&folder)
+            } else {
+                library.rescan()
+            };
+            let _ = tx.send((library, stats));
+            ctx.request_repaint();
+        });
+    }
+
+    fn poll_scan(&mut self, ctx: &egui::Context) {
+        let Some(result) = self.scan_rx.as_ref().map(|rx| rx.try_recv()) else {
+            return;
+        };
+        match result {
+            Ok((library, stats)) => {
+                self.library = library;
+                self.library_textures.clear();
+                self.scanning = false;
+                self.scan_rx = None;
+                self.migrate_progress();
+                self.save_library();
+                if stats.found == 0 {
+                    self.say("No encontré EPUB en las carpetas vigiladas.");
+                } else {
+                    self.say(format!(
+                        "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
+                        stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
+                    ));
+                }
+                ctx.request_repaint();
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.scanning = false;
+                self.scan_rx = None;
+                self.say("El escaneo se interrumpió.");
+            }
+        }
+    }
+
     fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
         let mut add_folder = false;
         let mut rescan = false;
         let mut open_path: Option<PathBuf> = None;
+        let mut open_file = false;
         let mut remove: Option<usize> = None;
+        let mut locate: Option<usize> = None;
+        let mut recover: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
@@ -2788,6 +2913,10 @@ impl Lector {
             .filter_map(|b| b.error.as_ref().map(|e| format!("{}: {e}", b.title)))
             .collect::<Vec<_>>()
             .join("\n");
+        let folders = self.library.folders.clone();
+        let has_books = !self.library.books.is_empty();
+        let show_second_row = has_books || !folders.is_empty();
+        let wide = ctx.screen_rect().width() >= 820.0;
 
         egui::TopBottomPanel::top("library-bar")
             .show_separator_line(false)
@@ -2806,157 +2935,264 @@ impl Lector {
                             .color(th.fg),
                     );
                     ui.add_space(2.0);
-                    ui.label(
-                        RichText::new(format!("{book_count} libros"))
-                            .size(theme::text::META)
-                            .color(th.dim),
-                    );
-                    if missing_count > 0 {
+                    if self.scanning {
+                        ui.add(egui::Spinner::new());
                         ui.label(
-                            RichText::new(format!(
-                                "· {missing_count} falta{}",
-                                if missing_count == 1 { "" } else { "s" }
-                            ))
-                            .size(theme::text::META)
-                            .color(th.dim),
+                            RichText::new("Escaneando…")
+                                .size(theme::text::META)
+                                .color(th.dim),
                         );
-                    }
-                    if error_count > 0 {
-                        let response = ui.label(
-                            RichText::new(format!(
-                                "· {error_count} error{}",
-                                if error_count == 1 { "" } else { "es" }
-                            ))
-                            .size(theme::text::META)
-                            .color(th.error),
+                    } else {
+                        ui.label(
+                            RichText::new(format!("{book_count} libros"))
+                                .size(theme::text::META)
+                                .color(th.dim),
                         );
-                        if !error_details.is_empty() {
-                            response.on_hover_text(error_details.clone());
+                        if missing_count > 0 {
+                            ui.label(
+                                RichText::new(format!(
+                                    "· {missing_count} falta{}",
+                                    if missing_count == 1 { "" } else { "s" }
+                                ))
+                                .size(theme::text::META)
+                                .color(th.dim),
+                            );
+                        }
+                        if error_count > 0 {
+                            let response = ui.label(
+                                RichText::new(format!(
+                                    "· {error_count} error{}",
+                                    if error_count == 1 { "" } else { "es" }
+                                ))
+                                .size(theme::text::META)
+                                .color(th.error),
+                            );
+                            if !error_details.is_empty() {
+                                response.on_hover_text(error_details.clone());
+                            }
                         }
                     }
                     ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(4.0);
-                    if widgets::button(ui, th, "Añadir carpeta…", widgets::ButtonKind::Primary)
-                        .clicked()
-                    {
-                        add_folder = true;
-                    }
-                    if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Ghost).clicked() {
-                        rescan = true;
-                    }
-                    if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost).clicked() {
-                        self.show_config = true;
-                        self.config_tab = ConfigTab::Biblioteca;
-                    }
-                    ui.add_space(6.0);
-                    let response = egui::Frame::new()
+
+                    let compact = ui.available_width() < 520.0;
+                    let reserve = if compact { 130.0 } else { 208.0 };
+                    let search_w = (ui.available_width() - reserve).max(150.0);
+                    let search = egui::Frame::new()
                         .fill(th.bg)
-                        .corner_radius(7.0)
+                        .stroke(Stroke::new(1.0, th.border))
+                        .corner_radius(theme::radius::MD)
                         .inner_margin(egui::Margin::symmetric(10, 5))
                         .show(ui, |ui| {
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.library_search)
                                     .hint_text("Buscar título, autor…")
-                                    .desired_width(200.0)
+                                    .desired_width((search_w - 20.0).max(120.0))
                                     .frame(false),
                             )
-                        })
-                        .inner;
+                        });
+                    if search.inner.has_focus() {
+                        ui.painter().rect_stroke(
+                            search.response.rect,
+                            theme::radius::MD,
+                            Stroke::new(2.0, th.accent),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                     if ctx.input(|i| {
                         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
                     }) {
-                        response.request_focus();
+                        search.inner.request_focus();
                     }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        egui::ComboBox::from_id_salt("library-filter")
-                            .selected_text(self.library_filter.label())
-                            .show_ui(ui, |ui| {
-                                for filter in [
-                                    LibraryFilter::All,
-                                    LibraryFilter::Reading,
-                                    LibraryFilter::Unread,
-                                    LibraryFilter::Missing,
-                                ] {
-                                    ui.selectable_value(
-                                        &mut self.library_filter,
-                                        filter,
-                                        filter.label(),
-                                    );
+
+                    if !self.scanning
+                        && widgets::button(
+                            ui,
+                            th,
+                            if compact {
+                                "Añadir"
+                            } else {
+                                "Añadir carpeta…"
+                            },
+                            widgets::ButtonKind::Primary,
+                        )
+                        .clicked()
+                    {
+                        add_folder = true;
+                    }
+
+                    ui.scope(|ui| {
+                        let visuals = ui.visuals_mut();
+                        visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                        visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+                        visuals.widgets.hovered.weak_bg_fill = th.accent.gamma_multiply(0.12);
+                        visuals.widgets.hovered.bg_stroke = Stroke::NONE;
+                        visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.accent);
+                        ui.menu_button(
+                            RichText::new("…").size(theme::text::TITLE).color(th.fg),
+                            |ui| {
+                                if ui.button("Refrescar").clicked() {
+                                    rescan = true;
+                                    ui.close();
                                 }
-                            });
-                        ui.label(
-                            RichText::new("Filtro")
-                                .size(theme::text::META)
-                                .color(th.dim),
+                                if ui.button("Configuración").clicked() {
+                                    self.show_config = true;
+                                    self.config_tab = ConfigTab::Biblioteca;
+                                    ui.close();
+                                }
+                                if ui.button("Abrir un EPUB…").clicked() {
+                                    open_file = true;
+                                    ui.close();
+                                }
+                                ui.separator();
+                                ui.menu_button("Carpetas", |ui| {
+                                    if folders.is_empty() {
+                                        ui.label(
+                                            RichText::new("No hay carpetas vigiladas.")
+                                                .size(theme::text::META)
+                                                .color(th.dim),
+                                        );
+                                    }
+                                    for folder in &folders {
+                                        let name = Path::new(folder)
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_else(|| folder.clone());
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new(truncate(&name, 28))
+                                                    .size(theme::text::META)
+                                                    .color(th.fg),
+                                            )
+                                            .on_hover_text(folder);
+                                            if ui
+                                                .small_button("×")
+                                                .on_hover_text("Dejar de vigilar")
+                                                .clicked()
+                                            {
+                                                remove_folder = Some(folder.clone());
+                                                ui.close();
+                                            }
+                                        });
+                                    }
+                                    ui.separator();
+                                    if ui.button("Añadir carpeta…").clicked() {
+                                        add_folder = true;
+                                        ui.close();
+                                    }
+                                });
+                            },
                         );
-                        ui.add_space(4.0);
-                        egui::ComboBox::from_id_salt("library-order")
-                            .selected_text(self.library_order.label())
-                            .show_ui(ui, |ui| {
-                                for order in [
-                                    LibraryOrder::Recent,
-                                    LibraryOrder::Title,
-                                    LibraryOrder::Author,
-                                    LibraryOrder::Added,
-                                ] {
-                                    ui.selectable_value(
-                                        &mut self.library_order,
-                                        order,
-                                        order.label(),
-                                    );
-                                }
-                            });
-                        ui.label(RichText::new("Orden").size(theme::text::META).color(th.dim));
                     });
                 });
             });
 
-        if !self.library.folders.is_empty() {
-            let folders = self.library.folders.clone();
-            egui::TopBottomPanel::top("library-folders")
+        if show_second_row {
+            egui::TopBottomPanel::top("library-filters")
                 .show_separator_line(false)
-                .exact_height(34.0)
+                .exact_height(38.0)
                 .frame(
                     egui::Frame::new()
                         .fill(th.bg)
                         .inner_margin(egui::Margin::symmetric(16, 6)),
                 )
                 .show(ctx, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(
-                            RichText::new("Carpetas")
-                                .size(theme::text::META)
-                                .color(th.dim),
-                        );
-                        for folder in &folders {
-                            let name = Path::new(folder)
-                                .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_else(|| folder.clone());
-                            egui::Frame::new()
-                                .fill(th.panel)
-                                .corner_radius(5.0)
-                                .inner_margin(egui::Margin::symmetric(8, 2))
-                                .show(ui, |ui| {
-                                    ui.horizontal_centered(|ui| {
-                                        ui.label(
-                                            RichText::new(name.clone())
-                                                .size(theme::text::META)
-                                                .color(th.fg),
-                                        )
-                                        .on_hover_text(folder);
-                                        let remove_response = ui
-                                            .small_button(
-                                                RichText::new("×").size(theme::text::META),
+                    ui.horizontal_centered(|ui| {
+                        if !folders.is_empty() {
+                            ui.label(
+                                RichText::new("Carpetas")
+                                    .size(theme::text::META)
+                                    .color(th.dim),
+                            );
+                            for folder in folders.iter().take(4) {
+                                let name = Path::new(folder)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| folder.clone());
+                                let name = truncate(&name, if wide { 28 } else { 16 });
+                                egui::Frame::new()
+                                    .fill(th.panel)
+                                    .stroke(Stroke::new(1.0, th.border))
+                                    .corner_radius(theme::radius::SM)
+                                    .inner_margin(egui::Margin::symmetric(8, 3))
+                                    .show(ui, |ui| {
+                                        ui.horizontal_centered(|ui| {
+                                            ui.label(
+                                                RichText::new(name.clone())
+                                                    .size(theme::text::META)
+                                                    .color(th.fg),
                                             )
-                                            .on_hover_text("Dejar de vigilar");
-                                        if remove_response.clicked() {
-                                            remove_folder = Some(folder.clone());
-                                        }
+                                            .on_hover_text(folder);
+                                            if ui
+                                                .small_button(
+                                                    RichText::new("×").size(theme::text::META),
+                                                )
+                                                .on_hover_text("Dejar de vigilar")
+                                                .clicked()
+                                            {
+                                                remove_folder = Some(folder.clone());
+                                            }
+                                        });
                                     });
-                                });
+                            }
+                            if folders.len() > 4 {
+                                ui.label(
+                                    RichText::new(format!("+{}", folders.len() - 4))
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                );
+                            }
                         }
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            egui::ComboBox::from_id_salt("library-filter")
+                                .width(if wide { 124.0 } else { 104.0 })
+                                .selected_text(self.library_filter.label())
+                                .show_ui(ui, |ui| {
+                                    for filter in [
+                                        LibraryFilter::All,
+                                        LibraryFilter::Reading,
+                                        LibraryFilter::Unread,
+                                        LibraryFilter::Missing,
+                                    ] {
+                                        ui.selectable_value(
+                                            &mut self.library_filter,
+                                            filter,
+                                            filter.label(),
+                                        );
+                                    }
+                                });
+                            if wide {
+                                ui.label(
+                                    RichText::new("Filtro")
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                );
+                                ui.add_space(4.0);
+                            }
+                            egui::ComboBox::from_id_salt("library-order")
+                                .width(if wide { 124.0 } else { 104.0 })
+                                .selected_text(self.library_order.label())
+                                .show_ui(ui, |ui| {
+                                    for order in [
+                                        LibraryOrder::Recent,
+                                        LibraryOrder::Title,
+                                        LibraryOrder::Author,
+                                        LibraryOrder::Added,
+                                    ] {
+                                        ui.selectable_value(
+                                            &mut self.library_order,
+                                            order,
+                                            order.label(),
+                                        );
+                                    }
+                                });
+                            if wide {
+                                ui.label(
+                                    RichText::new("Orden").size(theme::text::META).color(th.dim),
+                                );
+                            }
+                        });
                     });
                 });
         }
@@ -2964,7 +3200,7 @@ impl Lector {
         let indices = self.visible_books();
         let cards = self.cards(&indices, ctx);
         let empty = self.library.books.is_empty();
-        let has_folders = !self.library.folders.is_empty();
+        let has_folders = !folders.is_empty();
         let (empty_title, empty_subtitle) = if has_folders {
             (
                 "No hay EPUB en las carpetas vigiladas",
@@ -2980,6 +3216,20 @@ impl Lector {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
             .show(ctx, |ui| {
+                if empty && self.scanning {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(120.0);
+                        ui.add(egui::Spinner::new());
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("Escaneando la biblioteca…")
+                                .size(theme::text::BODY)
+                                .color(th.dim),
+                        );
+                    });
+                    return;
+                }
+
                 if empty {
                     ui.vertical_centered(|ui| {
                         ui.add_space(90.0);
@@ -3002,7 +3252,7 @@ impl Lector {
                         }
                         if has_folders {
                             ui.add_space(8.0);
-                            if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Secondary)
+                            if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Ghost)
                                 .clicked()
                             {
                                 rescan = true;
@@ -3012,12 +3262,7 @@ impl Lector {
                         if widgets::button(ui, th, "Abrir un EPUB…", widgets::ButtonKind::Secondary)
                             .clicked()
                         {
-                            if let Some(p) = rfd::FileDialog::new()
-                                .add_filter("EPUB", &["epub"])
-                                .pick_file()
-                            {
-                                open_path = Some(p);
-                            }
+                            open_file = true;
                         }
                         ui.add_space(18.0);
                         ui.label(
@@ -3042,6 +3287,20 @@ impl Lector {
                                 .size(theme::text::HEADLINE)
                                 .color(th.fg),
                         );
+                        ui.add_space(10.0);
+                        let clear = if self.library_search.trim().is_empty() {
+                            "Ver todos"
+                        } else {
+                            "Limpiar búsqueda"
+                        };
+                        if widgets::button(ui, th, clear, widgets::ButtonKind::Secondary).clicked()
+                        {
+                            if self.library_search.trim().is_empty() {
+                                self.library_filter = LibraryFilter::All;
+                            } else {
+                                self.library_search.clear();
+                            }
+                        }
                     });
                     return;
                 }
@@ -3059,15 +3318,20 @@ impl Lector {
                         let left = ((avail - row_w) * 0.5).max(PAGE_PAD);
                         ui.spacing_mut().item_spacing.x = CARD_GAP;
 
+                        let mut card_pos = 0usize;
                         for row in cards.chunks(cols) {
                             ui.horizontal_top(|ui| {
                                 ui.add_space(left);
                                 for card in row {
-                                    match library_card(ui, card, th) {
+                                    let focus = self.dev.focus_card && card_pos == 0;
+                                    card_pos += 1;
+                                    match library_card(ui, card, th, focus) {
                                         Some(CardAction::Open) => {
                                             open_path = Some(PathBuf::from(&card.path));
                                         }
                                         Some(CardAction::Remove) => remove = Some(card.index),
+                                        Some(CardAction::Locate) => locate = Some(card.index),
+                                        Some(CardAction::Recover) => recover = Some(card.index),
                                         None => {}
                                     }
                                 }
@@ -3080,43 +3344,295 @@ impl Lector {
 
         if add_folder {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                let stats = self.library.scan_folder(&dir);
-                self.library_textures.clear();
-                self.migrate_progress();
-                self.save_library();
-                if stats.found == 0 {
-                    self.say(format!("No hay EPUB en {}", dir.display()));
-                } else {
-                    self.say(format!(
-                        "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
-                        stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
-                    ));
-                }
+                self.start_scan(Some(dir), ctx);
             }
         }
-        if rescan {
-            let stats = self.library.rescan();
-            self.library_textures.clear();
-            self.migrate_progress();
-            self.save_library();
-            self.say(format!(
-                "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
-                stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
-            ));
+        if rescan && !self.scanning {
+            self.start_scan(None, ctx);
+        }
+        if open_file {
+            if let Some(p) = rfd::FileDialog::new()
+                .add_filter("EPUB", &["epub"])
+                .pick_file()
+            {
+                open_path = Some(p);
+            }
         }
         if let Some(folder) = remove_folder {
-            self.library.unwatch_folder(&folder);
-            self.save_library();
-            self.say(format!("Dejé de vigilar {folder}"));
+            self.confirm_remove_folder = Some(folder);
         }
         if let Some(index) = remove {
-            if index < self.library.books.len() {
-                self.library.books.remove(index);
-                self.save_library();
+            self.confirm_remove_book = Some(index);
+        }
+        if let Some(index) = locate {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("EPUB", &["epub"])
+                .pick_file()
+            {
+                self.relink_book(index, path);
             }
+        }
+        if let Some(index) = recover {
+            self.confirm_recover_book = Some(index);
         }
         if let Some(path) = open_path {
             self.open(path);
+        }
+
+        self.remove_book_window(ctx, th);
+        self.remove_folder_window(ctx, th);
+        self.recover_book_window(ctx, th);
+    }
+
+    fn remove_book_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(index) = self.confirm_remove_book else {
+            return;
+        };
+        let Some(title) = self.library.books.get(index).map(|b| b.title.clone()) else {
+            self.confirm_remove_book = None;
+            return;
+        };
+        let mut confirm = false;
+        let mut cancel = false;
+        let _ = egui::Modal::new(egui::Id::new("remove-book-modal"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Quitar de la biblioteca")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cancelar")
+                            .clicked()
+                        {
+                            cancel = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.label(
+                    RichText::new(format!("¿Quitar «{title}» de la biblioteca?"))
+                        .size(theme::text::BODY)
+                        .color(th.fg),
+                );
+                ui.add_space(theme::space::SM);
+                ui.label(
+                    RichText::new("El archivo EPUB no se borra; solo se quita del índice.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                ui.add_space(theme::space::MD);
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, th, "Quitar", widgets::ButtonKind::Destructive).clicked()
+                    {
+                        confirm = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if confirm {
+            if index < self.library.books.len() {
+                self.library.books.remove(index);
+                self.save_library();
+                self.say("Libro quitado de la biblioteca.");
+            }
+            self.confirm_remove_book = None;
+        } else if cancel {
+            self.confirm_remove_book = None;
+        }
+    }
+
+    fn remove_folder_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(folder) = self.confirm_remove_folder.clone() else {
+            return;
+        };
+        let name = Path::new(&folder)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| folder.clone());
+        let mut confirm = false;
+        let mut cancel = false;
+        let _ = egui::Modal::new(egui::Id::new("remove-folder-modal"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(400.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Dejar de vigilar carpeta")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cancelar")
+                            .clicked()
+                        {
+                            cancel = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.label(
+                    RichText::new(format!("¿Dejar de vigilar «{name}»?"))
+                        .size(theme::text::BODY)
+                        .color(th.fg),
+                );
+                ui.add_space(theme::space::SM);
+                ui.label(
+                    RichText::new(
+                        "Los libros ya indexados siguen en la biblioteca; no se borra ningún archivo.",
+                    )
+                    .size(theme::text::META)
+                    .color(th.dim),
+                );
+                ui.add_space(theme::space::MD);
+                ui.horizontal(|ui| {
+                    if widgets::button(
+                        ui,
+                        th,
+                        "Dejar de vigilar",
+                        widgets::ButtonKind::Destructive,
+                    )
+                    .clicked()
+                    {
+                        confirm = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if confirm {
+            self.library.unwatch_folder(&folder);
+            self.save_library();
+            self.confirm_remove_folder = None;
+            self.say(format!("Dejé de vigilar {name}."));
+        } else if cancel {
+            self.confirm_remove_folder = None;
+        }
+    }
+
+    fn recover_book_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(index) = self.confirm_recover_book else {
+            return;
+        };
+        let Some(book) = self.library.books.get(index) else {
+            self.confirm_recover_book = None;
+            return;
+        };
+        let title = book.title.clone();
+        let error = book.error.clone();
+        let missing = book.missing;
+        let path = book.path.clone();
+        let mut locate = false;
+        let mut remove = false;
+        let mut cancel = false;
+
+        let _ = egui::Modal::new(egui::Id::new("recover-book-modal"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(440.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(if missing {
+                            "Archivo faltante"
+                        } else {
+                            "No se pudo abrir el EPUB"
+                        })
+                        .size(theme::text::TITLE)
+                        .strong()
+                        .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cancelar")
+                            .clicked()
+                        {
+                            cancel = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.label(
+                    RichText::new(format!("«{title}»"))
+                        .size(theme::text::BODY)
+                        .strong()
+                        .color(th.fg),
+                );
+                ui.add_space(theme::space::SM);
+                if missing {
+                    ui.label(
+                        RichText::new("El archivo ya no está en la ruta indexada.")
+                            .size(theme::text::BODY)
+                            .color(th.dim),
+                    );
+                } else if let Some(error) = &error {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(error).size(theme::text::BODY).color(th.error),
+                        )
+                        .wrap(),
+                    );
+                }
+                ui.add_space(theme::space::XS);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(truncate(&path, 80))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    )
+                    .wrap(),
+                )
+                .on_hover_text(path);
+                ui.add_space(theme::space::MD);
+                ui.horizontal_wrapped(|ui| {
+                    if widgets::button(ui, th, "Ubicar archivo…", widgets::ButtonKind::Primary)
+                        .clicked()
+                    {
+                        locate = true;
+                    }
+                    if widgets::button(
+                        ui,
+                        th,
+                        "Quitar de la biblioteca",
+                        widgets::ButtonKind::Destructive,
+                    )
+                    .clicked()
+                    {
+                        remove = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if locate {
+            self.confirm_recover_book = None;
+            if let Some(new_path) = rfd::FileDialog::new()
+                .add_filter("EPUB", &["epub"])
+                .pick_file()
+            {
+                self.relink_book(index, new_path);
+            }
+        } else if remove {
+            self.confirm_recover_book = None;
+            self.confirm_remove_book = Some(index);
+        } else if cancel {
+            self.confirm_recover_book = None;
         }
     }
 
@@ -4051,8 +4567,8 @@ impl Lector {
                 ui.set_max_width(max_w);
                 egui::Frame::new()
                     .fill(th.panel)
-                    .stroke(Stroke::new(1.0, th.dim.gamma_multiply(0.4)))
-                    .corner_radius(6.0)
+                    .stroke(Stroke::new(1.0, th.border))
+                    .corner_radius(theme::radius::MD)
                     .inner_margin(egui::Margin::symmetric(14, 8))
                     .show(ui, |ui| {
                         ui.label(RichText::new(msg).size(theme::text::BODY).color(th.fg));
@@ -4504,7 +5020,12 @@ impl eframe::App for Lector {
             self.window_title = title;
         }
 
+        if self.dev.rescan {
+            self.dev.rescan = false;
+            self.start_scan(None, ctx);
+        }
         self.handle_input(ctx);
+        self.poll_scan(ctx);
         self.poll_consulta();
         if self.consulta_busy {
             ctx.request_repaint_after(Duration::from_millis(120));
@@ -4943,7 +5464,7 @@ fn reveal_in_finder(path: &str) {
     }
 }
 
-fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> {
+fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option<CardAction> {
     let mut action = None;
     let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
     let response = ui.allocate_ui_with_layout(
@@ -5084,35 +5605,63 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
     );
 
     let rect = response.response.rect;
-    let mut response = ui.interact(
-        rect,
-        ui.id().with(("library-card", card.index)),
-        Sense::click(),
-    );
-    if response.hovered() {
+    // La tarjeta se pinta a mano, pero el foco y Enter/Espacio los aporta un
+    // botón transparente que cubre el área. Así la grilla es navegable con
+    // teclado sin reescribir el layout de portada/título/autor.
+    let id = ui.make_persistent_id(("library-card", card.index));
+    let mut response = ui.interact(rect, id, Sense::click());
+    if focus {
+        response.request_focus();
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            theme::radius::LG,
+            Stroke::new(2.0, th.accent),
+            egui::StrokeKind::Inside,
+        );
+    } else if response.hovered() {
         ui.painter().rect_stroke(
             rect.expand(3.0),
-            9.0,
-            Stroke::new(1.0, th.accent.gamma_multiply(0.35)),
+            theme::radius::LG + 1.0,
+            Stroke::new(1.0, th.accent.gamma_multiply(0.45)),
             egui::StrokeKind::Inside,
         );
     }
-    if response.clicked() {
-        action = Some(CardAction::Open);
+    let activated = response.clicked()
+        || (response.has_focus()
+            && ui.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Space)));
+    if activated {
+        action = Some(if card.missing || card.error.is_some() {
+            CardAction::Recover
+        } else {
+            CardAction::Open
+        });
     }
     response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
-    let response = if let Some(error) = &card.error {
-        response.on_hover_text(error.clone())
+    if let Some(error) = &card.error {
+        response = response.on_hover_text(format!(
+            "{error}\n\nClic para ubicar el archivo o quitarlo de la biblioteca."
+        ));
     } else if card.missing {
-        response.on_hover_text("El archivo ya no está")
-    } else {
-        response
-    };
+        response = response.on_hover_text(
+            "El archivo ya no está.\n\nClic para ubicarlo o quitarlo de la biblioteca.",
+        );
+    }
     response.context_menu(|ui| {
+        if !card.missing && card.error.is_none() && ui.button("Abrir").clicked() {
+            action = Some(CardAction::Open);
+            ui.close();
+        }
         if ui.button("Mostrar en Finder").clicked() {
             reveal_in_finder(&card.path);
             ui.close();
         }
+        if (card.missing || card.error.is_some()) && ui.button("Ubicar archivo…").clicked() {
+            action = Some(CardAction::Locate);
+            ui.close();
+        }
+        ui.separator();
         if ui.button("Quitar de la biblioteca").clicked() {
             action = Some(CardAction::Remove);
             ui.close();

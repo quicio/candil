@@ -122,6 +122,19 @@ impl Annotations {
         }
     }
 
+    /// Migra las anotaciones de una ruta a otra (por ejemplo, al reubicar un
+    /// EPUB). Devuelve cuántas entradas cambiaron.
+    pub fn rekey(&mut self, old: &str, new: &str) -> usize {
+        let mut changed = 0;
+        for annotation in &mut self.items {
+            if annotation.book == old {
+                annotation.book = new.to_string();
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     /// Anotaciones del libro ordenadas por capítulo, bloque y offset.
     pub fn sorted_for_book<'a>(&'a self, book: &'a str) -> Vec<&'a Annotation> {
         let mut items: Vec<&Annotation> = self.for_book(book).collect();
@@ -203,6 +216,19 @@ mod tests {
         let ordenadas = all.sorted_for_book("/a.epub");
         assert_eq!(ordenadas.len(), 2);
         assert_eq!(ordenadas[0].id, a);
+    }
+
+    #[test]
+    fn rekey_mueve_anotaciones_al_nuevo_path() {
+        let mut all = Annotations::default();
+        all.add(annotation("/old.epub", 1, "uno"));
+        all.add(annotation("/old.epub", 2, "dos"));
+        all.add(annotation("/otro.epub", 3, "tres"));
+
+        assert_eq!(all.rekey("/old.epub", "/new.epub"), 2);
+        assert_eq!(all.for_book("/new.epub").count(), 2);
+        assert_eq!(all.for_book("/old.epub").count(), 0);
+        assert_eq!(all.for_book("/otro.epub").count(), 1);
     }
 
     #[test]

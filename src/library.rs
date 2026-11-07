@@ -206,6 +206,37 @@ impl Library {
         }
     }
 
+    /// Reasocia una entrada con otro archivo conservando progreso, ajustes y
+    /// fechas. Devuelve la ruta canónica nueva. No toca anotaciones ni
+    /// `config.recent`: el llamador decide si migra esas referencias.
+    pub fn relink(&mut self, index: usize, path: &Path) -> Result<String, String> {
+        let Some(old) = self.books.get(index).cloned() else {
+            return Err("La entrada ya no existe.".into());
+        };
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let key = canonical.to_string_lossy().to_string();
+        if self
+            .books
+            .iter()
+            .enumerate()
+            .any(|(i, b)| i != index && b.path == key)
+        {
+            return Err("Ese EPUB ya está en la biblioteca.".into());
+        }
+        let mut entry =
+            BookEntry::from_path_with_cover(&canonical, Some(&self.data_dir.join("covers")));
+        if let Some(error) = entry.error.clone() {
+            return Err(format!("No pude abrir el EPUB: {error}"));
+        }
+        entry.progress = old.progress;
+        entry.settings = old.settings;
+        entry.added = old.added;
+        entry.last_opened = old.last_opened;
+        let new_path = entry.path.clone();
+        self.books[index] = entry;
+        Ok(new_path)
+    }
+
     /// Migra `config.progress` a las entradas de la biblioteca y vacía las
     /// claves migradas. No pisa un progreso que la biblioteca ya tenga.
     pub fn migrate_progress_from(&mut self, cfg: &mut Config) -> usize {
@@ -603,6 +634,31 @@ mod tests {
 
         let lib = Library::load_from(&path);
         assert_eq!(lib.schema_version, SCHEMA_VERSION);
+
+        let _ = std::fs::remove_dir_all(data);
+    }
+
+    #[test]
+    fn relink_conserva_progreso_y_settings() {
+        let data = temp_dir("relink-data");
+        let mut lib = Library::with_data_dir(data.clone());
+        let old = BookEntry::from_path(fixtures().join("mini.epub"));
+        lib.books.push(old);
+        lib.books[0].progress.chapter = 2;
+        lib.books[0].settings = Some(Settings::default());
+        let old_path = lib.books[0].path.clone();
+
+        let new_path = lib
+            .relink(0, &fixtures().join("edge.epub"))
+            .expect("relink");
+        assert_ne!(old_path, new_path);
+        assert_eq!(lib.books[0].progress.chapter, 2);
+        assert!(lib.books[0].settings.is_some());
+        assert!(lib.books[0].error.is_none());
+
+        let duplicate = BookEntry::from_path(fixtures().join("mini.epub"));
+        lib.books.push(duplicate);
+        assert!(lib.relink(1, &fixtures().join("edge.epub")).is_err());
 
         let _ = std::fs::remove_dir_all(data);
     }

@@ -9,7 +9,7 @@ sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
 del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
 
-Binario final (`dist`): **6.4 MiB** (6.680.704 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.714.144 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -144,7 +144,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 96
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 98
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.

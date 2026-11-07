@@ -38,15 +38,18 @@ origen.
 
 ## OpenSpec
 
-`openspec/` es la fuente de verdad para cambios nuevos. El cambio activo es
-`consolidar-ux-ui` (sistema de diseño, biblioteca, lector, paneles y
-accesibilidad). `docs/specs/` queda como archivo histórico de M1–M6.
+`openspec/` es la fuente de verdad para cambios nuevos. Las specs de la
+consolidación (`design-system`, `library-experience`, `reading-workspace` y
+`interaction-accessibility`) viven en `openspec/specs/`; el cambio
+`consolidar-ux-ui` quedó archivado en `openspec/changes/archive/`.
+`docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
-Ir a, índice, configuración y consulta) y 4 (atajos, foco, objetivos, señales no
-cromáticas y feedback) están implementadas. Queda la fase 5 (capturas públicas,
-docs y validación final).
+Ir a, índice, configuración y consulta), 4 (atajos, foco, objetivos, señales no
+cromáticas y feedback) y 5 (capturas públicas en Papel 19 px, documentación y
+validación) están implementadas. El cambio `consolidar-ux-ui` quedó archivado y
+sus specs son la referencia vigente.
 
 ## Estado medido (no estimado)
 
@@ -60,7 +63,7 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
+| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 98 unit (1 live ignorado) + 9 integración | `cargo test` |

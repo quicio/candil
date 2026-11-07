@@ -50,10 +50,10 @@
 
 ## 5. Validación, capturas y documentación
 
-- [ ] 5.1 Ejecutar `cargo test`, `cargo fmt --check` y `cargo clippy --all-targets -- -D warnings`. Verificación: todo verde.
-- [ ] 5.2 Ejecutar `scripts/check.sh` y `--inspect tests/fixtures/edge.epub` si se tocó algo del parser. Verificación: salida `ok`.
-- [ ] 5.3 Capturar biblioteca, lector, paneles y estados en 980×780 y 720×600 con el sandbox de `scripts/captures.sh`. Verificación: revisar solapamientos, foco y contraste.
-- [ ] 5.4 Regenerar `docs/img/` con libros de dominio público y sin datos reales. Verificación: `docs/img` actualizado y sandbox aislado.
-- [ ] 5.5 Actualizar `DESIGN.md` con los tokens y componentes finales. Verificación: frontmatter y secciones canónicas completas.
-- [ ] 5.6 Actualizar `README.md`, `docs/HANDOFF.md`, `docs/ROADMAP.md` y enlaces a specs/ADRs. Verificación: sin referencias obsoletas y conteos correctos.
-- [ ] 5.7 Ejecutar `openspec validate consolidar-ux-ui --strict` y revisar que cada tarea completada tenga evidencia. Verificación: validación limpia antes de archivar.
+- [x] 5.1 Ejecutar `cargo test`, `cargo fmt --check` y `cargo clippy --all-targets -- -D warnings`. Verificación: todo verde.
+- [x] 5.2 Ejecutar `scripts/check.sh` y `--inspect tests/fixtures/edge.epub` si se tocó algo del parser. Verificación: salida `ok`.
+- [x] 5.3 Capturar biblioteca, lector, paneles y estados en 980×780 y 720×600 con el sandbox de `scripts/captures.sh`. Verificación: revisar solapamientos, foco y contraste.
+- [x] 5.4 Regenerar `docs/img/` con libros de dominio público y sin datos reales. Verificación: `docs/img` actualizado y sandbox aislado.
+- [x] 5.5 Actualizar `DESIGN.md` con los tokens y componentes finales. Verificación: frontmatter y secciones canónicas completas.
+- [x] 5.6 Actualizar `README.md`, `docs/HANDOFF.md`, `docs/ROADMAP.md` y enlaces a specs/ADRs. Verificación: sin referencias obsoletas y conteos correctos.
+- [x] 5.7 Ejecutar `openspec validate consolidar-ux-ui --strict` y revisar que cada tarea completada tenga evidencia. Verificación: validación limpia antes de archivar.

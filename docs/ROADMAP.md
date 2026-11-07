@@ -2,7 +2,7 @@
 id: roadmap
 status: vigente
 version: 1.10.0
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Roadmap
@@ -162,6 +162,24 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
 dentro de las notas y override manual del idioma de origen.
+
+## Consolidación UX/UI (2026-11-07)
+
+Cerrada la consolidación `consolidar-ux-ui` (OpenSpec), sin cambiar el
+comportamiento funcional de M1–M6:
+
+- Sistema de diseño explícito en `DESIGN.md` y `src/ui.rs`: tokens de color,
+  tipografía de UI, espaciado, radios, botones, paneles y swatches.
+- Contraste AA en los cinco temas, foco visible, objetivos de 32×32 y estados
+  hover/active/disabled consistentes.
+- Biblioteca en dos niveles, tarjetas focusables, recuperación de EPUB
+  roto/faltante y escaneo en segundo plano.
+- Lector con barra de 40 px, paneles unificados y confirmaciones para acciones
+  destructivas.
+- Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
+  en Papel 19 px.
+- Verificación: **98 unit (1 live ignorado) + 9 integración**, clippy limpio,
+  `scripts/check.sh` verde y `dist` **6.747.328 B**.
 
 ## Orden de ataque recomendado
 

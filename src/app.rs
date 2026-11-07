@@ -3787,6 +3787,10 @@ impl Lector {
         let error = book.error.clone();
         let missing = book.missing;
         let path = book.path.clone();
+        let file_label = Path::new(&path)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
         let mut locate = false;
         let mut remove = false;
         let mut cancel = false;
@@ -3841,7 +3845,7 @@ impl Lector {
                 ui.add_space(theme::space::XS);
                 ui.add(
                     egui::Label::new(
-                        RichText::new(truncate(&path, 80))
+                        RichText::new(file_label)
                             .size(theme::text::META)
                             .color(th.dim),
                     )

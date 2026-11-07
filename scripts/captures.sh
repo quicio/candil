@@ -32,9 +32,9 @@ for spec in "${MAGS[@]}"; do
   name="${spec#*:}"
   if [ ! -s "$BOOKS/$name" ]; then
     echo "descargando $name…"
-    curl -L --fail --silent --show-error --max-time 120 \
+    curl -L --fail --silent --show-error --max-time 180 \
       -o "$BOOKS/$name" \
-      "https://www.gutenberg.org/cache/epub/$id/pg$id-images-3.epub"
+      "https://www.gutenberg.org/cache/epub/$id/pg$id.epub"
   fi
 done
 
@@ -68,7 +68,7 @@ for book in data['books']:
     if book['path'] == pp:
         book['progress'] = {'chapter': 1, 'ratio': 0.0, 'anchor': None}
         book['settings'] = {
-            'theme': 1, 'font_size': 17.0, 'line_height': 1.55,
+            'theme': 0, 'font_size': 19.0, 'line_height': 1.55,
             'column_width': 660.0, 'paragraph_space': 0.75,
         }
 json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
@@ -173,7 +173,7 @@ mkdir -p "$BROKEN/Libros"
 cp "$PP" "$BROKEN/Libros/pride-and-prejudice.epub"
 printf 'esto no es un epub' > "$BROKEN/Libros/roto.epub"
 HOME="$BROKEN" "$BIN" --scan "$BROKEN/Libros" >/dev/null 2>&1 || true
-HOME="$BROKEN" "$BIN" --shot "$SHOTS/library-error.png" --screen library >/dev/null 2>&1 || true
+HOME="$BROKEN" "$BIN" --shot "$SHOTS/library-error.png" --screen library --recover >/dev/null 2>&1 || true
 
 # Copia a docs/img. sips en macOS; magick/convert en Linux.
 jpg() {

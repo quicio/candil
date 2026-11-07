@@ -23,7 +23,7 @@ webview ni motor HTML.
 | [`docs/BUILD.md`](docs/BUILD.md) | compilar en macOS, Linux y Windows; cross-compiling y CI |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
-| [`openspec/`](openspec/) | cambios y specs de OpenSpec; cambio activo `consolidar-ux-ui` |
+| [`openspec/`](openspec/) | specs vigentes y cambios archivados de OpenSpec |
 
 ## Uso
 

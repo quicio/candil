@@ -215,6 +215,7 @@ pub struct Lector {
     config_tab: ConfigTab,
     config_confirm_clear: bool,
     config_confirm_reset: bool,
+    show_help: bool,
     show_search: bool,
     search_query: String,
     search_results: Vec<search::Hit>,
@@ -262,6 +263,8 @@ pub struct DevOpts {
     pub confirm_delete: bool,
     /// Muestra la barra de selección con una selección sintética (capturas).
     pub selection: bool,
+    /// Abre la ventana de atajos (capturas).
+    pub help: bool,
     pub chapter: Option<usize>,
     pub panel: Option<String>,
     /// Reabre el último libro en vez de arrancar en la biblioteca.
@@ -419,6 +422,7 @@ impl Lector {
             config_tab: ConfigTab::Consultas,
             config_confirm_clear: false,
             config_confirm_reset: false,
+            show_help: dev.help,
             show_search: false,
             search_query: initial_book_search.clone(),
             search_results: Vec::new(),
@@ -1021,11 +1025,13 @@ impl Lector {
             });
         }
         self.save_annotations();
+        self.say("Nota guardada.");
     }
 
     fn remove_annotation(&mut self, id: u64) {
         if self.annotations.remove(id) {
             self.save_annotations();
+            self.say("Destacado borrado.");
         }
     }
 
@@ -1123,6 +1129,89 @@ impl Lector {
         ctx.request_repaint();
     }
 
+    fn help_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.show_help {
+            return;
+        }
+        let mut open = self.show_help;
+        let help_h = (ctx.screen_rect().height() - 180.0).clamp(260.0, 560.0);
+        egui::Window::new(
+            RichText::new("Atajos")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .max_height(help_h + 90.0)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            widgets::meta(ui, th, "Esc cierra esta ventana");
+            let sections: [(&str, &[(&str, &str)]); 4] = [
+                (
+                    "Lectura",
+                    &[
+                        ("Space / PgDn / ↓", "Avanzar"),
+                        ("PgUp / ↑", "Retroceder"),
+                        ("Home", "Inicio del capítulo"),
+                        ("+ / −", "Tamaño de fuente"),
+                    ],
+                ),
+                (
+                    "Navegación",
+                    &[
+                        ("← / →", "Capítulo anterior / siguiente"),
+                        ("T", "Índice"),
+                        ("G", "Ir a porcentaje o capítulo"),
+                        ("⌘F", "Buscar en el libro"),
+                        ("⌘O", "Abrir un EPUB"),
+                        ("Esc", "Cerrar panel o volver"),
+                    ],
+                ),
+                (
+                    "Anotaciones",
+                    &[
+                        ("H", "Destacar selección"),
+                        ("N", "Nota sobre la selección"),
+                        ("D", "Destacados y notas"),
+                        ("K", "Consultar selección"),
+                    ],
+                ),
+                (
+                    "Paneles",
+                    &[
+                        ("S", "Tipografía"),
+                        ("⌘,", "Configuración"),
+                        ("F1 / ?", "Esta ayuda"),
+                    ],
+                ),
+            ];
+            for (title, rows) in sections {
+                widgets::section_header(ui, th, title);
+                egui::Grid::new(format!("help-{title}"))
+                    .num_columns(2)
+                    .spacing([16.0, 4.0])
+                    .show(ui, |ui| {
+                        for (keys, action) in rows {
+                            ui.label(
+                                RichText::new(*keys)
+                                    .size(theme::text::META)
+                                    .strong()
+                                    .color(th.fg),
+                            );
+                            ui.label(RichText::new(*action).size(theme::text::META).color(th.dim));
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(theme::space::XS);
+            }
+        });
+        self.show_help = open;
+    }
+
     fn config_window(&mut self, ctx: &egui::Context, th: &Theme) {
         if !self.show_config {
             return;
@@ -1177,10 +1266,12 @@ impl Lector {
                             (ConfigTab::Privacidad, "Privacidad"),
                             (ConfigTab::Avanzado, "Avanzado"),
                         ] {
-                            if ui
-                                .selectable_label(self.config_tab == tab, label)
-                                .clicked()
-                            {
+                            let selected = self.config_tab == tab;
+                            let mut text = RichText::new(label).size(theme::text::BODY);
+                            if selected {
+                                text = text.strong();
+                            }
+                            if ui.selectable_label(selected, text).clicked() {
                                 self.config_tab = tab;
                             }
                         }
@@ -1299,7 +1390,15 @@ impl Lector {
                                                     .size(theme::text::META)
                                                     .color(th.fg),
                                             );
-                                            if ui.small_button("×").clicked() {
+                                            if widgets::button(
+                                                ui,
+                                                th,
+                                                "×",
+                                                widgets::ButtonKind::Ghost,
+                                            )
+                                            .on_hover_text("Dejar de vigilar")
+                                            .clicked()
+                                            {
                                                 remove_folder = Some(folder.clone());
                                             }
                                         });
@@ -1713,6 +1812,8 @@ impl Lector {
             self.consulta_history.clear();
             if let Err(e) = self.consulta_history.save() {
                 self.status = Some((format!("No pude limpiar el historial: {e}"), Instant::now()));
+            } else {
+                self.say("Historial borrado.");
             }
             self.config_confirm_clear = false;
         }
@@ -2320,6 +2421,8 @@ impl Lector {
             self.consulta_history.clear();
             if let Err(e) = self.consulta_history.save() {
                 self.status = Some((format!("No pude limpiar el historial: {e}"), Instant::now()));
+            } else {
+                self.say("Historial borrado.");
             }
             self.consulta_confirm_clear = false;
         }
@@ -2817,8 +2920,18 @@ impl Lector {
             ctx.request_repaint();
         }
 
+        if !typing
+            && (ctx.input(|i| i.key_pressed(Key::F1))
+                || ctx.input(|i| i.key_pressed(Key::Questionmark)))
+        {
+            self.show_help = !self.show_help;
+            ctx.request_repaint();
+        }
+
         if key_esc {
-            if self.note.is_some() {
+            if self.show_help {
+                self.show_help = false;
+            } else if self.note.is_some() {
                 self.note = None;
                 ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("note-editor")));
                 self.surrender_reader_focus(ctx);
@@ -3091,6 +3204,7 @@ impl Lector {
                         .corner_radius(theme::radius::MD)
                         .inner_margin(egui::Margin::symmetric(10, 5))
                         .show(ui, |ui| {
+                            ui.set_min_height(32.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.library_search)
                                     .hint_text("Buscar título, autor…")
@@ -3154,6 +3268,10 @@ impl Lector {
                                     self.config_tab = ConfigTab::Biblioteca;
                                     ui.close();
                                 }
+                                if ui.button("Atajos").clicked() {
+                                    self.show_help = true;
+                                    ui.close();
+                                }
                                 if ui.button("Abrir un EPUB…").clicked() {
                                     open_file = true;
                                     ui.close();
@@ -3203,7 +3321,9 @@ impl Lector {
                                     }
                                 });
                             },
-                        );
+                        )
+                        .response
+                        .on_hover_text("Más opciones");
                     });
                 });
             });
@@ -3235,8 +3355,9 @@ impl Lector {
                                     .fill(th.panel)
                                     .stroke(Stroke::new(1.0, th.border))
                                     .corner_radius(theme::radius::SM)
-                                    .inner_margin(egui::Margin::symmetric(8, 3))
+                                    .inner_margin(egui::Margin::symmetric(8, 4))
                                     .show(ui, |ui| {
+                                        ui.set_min_height(32.0);
                                         ui.horizontal_centered(|ui| {
                                             ui.label(
                                                 RichText::new(name.clone())
@@ -3266,7 +3387,7 @@ impl Lector {
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().button_padding = Vec2::new(8.0, 4.0);
-                            ui.spacing_mut().interact_size.y = 28.0;
+                            ui.spacing_mut().interact_size.y = 32.0;
                             egui::ComboBox::from_id_salt("library-filter")
                                 .width(if wide { 124.0 } else { 104.0 })
                                 .selected_text(
@@ -3861,7 +3982,7 @@ impl Lector {
             .frame(
                 egui::Frame::new()
                     .fill(th.panel)
-                    .inner_margin(egui::Margin::symmetric(16, 6)),
+                    .inner_margin(egui::Margin::symmetric(16, 4)),
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
@@ -3938,9 +4059,9 @@ impl Lector {
                         0.0
                     };
                     let reserve = if compact {
-                        176.0
+                        220.0
                     } else {
-                        220.0 + author_reserve
+                        240.0 + author_reserve
                     };
                     let title_w = (ui.available_width() - reserve).max(110.0);
                     ui.add_sized(
@@ -3977,8 +4098,14 @@ impl Lector {
                                             self.open_config(ctx, ConfigTab::Consultas);
                                             ui.close();
                                         }
+                                        if ui.button("Atajos").clicked() {
+                                            self.show_help = true;
+                                            ui.close();
+                                        }
                                     },
-                                );
+                                )
+                                .response
+                                .on_hover_text("Más opciones");
                             });
                         } else if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost)
                             .on_hover_text("Configuración (⌘,)")
@@ -3987,7 +4114,8 @@ impl Lector {
                             self.open_config(ctx, ConfigTab::Consultas);
                         }
 
-                        let pct = ui.add(
+                        let pct = ui.add_sized(
+                            [44.0, 32.0],
                             egui::Label::new(
                                 RichText::new(format!("{:.0}%", self.progress() * 100.0))
                                     .size(theme::text::BODY_SMALL)
@@ -5316,6 +5444,7 @@ impl eframe::App for Lector {
         }
 
         self.config_window(ctx, &th);
+        self.help_window(ctx, &th);
         self.status_toast(ctx, &th);
 
         if self.dirty && self.last_save.elapsed() > Duration::from_millis(700) {

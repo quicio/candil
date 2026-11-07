@@ -9,7 +9,7 @@ sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
 del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
 
-Binario final (`dist`): **6.4 MiB** (6.747.280 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.747.328 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -96,6 +96,7 @@ Windows. Para build universal de macOS hay instrucciones con `lipo` en la guía.
 | `Enter` (búsqueda) | ir al resultado |
 | `n` / `N` (búsqueda) | siguiente / anterior resultado |
 | `⌘O` | abrir archivo |
+| `F1` / `?` | ayuda de atajos |
 
 ## Temas y tipografía
 

@@ -20,7 +20,7 @@ pub enum ButtonKind {
 }
 
 fn min_height() -> Vec2 {
-    Vec2::new(0.0, 30.0)
+    Vec2::new(0.0, 32.0)
 }
 
 /// Botón con las cuatro variantes del sistema. `Primary` usa el acento del
@@ -96,7 +96,7 @@ pub fn button(ui: &mut Ui, th: &Theme, label: impl Into<String>, kind: ButtonKin
 pub fn icon_button(ui: &mut Ui, th: &Theme, icon: &str, tooltip: &str) -> Response {
     let response = ui.add(
         egui::Button::new(RichText::new(icon).size(text::BODY).color(th.fg))
-            .min_size(Vec2::splat(30.0))
+            .min_size(Vec2::splat(32.0))
             .corner_radius(radius::MD),
     );
     response.on_hover_text(tooltip)
@@ -154,7 +154,7 @@ pub fn chip(ui: &mut Ui, th: &Theme, label: &str, selected: bool) -> Response {
         }))
         .fill(fill)
         .stroke(stroke)
-        .min_size(Vec2::new(0.0, 24.0))
+        .min_size(Vec2::new(0.0, 32.0))
         .corner_radius(radius::SM),
     );
     response
@@ -199,7 +199,7 @@ pub fn color_swatch(
     let response = ui.add(
         egui::Button::new("")
             .frame(false)
-            .min_size(Vec2::splat(24.0)),
+            .min_size(Vec2::splat(32.0)),
     );
     let center = response.rect.center();
     let radius = 7.0;

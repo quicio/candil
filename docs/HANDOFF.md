@@ -43,9 +43,10 @@ origen.
 accesibilidad). `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
-en segundo plano) y 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
-Ir a, índice, configuración y consulta) están implementadas. Quedan las fases
-4 (interacción/accesibilidad fina) y 5 (capturas públicas, docs y validación).
+en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
+Ir a, índice, configuración y consulta) y 4 (atajos, foco, objetivos, señales no
+cromáticas y feedback) están implementadas. Queda la fase 5 (capturas públicas,
+docs y validación final).
 
 ## Estado medido (no estimado)
 
@@ -64,7 +65,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 98 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 6.747.280 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 6.747.328 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -144,6 +145,7 @@ cargo run --profile fast -- --shot /tmp/p.png --screen library --recover
 cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
 cargo run --profile fast -- --shot /tmp/p.png --selection libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --confirm-delete libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --help libro.epub
 
 # test live (no corre en el gate normal)
 cargo test --lib red_real_wiktionary_y_mymemory -- --ignored
@@ -220,6 +222,11 @@ flotante tapando texto) solo aparecieron así.
 18. **El historial es local** (`consultas.json`), con límite y borrado; no guarda
     el párrafo de contexto, claves ni se envía a proveedores. Las peticiones
     corren en un hilo y la UI no se bloquea.
+19. **Todo control nuevo es focusable**: usar `Button` o `ui.interact` con un
+    id persistente, y Enter/Espacio para activarlo. No dejar `Label` clicables
+    sin foco de teclado.
+20. **Sin movimiento de layout**: `animation_time = 0`; egui no expone la
+    preferencia de reduced motion del SO, así que no se anima nada decorativo.
 
 ## Definición de terminado (por tarea)
 

@@ -39,14 +39,14 @@
 
 ## 4. Interacción y accesibilidad
 
-- [ ] 4.1 Añadir una ayuda de atajos accesible desde la app (panel o ventana) con lectura, navegación, anotaciones y paneles. Verificación: abrir con el atajo y con el menú; Esc cierra.
-- [ ] 4.2 Verificar y corregir el orden de tabulación en biblioteca, lector y paneles; foco visible en todos los controles. Verificación: recorrido completo solo con teclado.
-- [ ] 4.3 Garantizar objetivos mínimos de 32×32 y separación entre botones de barra. Verificación: inspección de capturas y `UiTokens`.
-- [ ] 4.4 Añadir señales no cromáticas a tabs, chips, errores y swatches (peso, borde, icono o etiqueta). Verificación: capturas en escala de grises y con daltonismo simulado.
-- [ ] 4.5 Revisar acciones destructivas: borrar destacado, quitar libro, quitar carpeta y limpiar historial. Verificación: cada una pide confirmación o permite undo.
-- [ ] 4.6 Confirmar que no hay animaciones decorativas ni movimiento de layout; documentar la limitación de reduced motion en egui. Verificación: `rg "animate|request_repaint"` justificado.
-- [ ] 4.7 Añadir tooltips a controles solo-icono y a acciones no obvias, con el atajo cuando exista. Verificación: hover en `☰`, `Aa`, `‹`, `›`, engranaje y swatches.
-- [ ] 4.8 Normalizar feedback de guardado, escaneo y consulta offline (mensaje + duración + no bloqueo). Verificación: probar guardar nota, refrescar y consultar offline.
+- [x] 4.1 Añadir una ayuda de atajos accesible desde la app (panel o ventana) con lectura, navegación, anotaciones y paneles. Verificación: abrir con el atajo y con el menú; Esc cierra.
+- [x] 4.2 Verificar y corregir el orden de tabulación en biblioteca, lector y paneles; foco visible en todos los controles. Verificación: recorrido completo solo con teclado.
+- [x] 4.3 Garantizar objetivos mínimos de 32×32 y separación entre botones de barra. Verificación: inspección de capturas y `UiTokens`.
+- [x] 4.4 Añadir señales no cromáticas a tabs, chips, errores y swatches (peso, borde, icono o etiqueta). Verificación: capturas en escala de grises y con daltonismo simulado.
+- [x] 4.5 Revisar acciones destructivas: borrar destacado, quitar libro, quitar carpeta y limpiar historial. Verificación: cada una pide confirmación o permite undo.
+- [x] 4.6 Confirmar que no hay animaciones decorativas ni movimiento de layout; documentar la limitación de reduced motion en egui. Verificación: `rg "animate|request_repaint"` justificado.
+- [x] 4.7 Añadir tooltips a controles solo-icono y a acciones no obvias, con el atajo cuando exista. Verificación: hover en `☰`, `Aa`, `‹`, `›`, engranaje y swatches.
+- [x] 4.8 Normalizar feedback de guardado, escaneo y consulta offline (mensaje + duración + no bloqueo). Verificación: probar guardar nota, refrescar y consultar offline.
 
 ## 5. Validación, capturas y documentación
 

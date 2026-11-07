@@ -334,6 +334,8 @@ solo cuando representan filtros o carpetas.
 - **Do** usar una sola acción primaria por pantalla y agrupar el resto.
 - **Do** conservar los atajos existentes y documentar los nuevos en la ayuda.
 - **Do** acompañar el color con texto, icono o forma cuando comunique estado.
+- **Do** dar a los controles un objetivo mínimo de 32×32 y un anillo de foco de 2 px.
+- **Do** mantener `animation_time = 0`: el estado cambia sin movimiento.
 
 ### Don't:
 

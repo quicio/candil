@@ -23,6 +23,7 @@ webview ni motor HTML.
 | [`docs/BUILD.md`](docs/BUILD.md) | compilar en macOS, Linux y Windows; cross-compiling y CI |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
+| [`openspec/`](openspec/) | cambios y specs de OpenSpec; cambio activo `consolidar-ux-ui` |
 
 ## Uso
 
@@ -143,7 +144,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 94
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 96
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.

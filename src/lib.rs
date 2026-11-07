@@ -12,4 +12,5 @@ pub mod library;
 pub mod search;
 pub mod store;
 pub mod theme;
+pub mod ui;
 pub mod xhtml;

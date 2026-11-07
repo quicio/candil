@@ -21,6 +21,7 @@ use crate::fonts;
 use crate::library::Library;
 use crate::search;
 use crate::theme::{self, Theme, THEMES};
+use crate::ui as widgets;
 use crate::xhtml::{Block, Kind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1080,16 +1081,16 @@ impl Lector {
                                     ui.set_min_width(560.0);
                                     match self.config_tab {
                                 ConfigTab::Lectura => {
-                                    ui.heading(RichText::new("Lectura").size(16.0).color(th.fg));
+                                    ui.heading(RichText::new("Lectura").size(theme::text::TITLE).color(th.fg));
                                     ui.label(
                                         RichText::new(
                                             "Tipografía global. Para un libro concreto usá el panel Aa.",
                                         )
-                                        .size(11.0)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("Tema").size(12.0).color(th.dim));
+                                        ui.label(RichText::new("Tema").size(theme::text::LABEL).color(th.dim));
                                         egui::ComboBox::from_id_salt("config-theme")
                                             .selected_text(
                                                 THEMES
@@ -1162,19 +1163,19 @@ impl Lector {
                                             RichText::new(
                                                 "Abrí un libro para editar su tipografía.",
                                             )
-                                            .size(10.5)
+                                            .size(theme::text::META)
                                             .color(th.dim),
                                         );
                                     }
                                 }
                                 ConfigTab::Biblioteca => {
-                                    ui.heading(RichText::new("Biblioteca").size(16.0).color(th.fg));
+                                    ui.heading(RichText::new("Biblioteca").size(theme::text::TITLE).color(th.fg));
                                     ui.label(
                                         RichText::new(format!(
                                             "{book_count} libros · {missing} faltantes · {} carpetas",
                                             folders.len()
                                         ))
-                                        .size(11.0)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     ui.add_space(4.0);
@@ -1182,7 +1183,7 @@ impl Lector {
                                         ui.horizontal(|ui| {
                                             ui.label(
                                                 RichText::new(truncate(folder, 64))
-                                                    .size(11.0)
+                                                    .size(theme::text::META)
                                                     .color(th.fg),
                                             );
                                             if ui.small_button("×").clicked() {
@@ -1202,13 +1203,13 @@ impl Lector {
                                 }
                                 ConfigTab::Anotaciones => {
                                     ui.heading(
-                                        RichText::new("Anotaciones").size(16.0).color(th.fg),
+                                        RichText::new("Anotaciones").size(theme::text::TITLE).color(th.fg),
                                     );
                                     ui.label(
                                         RichText::new(format!(
                                             "{annotation_count} destacados/notas guardados."
                                         ))
-                                        .size(11.0)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     ui.add_space(4.0);
@@ -1221,7 +1222,7 @@ impl Lector {
                                             RichText::new(
                                                 "Abrí un libro para ver sus destacados.",
                                             )
-                                            .size(10.5)
+                                            .size(theme::text::META)
                                             .color(th.dim),
                                         );
                                     }
@@ -1232,12 +1233,12 @@ impl Lector {
                                         RichText::new(
                                             "El historial de consultas se guarda aparte, en consultas.json.",
                                         )
-                                        .size(10.5)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                 }
                                 ConfigTab::Consultas => {
-                                    ui.heading(RichText::new("Consultas").size(16.0).color(th.fg));
+                                    ui.heading(RichText::new("Consultas").size(theme::text::TITLE).color(th.fg));
                                     if ui
                                         .checkbox(
                                             &mut self.cfg.consulta.online_enabled,
@@ -1251,18 +1252,18 @@ impl Lector {
                                         RichText::new(
                                             "Apagado por defecto. Al activarlo, solo se envía el texto que consultás.",
                                         )
-                                        .size(10.5)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     ui.add_space(4.0);
                                     ui.label(
                                         RichText::new("Diccionario: Wiktionary")
-                                            .size(11.5)
+                                            .size(theme::text::LABEL)
                                             .color(th.fg),
                                     );
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new("Traducción").size(11.5).color(th.dim),
+                                            RichText::new("Traducción").size(theme::text::LABEL).color(th.dim),
                                         );
                                         egui::ComboBox::from_id_salt("config-translation")
                                             .selected_text(
@@ -1289,7 +1290,7 @@ impl Lector {
                                     });
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new("Idioma destino").size(11.5).color(th.dim),
+                                            RichText::new("Idioma destino").size(theme::text::LABEL).color(th.dim),
                                         );
                                         let before = self.cfg.consulta.target_lang.clone();
                                         egui::ComboBox::from_id_salt("config-target-lang")
@@ -1321,10 +1322,10 @@ impl Lector {
                                     });
                                     ui.add_space(4.0);
                                     ui.label(
-                                        RichText::new("IA — OpenCode Go").size(11.5).color(th.dim),
+                                        RichText::new("IA — OpenCode Go").size(theme::text::LABEL).color(th.dim),
                                     );
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("base URL").size(10.5).color(th.dim));
+                                        ui.label(RichText::new("base URL").size(theme::text::META).color(th.dim));
                                         changed |= ui
                                             .add(
                                                 egui::TextEdit::singleline(
@@ -1335,7 +1336,7 @@ impl Lector {
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("modelo").size(10.5).color(th.dim));
+                                        ui.label(RichText::new("modelo").size(theme::text::META).color(th.dim));
                                         changed |= ui
                                             .add(
                                                 egui::TextEdit::singleline(
@@ -1347,7 +1348,7 @@ impl Lector {
                                     });
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new("timeout (s)").size(10.5).color(th.dim),
+                                            RichText::new("timeout (s)").size(theme::text::META).color(th.dim),
                                         );
                                         changed |= ui
                                             .add(
@@ -1358,7 +1359,7 @@ impl Lector {
                                             )
                                             .changed();
                                         ui.label(
-                                            RichText::new("máx. tokens").size(10.5).color(th.dim),
+                                            RichText::new("máx. tokens").size(theme::text::META).color(th.dim),
                                         );
                                         changed |= ui
                                             .add(
@@ -1372,20 +1373,20 @@ impl Lector {
                                     if has_key {
                                         ui.label(
                                             RichText::new("OPENCODE_API_KEY detectada")
-                                                .size(10.5)
+                                                .size(theme::text::META)
                                                 .color(th.dim),
                                         );
                                     } else {
                                         ui.label(
                                             RichText::new("OPENCODE_API_KEY no configurada")
-                                                .size(10.5)
-                                                .color(Color32::from_rgb(190, 92, 82)),
+                                                .size(theme::text::META)
+                                                .color(th.error),
                                         );
                                     }
                                     ui.add_space(4.0);
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new("Historial").size(11.5).color(th.dim),
+                                            RichText::new("Historial").size(theme::text::LABEL).color(th.dim),
                                         );
                                         changed |= ui
                                             .add(
@@ -1401,7 +1402,7 @@ impl Lector {
                                         RichText::new(format!(
                                             "{history_count} consultas guardadas · 0 = no guardar"
                                         ))
-                                        .size(10.5)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     if self.config_confirm_clear {
@@ -1420,7 +1421,7 @@ impl Lector {
                                 }
                                 ConfigTab::Privacidad => {
                                     ui.heading(
-                                        RichText::new("Privacidad").size(16.0).color(th.fg),
+                                        RichText::new("Privacidad").size(theme::text::TITLE).color(th.fg),
                                     );
                                     ui.label(
                                         RichText::new(
@@ -1429,7 +1430,7 @@ impl Lector {
                                              al proveedor que corresponds. No se envían notas, rutas, \
                                              historial ni el EPUB completo.",
                                         )
-                                        .size(11.0)
+                                        .size(theme::text::META)
                                         .color(th.fg),
                                     );
                                     if ui
@@ -1446,7 +1447,7 @@ impl Lector {
                                             "El historial es local y se puede borrar. Las claves van \
                                              solo en OPENCODE_API_KEY.",
                                         )
-                                        .size(10.5)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     if self.config_confirm_clear {
@@ -1465,7 +1466,7 @@ impl Lector {
                                 }
                                 ConfigTab::Avanzado => {
                                     ui.heading(
-                                        RichText::new("Avanzado").size(16.0).color(th.fg),
+                                        RichText::new("Avanzado").size(theme::text::TITLE).color(th.fg),
                                     );
                                     for (label, path) in [
                                         ("config.json", Config::file()),
@@ -1478,7 +1479,7 @@ impl Lector {
                                                 "{label}: {}",
                                                 truncate(&path.to_string_lossy(), 70)
                                             ))
-                                            .size(10.5)
+                                            .size(theme::text::META)
                                             .color(th.dim),
                                         );
                                     }
@@ -1491,7 +1492,7 @@ impl Lector {
                                             "Candil {}",
                                             env!("CARGO_PKG_VERSION")
                                         ))
-                                        .size(10.5)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                     );
                                     ui.add_space(6.0);
@@ -1807,14 +1808,14 @@ impl Lector {
                 let Some(target) = &target else {
                     ui.label(
                         RichText::new("Seleccioná una palabra o frase en el libro.")
-                            .size(12.5)
+                            .size(theme::text::BODY_SMALL)
                             .color(th.dim),
                     );
                     return;
                 };
                 ui.label(
                     RichText::new(format!("“{}”", truncate(&target.text, 220)))
-                        .size(13.0)
+                        .size(theme::text::BODY)
                         .color(th.fg),
                 );
                 ui.label(
@@ -1823,7 +1824,7 @@ impl Lector {
                         target.source_lang.to_uppercase(),
                         target_lang.to_uppercase()
                     ))
-                    .size(11.0)
+                    .size(theme::text::META)
                     .color(th.dim),
                 );
 
@@ -1831,7 +1832,7 @@ impl Lector {
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Consultas online desactivadas.")
-                            .size(12.0)
+                            .size(theme::text::LABEL)
                             .color(th.dim),
                     );
                     if ui
@@ -1848,7 +1849,7 @@ impl Lector {
                             "Al activarlas, el texto seleccionado se envía al proveedor elegido. \
                              Nada sale sin que pulses un botón.",
                         )
-                        .size(10.5)
+                        .size(theme::text::META)
                         .color(th.dim),
                     );
                 }
@@ -1875,7 +1876,11 @@ impl Lector {
 
                 if self.consulta_tab == ConsultaTab::Traduccion {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Destino").size(11.0).color(th.dim));
+                        ui.label(
+                            RichText::new("Destino")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
                         let before = self.cfg.consulta.target_lang.clone();
                         egui::ComboBox::from_id_salt("consulta-target")
                             .selected_text(
@@ -1911,7 +1916,7 @@ impl Lector {
                         if target.text.split_whitespace().count() > 1 {
                             ui.label(
                                 RichText::new("El diccionario funciona mejor con una palabra.")
-                                    .size(10.5)
+                                    .size(theme::text::META)
                                     .color(th.dim),
                             );
                         }
@@ -1938,7 +1943,11 @@ impl Lector {
                     }
                     ConsultaTab::Ia => {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Prompt").size(11.0).color(th.dim));
+                            ui.label(
+                                RichText::new("Prompt")
+                                    .size(theme::text::META)
+                                    .color(th.dim),
+                            );
                             egui::ComboBox::from_id_salt("consulta-prompt")
                                 .selected_text(self.consulta_prompt.label())
                                 .show_ui(ui, |ui| {
@@ -1954,21 +1963,21 @@ impl Lector {
                         if has_key {
                             ui.label(
                                 RichText::new("OPENCODE_API_KEY detectada")
-                                    .size(10.5)
+                                    .size(theme::text::META)
                                     .color(th.dim),
                             );
                         } else {
                             ui.label(
                                 RichText::new("Falta OPENCODE_API_KEY en el entorno")
-                                    .size(10.5)
-                                    .color(Color32::from_rgb(190, 92, 82)),
+                                    .size(theme::text::META)
+                                    .color(th.error),
                             );
                         }
                         ui.label(
                             RichText::new(
                                 "Se enviará la selección y el párrafo contenedor a OpenCode Go.",
                             )
-                            .size(10.5)
+                            .size(theme::text::META)
                             .color(th.dim),
                         );
                         if ui
@@ -1994,24 +2003,26 @@ impl Lector {
                                 meta.push_str(" · ");
                                 meta.push_str(prompt);
                             }
-                            ui.label(RichText::new(meta).size(11.0).color(th.dim));
+                            ui.label(RichText::new(meta).size(theme::text::META).color(th.dim));
                             ui.label(
                                 RichText::new(format!("“{}”", truncate(&view.quote, 220)))
-                                    .size(13.0)
+                                    .size(theme::text::BODY)
                                     .color(th.fg),
                             );
                             if let Some(error) = &view.error {
                                 ui.label(
                                     RichText::new(error)
-                                        .size(12.0)
-                                        .color(Color32::from_rgb(190, 92, 82)),
+                                        .size(theme::text::LABEL)
+                                        .color(th.error),
                                 );
                             } else {
                                 egui::ScrollArea::vertical()
                                     .max_height(330.0)
                                     .show(ui, |ui| {
                                         ui.label(
-                                            RichText::new(&view.response).size(12.5).color(th.fg),
+                                            RichText::new(&view.response)
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.fg),
                                         );
                                     });
                             }
@@ -2029,7 +2040,7 @@ impl Lector {
                         } else if history_entries.is_empty() {
                             ui.label(
                                 RichText::new("Sin consultas guardadas.")
-                                    .size(12.0)
+                                    .size(theme::text::LABEL)
                                     .color(th.dim),
                             );
                         } else {
@@ -2049,8 +2060,8 @@ impl Lector {
                                         if let Some(error) = &entry.error {
                                             ui.label(
                                                 RichText::new(truncate(error, 100))
-                                                    .size(10.0)
-                                                    .color(Color32::from_rgb(190, 92, 82)),
+                                                    .size(theme::text::META)
+                                                    .color(th.error),
                                             );
                                         }
                                     }
@@ -2059,7 +2070,7 @@ impl Lector {
                             if self.consulta_confirm_clear {
                                 ui.label(
                                     RichText::new("¿Borrar todo el historial?")
-                                        .size(11.0)
+                                        .size(theme::text::META)
                                         .color(th.dim),
                                 );
                                 if ui.button("Confirmar").clicked() {
@@ -2078,7 +2089,7 @@ impl Lector {
                                 self.consulta_history.items.len(),
                                 self.cfg.consulta.history_limit
                             ))
-                            .size(10.5)
+                            .size(theme::text::META)
                             .color(th.dim),
                         );
                     }
@@ -2088,13 +2099,17 @@ impl Lector {
                 if self.consulta_busy {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(RichText::new("Consultando…").size(12.0).color(th.dim));
+                        ui.label(
+                            RichText::new("Consultando…")
+                                .size(theme::text::LABEL)
+                                .color(th.dim),
+                        );
                     });
                 } else if let Some(error) = &self.consulta_error {
                     ui.label(
                         RichText::new(error)
-                            .size(12.0)
-                            .color(Color32::from_rgb(190, 92, 82)),
+                            .size(theme::text::LABEL)
+                            .color(th.error),
                     );
                 } else if let Some(result) = &self.consulta_result {
                     ui.label(
@@ -2107,15 +2122,23 @@ impl Lector {
                                 .map(|m| format!(" · {m}"))
                                 .unwrap_or_default()
                         ))
-                        .size(10.5)
+                        .size(theme::text::META)
                         .color(th.dim),
                     );
                     egui::ScrollArea::vertical()
                         .max_height(360.0)
                         .show(ui, |ui| {
                             for section in &result.sections {
-                                ui.label(RichText::new(&section.title).size(11.0).color(th.dim));
-                                ui.label(RichText::new(&section.body).size(12.5).color(th.fg));
+                                ui.label(
+                                    RichText::new(&section.title)
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                );
+                                ui.label(
+                                    RichText::new(&section.body)
+                                        .size(theme::text::BODY_SMALL)
+                                        .color(th.fg),
+                                );
                                 ui.add_space(3.0);
                             }
                         });
@@ -2133,7 +2156,7 @@ impl Lector {
                             "Pulsá el botón para consultar {}.",
                             self.consulta_provider_label()
                         ))
-                        .size(11.0)
+                        .size(theme::text::META)
                         .color(th.dim),
                     );
                 }
@@ -2414,7 +2437,7 @@ impl Lector {
                 if query_len < 2 {
                     ui.label(
                         RichText::new("Escribí al menos 2 letras.")
-                            .size(11.0)
+                            .size(theme::text::META)
                             .color(th.dim),
                     );
                     return;
@@ -2422,7 +2445,11 @@ impl Lector {
 
                 let total = self.search_results.len();
                 if total == 0 {
-                    ui.label(RichText::new("Sin coincidencias.").size(12.0).color(th.dim));
+                    ui.label(
+                        RichText::new("Sin coincidencias.")
+                            .size(theme::text::LABEL)
+                            .color(th.dim),
+                    );
                     return;
                 }
 
@@ -2431,7 +2458,7 @@ impl Lector {
                 } else {
                     format!("{total} resultado(s)")
                 };
-                ui.label(RichText::new(count).size(11.0).color(th.dim));
+                ui.label(RichText::new(count).size(theme::text::META).color(th.dim));
 
                 let dim = TextFormat {
                     font_id: FontId::new(12.5, fonts::family(false, false)),
@@ -2463,7 +2490,7 @@ impl Lector {
                                         44
                                     )
                                 ))
-                                .size(10.5)
+                                .size(theme::text::META)
                                 .color(th.dim),
                             );
                             ui.separator();
@@ -2473,7 +2500,7 @@ impl Lector {
                 ui.add_space(2.0);
                 ui.label(
                     RichText::new("Enter: ir · n/N: siguiente/anterior · Esc: cerrar")
-                        .size(10.5)
+                        .size(theme::text::META)
                         .color(th.dim),
                 );
             });
@@ -2772,11 +2799,16 @@ impl Lector {
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.label(RichText::new("Candil").size(16.0).strong().color(th.fg));
+                    ui.label(
+                        RichText::new("Candil")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
                     ui.add_space(2.0);
                     ui.label(
                         RichText::new(format!("{book_count} libros"))
-                            .size(11.0)
+                            .size(theme::text::META)
                             .color(th.dim),
                     );
                     if missing_count > 0 {
@@ -2785,7 +2817,7 @@ impl Lector {
                                 "· {missing_count} falta{}",
                                 if missing_count == 1 { "" } else { "s" }
                             ))
-                            .size(11.0)
+                            .size(theme::text::META)
                             .color(th.dim),
                         );
                     }
@@ -2795,8 +2827,8 @@ impl Lector {
                                 "· {error_count} error{}",
                                 if error_count == 1 { "" } else { "es" }
                             ))
-                            .size(11.0)
-                            .color(Color32::from_rgb(190, 92, 82)),
+                            .size(theme::text::META)
+                            .color(th.error),
                         );
                         if !error_details.is_empty() {
                             response.on_hover_text(error_details.clone());
@@ -2805,13 +2837,15 @@ impl Lector {
                     ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(4.0);
-                    if ui.button("Añadir carpeta…").clicked() {
+                    if widgets::button(ui, th, "Añadir carpeta…", widgets::ButtonKind::Primary)
+                        .clicked()
+                    {
                         add_folder = true;
                     }
-                    if ui.button("Refrescar").clicked() {
+                    if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Ghost).clicked() {
                         rescan = true;
                     }
-                    if ui.button("Ajustes").clicked() {
+                    if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost).clicked() {
                         self.show_config = true;
                         self.config_tab = ConfigTab::Biblioteca;
                     }
@@ -2851,7 +2885,11 @@ impl Lector {
                                     );
                                 }
                             });
-                        ui.label(RichText::new("Filtro").size(11.0).color(th.dim));
+                        ui.label(
+                            RichText::new("Filtro")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
                         ui.add_space(4.0);
                         egui::ComboBox::from_id_salt("library-order")
                             .selected_text(self.library_order.label())
@@ -2869,7 +2907,7 @@ impl Lector {
                                     );
                                 }
                             });
-                        ui.label(RichText::new("Orden").size(11.0).color(th.dim));
+                        ui.label(RichText::new("Orden").size(theme::text::META).color(th.dim));
                     });
                 });
             });
@@ -2886,7 +2924,11 @@ impl Lector {
                 )
                 .show(ctx, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Carpetas").size(10.5).color(th.dim));
+                        ui.label(
+                            RichText::new("Carpetas")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
                         for folder in &folders {
                             let name = Path::new(folder)
                                 .file_name()
@@ -2899,11 +2941,15 @@ impl Lector {
                                 .show(ui, |ui| {
                                     ui.horizontal_centered(|ui| {
                                         ui.label(
-                                            RichText::new(name.clone()).size(10.5).color(th.fg),
+                                            RichText::new(name.clone())
+                                                .size(theme::text::META)
+                                                .color(th.fg),
                                         )
                                         .on_hover_text(folder);
                                         let remove_response = ui
-                                            .small_button(RichText::new("×").size(11.0))
+                                            .small_button(
+                                                RichText::new("×").size(theme::text::META),
+                                            )
                                             .on_hover_text("Dejar de vigilar");
                                         if remove_response.clicked() {
                                             remove_folder = Some(folder.clone());
@@ -2937,28 +2983,33 @@ impl Lector {
                 if empty {
                     ui.vertical_centered(|ui| {
                         ui.add_space(90.0);
-                        ui.label(RichText::new(empty_title).size(24.0).color(th.fg));
+                        ui.label(
+                            RichText::new(empty_title)
+                                .size(theme::text::DISPLAY)
+                                .color(th.fg),
+                        );
                         ui.add_space(8.0);
-                        ui.label(RichText::new(empty_subtitle).size(13.5).color(th.dim));
+                        ui.label(
+                            RichText::new(empty_subtitle)
+                                .size(theme::text::BODY)
+                                .color(th.dim),
+                        );
                         ui.add_space(22.0);
-                        if ui
-                            .button(RichText::new("  Añadir carpeta…  ").size(15.0))
+                        if widgets::button(ui, th, "Añadir carpeta…", widgets::ButtonKind::Primary)
                             .clicked()
                         {
                             add_folder = true;
                         }
                         if has_folders {
                             ui.add_space(8.0);
-                            if ui
-                                .button(RichText::new("  Refrescar  ").size(14.0))
+                            if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Secondary)
                                 .clicked()
                             {
                                 rescan = true;
                             }
                         }
                         ui.add_space(8.0);
-                        if ui
-                            .button(RichText::new("  Abrir un EPUB…  ").size(15.0))
+                        if widgets::button(ui, th, "Abrir un EPUB…", widgets::ButtonKind::Secondary)
                             .clicked()
                         {
                             if let Some(p) = rfd::FileDialog::new()
@@ -2971,7 +3022,7 @@ impl Lector {
                         ui.add_space(18.0);
                         ui.label(
                             RichText::new("o arrastrá un archivo .epub a esta ventana")
-                                .size(12.5)
+                                .size(theme::text::BODY_SMALL)
                                 .color(th.dim),
                         );
                     });
@@ -2986,7 +3037,11 @@ impl Lector {
                     };
                     ui.vertical_centered(|ui| {
                         ui.add_space(100.0);
-                        ui.label(RichText::new(message).size(18.0).color(th.fg));
+                        ui.label(
+                            RichText::new(message)
+                                .size(theme::text::HEADLINE)
+                                .color(th.fg),
+                        );
                     });
                     return;
                 }
@@ -3163,8 +3218,7 @@ impl Lector {
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    if ui
-                        .button(RichText::new("☰").size(14.0))
+                    if widgets::button(ui, th, "☰", widgets::ButtonKind::Ghost)
                         .on_hover_text("Índice (T)")
                         .clicked()
                     {
@@ -3176,14 +3230,18 @@ impl Lector {
                             self.pending_search_jump = None;
                         }
                     }
-                    if ui
-                        .button(RichText::new(if book_override { "Aa·" } else { "Aa" }).size(13.0))
-                        .on_hover_text(if book_override {
-                            "Tipografía (S) · este libro tiene ajustes propios"
-                        } else {
-                            "Tipografía (S)"
-                        })
-                        .clicked()
+                    if widgets::button(
+                        ui,
+                        th,
+                        if book_override { "Aa·" } else { "Aa" },
+                        widgets::ButtonKind::Ghost,
+                    )
+                    .on_hover_text(if book_override {
+                        "Tipografía (S) · este libro tiene ajustes propios"
+                    } else {
+                        "Tipografía (S)"
+                    })
+                    .clicked()
                     {
                         self.show_settings = !self.show_settings;
                         if self.show_settings {
@@ -3193,8 +3251,7 @@ impl Lector {
                             self.pending_search_jump = None;
                         }
                     }
-                    if ui
-                        .button(RichText::new("Notas").size(12.0))
+                    if widgets::button(ui, th, "Notas", widgets::ButtonKind::Ghost)
                         .on_hover_text("Destacados y notas (D)")
                         .clicked()
                     {
@@ -3208,8 +3265,7 @@ impl Lector {
                             self.pending_search_jump = None;
                         }
                     }
-                    if ui
-                        .button(RichText::new("Buscar").size(12.0))
+                    if widgets::button(ui, th, "Buscar", widgets::ButtonKind::Ghost)
                         .on_hover_text("Buscar en el libro (⌘F)")
                         .clicked()
                     {
@@ -3222,8 +3278,7 @@ impl Lector {
                         self.selection = None;
                         self.note = None;
                     }
-                    if ui
-                        .button(RichText::new("Ajustes").size(12.0))
+                    if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost)
                         .on_hover_text("Configuración (⌘,)")
                         .clicked()
                     {
@@ -3236,11 +3291,11 @@ impl Lector {
                         format!("{} · {}", title, chapter_title)
                     };
                     let shown = truncate(&shown, 70);
-                    ui.label(RichText::new(shown).size(13.5).color(th.fg));
+                    ui.label(RichText::new(shown).size(theme::text::BODY).color(th.fg));
                     if !author.is_empty() {
                         ui.label(
                             RichText::new(truncate(&author, 34))
-                                .size(12.0)
+                                .size(theme::text::LABEL)
                                 .color(th.dim),
                         );
                     }
@@ -3249,7 +3304,7 @@ impl Lector {
                         let pct = ui.add(
                             egui::Label::new(
                                 RichText::new(format!("{:.0}%", self.progress() * 100.0))
-                                    .size(12.5)
+                                    .size(theme::text::BODY_SMALL)
                                     .color(th.dim),
                             )
                             .sense(Sense::click()),
@@ -3265,8 +3320,7 @@ impl Lector {
                             self.search_highlight = None;
                             self.pending_search_jump = None;
                         }
-                        if ui
-                            .button(RichText::new("›").size(16.0))
+                        if widgets::button(ui, th, "›", widgets::ButtonKind::Ghost)
                             .on_hover_text("Capítulo siguiente (→)")
                             .clicked()
                         {
@@ -3274,11 +3328,10 @@ impl Lector {
                         }
                         ui.label(
                             RichText::new(format!("{} / {}", self.chapter + 1, n))
-                                .size(12.5)
+                                .size(theme::text::BODY_SMALL)
                                 .color(th.dim),
                         );
-                        if ui
-                            .button(RichText::new("‹").size(16.0))
+                        if widgets::button(ui, th, "‹", widgets::ButtonKind::Ghost)
                             .on_hover_text("Capítulo anterior (←)")
                             .clicked()
                         {
@@ -3328,11 +3381,9 @@ impl Lector {
                         if *spine == self.chapter {
                             chapter_marked = true;
                         }
-                        let text = RichText::new(title).size(13.5).color(if selected {
-                            th.accent
-                        } else {
-                            th.fg
-                        });
+                        let text = RichText::new(title)
+                            .size(theme::text::BODY)
+                            .color(if selected { th.accent } else { th.fg });
                         if ui.selectable_label(selected, text).clicked() {
                             jump = Some((*spine, anchor.clone()));
                         }
@@ -3387,7 +3438,7 @@ impl Lector {
                     if only_book {
                         ui.label(
                             RichText::new("Ajustes propios de este libro.")
-                                .size(10.5)
+                                .size(theme::text::META)
                                 .color(th.dim),
                         );
                     }
@@ -3396,35 +3447,18 @@ impl Lector {
                         RichText::new(
                             "El libro no está en la biblioteca; los ajustes son globales.",
                         )
-                        .size(10.5)
+                        .size(theme::text::META)
                         .color(th.dim),
                     );
                 }
 
-                ui.label(RichText::new("Tema").size(12.5).color(th.dim));
+                widgets::label(ui, th, "Tema");
                 ui.horizontal_wrapped(|ui| {
                     for (i, t) in THEMES.iter().enumerate() {
-                        let selected = i == settings.theme;
-                        let (rect, resp) =
-                            ui.allocate_exact_size(Vec2::new(50.0, 32.0), Sense::click());
-                        ui.painter().rect_filled(rect, 5.0, t.bg);
-                        ui.painter().rect_stroke(
-                            rect,
-                            5.0,
-                            Stroke::new(
-                                if selected { 2.0 } else { 1.0 },
-                                if selected { th.accent } else { th.dim },
-                            ),
-                            egui::StrokeKind::Inside,
-                        );
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "Aa",
-                            FontId::new(15.0, fonts::family(true, false)),
-                            t.fg,
-                        );
-                        if resp.on_hover_text(t.name).clicked() {
+                        if widgets::theme_swatch(ui, th, t, i == settings.theme)
+                            .on_hover_text(t.name)
+                            .clicked()
+                        {
                             settings.theme = i;
                             changed = true;
                         }
@@ -3475,7 +3509,9 @@ impl Lector {
 
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Restablecer").clicked() {
+                    if widgets::button(ui, th, "Restablecer", widgets::ButtonKind::Secondary)
+                        .clicked()
+                    {
                         let theme_keep = settings.theme;
                         settings = Settings::default();
                         settings.theme = theme_keep;
@@ -3483,7 +3519,7 @@ impl Lector {
                     }
                     ui.label(
                         RichText::new("Space / ← → / T / S")
-                            .size(11.5)
+                            .size(theme::text::LABEL)
                             .color(th.dim),
                     );
                 });
@@ -3548,32 +3584,33 @@ impl Lector {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
-                                ui.selectable_value(
-                                    &mut self.active_color,
-                                    index as u8,
-                                    RichText::new("●")
-                                        .size(14.0)
-                                        .color(highlight_swatch(th, index as u8)),
+                                let color = highlight_swatch(th, index as u8);
+                                if widgets::color_swatch(
+                                    ui,
+                                    th,
+                                    color,
+                                    self.active_color == index as u8,
+                                    &format!("Color {name}"),
                                 )
-                                .on_hover_text(format!("Color {name}"));
+                                .clicked()
+                                {
+                                    self.active_color = index as u8;
+                                }
                             }
                             ui.separator();
-                            if ui
-                                .button(RichText::new("Destacar").size(12.5))
+                            if widgets::button(ui, th, "Destacar", widgets::ButtonKind::Secondary)
                                 .on_hover_text("Destacar selección (H)")
                                 .clicked()
                             {
                                 highlight = true;
                             }
-                            if ui
-                                .button(RichText::new("Nota").size(12.5))
+                            if widgets::button(ui, th, "Nota", widgets::ButtonKind::Ghost)
                                 .on_hover_text("Destacar con nota (N)")
                                 .clicked()
                             {
                                 note = true;
                             }
-                            if ui
-                                .button(RichText::new("Consultar").size(12.5))
+                            if widgets::button(ui, th, "Consultar", widgets::ButtonKind::Ghost)
                                 .on_hover_text("Diccionario, traducción o IA (K)")
                                 .clicked()
                             {
@@ -3675,7 +3712,7 @@ impl Lector {
                     ui.selectable_value(&mut self.annotations_global, true, "Todos");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui
-                            .button(RichText::new("Exportar…").size(11.5))
+                            .button(RichText::new("Exportar…").size(theme::text::LABEL))
                             .on_hover_text("Exportar las citas visibles a Markdown")
                             .clicked()
                         {
@@ -3697,11 +3734,15 @@ impl Lector {
                     } else {
                         "Todavía no destacaste nada."
                     };
-                    ui.label(RichText::new(message).size(12.5).color(th.dim));
+                    ui.label(
+                        RichText::new(message)
+                            .size(theme::text::BODY_SMALL)
+                            .color(th.dim),
+                    );
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Seleccioná una frase y usá Destacar o Nota.")
-                            .size(11.0)
+                            .size(theme::text::META)
                             .color(th.dim),
                     );
                     return;
@@ -3713,34 +3754,33 @@ impl Lector {
                         for row in rows {
                             let a = &row.annotation;
                             ui.horizontal_top(|ui| {
-                                let color_button = ui.add(
-                                    egui::Button::new(
-                                        RichText::new("●")
-                                            .size(13.0)
-                                            .color(highlight_swatch(th, a.color)),
-                                    )
-                                    .frame(false),
+                                let color_button = widgets::color_swatch(
+                                    ui,
+                                    th,
+                                    highlight_swatch(th, a.color),
+                                    false,
+                                    "Cambiar color",
                                 );
-                                if color_button.on_hover_text("Cambiar color").clicked() {
+                                if color_button.clicked() {
                                     recolor = Some((a.id, (a.color + 1) % 3));
                                 }
                                 ui.label(
                                     RichText::new(format!("“{}”", truncate(&a.quote, 150)))
-                                        .size(13.0)
+                                        .size(theme::text::BODY)
                                         .color(th.fg),
                                 );
                             });
                             if row.missing {
                                 ui.label(
                                     RichText::new("(no encontrada en este capítulo)")
-                                        .size(11.0)
-                                        .color(Color32::from_rgb(190, 92, 82)),
+                                        .size(theme::text::META)
+                                        .color(th.error),
                                 );
                             }
                             if !a.note.is_empty() {
                                 ui.label(
                                     RichText::new(truncate(&a.note, 220))
-                                        .size(12.0)
+                                        .size(theme::text::LABEL)
                                         .italics()
                                         .color(th.fg.gamma_multiply(0.88)),
                                 );
@@ -3760,7 +3800,9 @@ impl Lector {
                                 } else {
                                     format!("{place} · {}", truncate(&row.chapter_title, 26))
                                 };
-                                ui.label(RichText::new(place).size(11.0).color(th.dim));
+                                ui.label(
+                                    RichText::new(place).size(theme::text::META).color(th.dim),
+                                );
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     if ui
                                         .small_button("×")
@@ -3842,21 +3884,25 @@ impl Lector {
             .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Color").size(11.0).color(th.dim));
+                    ui.label(RichText::new("Color").size(theme::text::META).color(th.dim));
                     for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
-                        ui.selectable_value(
-                            &mut editor.color,
-                            index as u8,
-                            RichText::new("●")
-                                .size(14.0)
-                                .color(highlight_swatch(th, index as u8)),
+                        let color = highlight_swatch(th, index as u8);
+                        if widgets::color_swatch(
+                            ui,
+                            th,
+                            color,
+                            editor.color == index as u8,
+                            &format!("Color {name}"),
                         )
-                        .on_hover_text(format!("Color {name}"));
+                        .clicked()
+                        {
+                            editor.color = index as u8;
+                        }
                     }
                 });
                 ui.label(
                     RichText::new("Nota (opcional; vacía deja solo el destacado)")
-                        .size(11.0)
+                        .size(theme::text::META)
                         .color(th.dim),
                 );
                 let response = ui.add(
@@ -3913,7 +3959,7 @@ impl Lector {
             .show(ctx, |ui| {
                 ui.label(
                     RichText::new("Porcentaje del libro")
-                        .size(11.0)
+                        .size(theme::text::META)
                         .color(th.dim),
                 );
                 ui.add(
@@ -3930,7 +3976,7 @@ impl Lector {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new(format!("Capítulo (1–{chapters})"))
-                        .size(11.0)
+                        .size(theme::text::META)
                         .color(th.dim),
                 );
                 ui.add(
@@ -3944,7 +3990,7 @@ impl Lector {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new("G para abrir/cerrar · Esc para cerrar")
-                        .size(10.5)
+                        .size(theme::text::META)
                         .color(th.dim),
                 );
             });
@@ -4009,7 +4055,7 @@ impl Lector {
                     .corner_radius(6.0)
                     .inner_margin(egui::Margin::symmetric(14, 8))
                     .show(ui, |ui| {
-                        ui.label(RichText::new(msg).size(13.0).color(th.fg));
+                        ui.label(RichText::new(msg).size(theme::text::BODY).color(th.fg));
                     });
             });
         ctx.request_repaint_after(Duration::from_millis(400));
@@ -4962,7 +5008,7 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                     ui.add(
                         egui::Label::new(
                             RichText::new(truncate(&card.title, 44))
-                                .size(12.5)
+                                .size(theme::text::BODY_SMALL)
                                 .color(th.fg),
                         )
                         .wrap(),
@@ -4980,7 +5026,7 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                         ui.add(
                             egui::Label::new(
                                 RichText::new(truncate(&card.author, 30))
-                                    .size(10.5)
+                                    .size(theme::text::META)
                                     .color(th.dim),
                             )
                             .wrap(),
@@ -4997,14 +5043,14 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                     if card.missing {
                         ui.label(
                             RichText::new("Falta")
-                                .size(10.0)
-                                .color(Color32::from_rgb(190, 92, 82)),
+                                .size(theme::text::META)
+                                .color(th.error),
                         );
                     } else if card.error.is_some() {
                         ui.label(
                             RichText::new("Error al abrir")
-                                .size(10.0)
-                                .color(Color32::from_rgb(190, 92, 82)),
+                                .size(theme::text::META)
+                                .color(th.error),
                         );
                     } else if card.chapters > 0 {
                         let fraction = ((card.chapter as f32 + card.ratio) / card.chapters as f32)
@@ -5025,7 +5071,7 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme) -> Option<CardAction> 
                             ui.add_space(3.0);
                             ui.label(
                                 RichText::new(format!("{}%", (fraction * 100.0).round() as u32))
-                                    .size(9.5)
+                                    .size(theme::text::META)
                                     .color(th.dim),
                             );
                         }

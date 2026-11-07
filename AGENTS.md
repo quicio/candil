@@ -6,15 +6,18 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 2. **`docs/ROADMAP.md`** — qué sigue y cuándo se considera terminado.
 3. **`docs/ARCHITECTURE.md`** — módulos, modelo de bloques, puntos de extensión.
 4. **`docs/CONVENTIONS.md`** — estilo, tests, commits.
-5. La spec del milestone activo en `docs/specs/`.
+5. La spec del milestone activo en `docs/specs/` (archivo histórico M1–M6).
 6. Los ADR que toquen el área: `docs/adr/`.
+7. **`openspec/`** — fuente de verdad para cambios nuevos. El cambio activo es
+   `consolidar-ux-ui`; su propuesta, specs, diseño y tareas viven ahí.
 
 ## Comandos
 
 ```bash
-cargo test                                  # 94 unit (1 live ignorado) + 9 integración
+cargo test                                  # 96 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
+openspec validate consolidar-ux-ui --strict # validar el cambio activo
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio
 cargo build --profile dist                  # artefacto final: ~6.4 MB
 cargo run --profile fast                    # biblioteca

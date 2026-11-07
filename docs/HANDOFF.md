@@ -36,6 +36,14 @@ Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
 export a PDF/DOCX, búsqueda dentro de las notas y override manual del idioma de
 origen.
 
+## OpenSpec
+
+`openspec/` es la fuente de verdad para cambios nuevos. El cambio activo es
+`consolidar-ux-ui` (sistema de diseño, biblioteca, lector, paneles y
+accesibilidad). `docs/specs/` queda como archivo histórico de M1–M6.
+La Fase 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches) está implementada;
+las fases 2–5 siguen abiertas.
+
 ## Estado medido (no estimado)
 
 Medición del 2026-11-06 sobre `~/Libros` (43 EPUB; el corpus de `~/Downloads` es
@@ -51,7 +59,7 @@ el mismo):
 | capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 94 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 96 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
 | binario `dist` | 6.664.160 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |

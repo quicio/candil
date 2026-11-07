@@ -1,0 +1,35 @@
+schema: spec-driven
+
+# Contexto que OpenSpec inyecta al crear artefactos.
+context: |
+  Candil es un lector de EPUB nativo de escritorio en Rust + egui/eframe
+  (macOS, Linux, Windows). No usa WebView ni motor CSS: el EPUB se convierte a
+  Vec<Block> y egui dibuja el texto. La filosofía es "Leer despacio, sin ruido":
+  el texto manda y la interfaz se subordina.
+
+  Documentación de referencia: AGENTS.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
+  docs/ROADMAP.md, docs/CONVENTIONS.md, docs/specs/ y docs/adr/.
+  PRODUCT.md captura el contexto de producto; DESIGN.md el sistema visual.
+
+  Restricciones duras:
+  - Sin WebView, sin motor CSS, sin nuevas dependencias sin ADR.
+  - Preservar parser EPUB, atajos, persistencia, anotaciones, progreso y
+    rendimiento. No reescribir la arquitectura para cambios visuales.
+  - Online apagado por defecto; la clave de IA vive solo en OPENCODE_API_KEY.
+  - El binario dist debe seguir por debajo de 8 MB.
+  - La documentación y los commits se escriben en español.
+
+rules:
+  proposal:
+    - Explicar el problema, el alcance y los no-objetivos.
+    - Incluir criterios de aceptación verificables.
+    - No duplicar specs existentes de docs/specs/; referenciarlas.
+  specs:
+    - Describir comportamiento y restricciones, no instrucciones visuales vagas.
+    - Incluir escenarios de contraste, foco, teclado y estados vacío/error.
+  design:
+    - Mapear las decisiones a egui 0.32 y a los módulos existentes.
+    - Justificar cualquier token o componente nuevo sin agregar dependencias.
+  tasks:
+    - Tareas pequeñas, ordenadas por dependencia y verificables.
+    - Cada tarea debe indicar archivos, verificación y criterio de done.

@@ -3211,11 +3211,11 @@ impl Lector {
         if show_second_row {
             egui::TopBottomPanel::top("library-filters")
                 .show_separator_line(false)
-                .exact_height(38.0)
+                .exact_height(48.0)
                 .frame(
                     egui::Frame::new()
                         .fill(th.bg)
-                        .inner_margin(egui::Margin::symmetric(16, 6)),
+                        .inner_margin(egui::Margin::symmetric(16, 8)),
                 )
                 .show(ctx, |ui| {
                     ui.horizontal_centered(|ui| {
@@ -3265,9 +3265,15 @@ impl Lector {
                             }
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.spacing_mut().button_padding = Vec2::new(8.0, 4.0);
+                            ui.spacing_mut().interact_size.y = 28.0;
                             egui::ComboBox::from_id_salt("library-filter")
                                 .width(if wide { 124.0 } else { 104.0 })
-                                .selected_text(self.library_filter.label())
+                                .selected_text(
+                                    RichText::new(self.library_filter.label())
+                                        .size(theme::text::BODY_SMALL)
+                                        .color(th.fg),
+                                )
                                 .show_ui(ui, |ui| {
                                     for filter in [
                                         LibraryFilter::All,
@@ -3292,7 +3298,11 @@ impl Lector {
                             }
                             egui::ComboBox::from_id_salt("library-order")
                                 .width(if wide { 124.0 } else { 104.0 })
-                                .selected_text(self.library_order.label())
+                                .selected_text(
+                                    RichText::new(self.library_order.label())
+                                        .size(theme::text::BODY_SMALL)
+                                        .color(th.fg),
+                                )
                                 .show_ui(ui, |ui| {
                                     for order in [
                                         LibraryOrder::Recent,

@@ -9,7 +9,7 @@ sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
 del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
 
-Binario final (`dist`): **6.4 MiB** (6.714.144 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.747.280 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación

@@ -194,6 +194,7 @@ pub struct Lector {
     note: Option<NoteEditor>,
     show_annotations: bool,
     annotations_global: bool,
+    confirm_delete_annotation: Option<u64>,
     active_color: u8,
     consulta_history: ConsultaHistory,
     consulta_session: String,
@@ -257,6 +258,10 @@ pub struct DevOpts {
     pub rescan: bool,
     /// Pone foco de teclado en la primera tarjeta (capturas de foco).
     pub focus_card: bool,
+    /// Abre la confirmación de borrar el primer destacado (capturas).
+    pub confirm_delete: bool,
+    /// Muestra la barra de selección con una selección sintética (capturas).
+    pub selection: bool,
     pub chapter: Option<usize>,
     pub panel: Option<String>,
     /// Reabre el último libro en vez de arrancar en la biblioteca.
@@ -334,6 +339,11 @@ impl Lector {
         cc.egui_ctx.set_style(style);
 
         let theme_idx = cfg.settings.theme;
+        let initial_delete = if dev.confirm_delete {
+            annotations.sorted_all().first().map(|a| a.id)
+        } else {
+            None
+        };
         let initial_recover = if dev.recover {
             library
                 .books
@@ -367,6 +377,7 @@ impl Lector {
             confirm_remove_book: initial_remove,
             confirm_remove_folder: initial_folder,
             confirm_recover_book: initial_recover,
+            confirm_delete_annotation: initial_delete,
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
@@ -576,6 +587,28 @@ impl Lector {
                         }
                     }
                     _ => {}
+                }
+                if self.dev.selection {
+                    if let Some((block, text)) =
+                        self.blocks.iter().enumerate().find_map(|(i, b)| {
+                            let text = b.text();
+                            (text.trim().chars().count() >= 10).then_some((i, text))
+                        })
+                    {
+                        let quote: String = text.chars().take(24).collect();
+                        self.selection = Some(Selection {
+                            chapter: self.chapter,
+                            block,
+                            start: 0,
+                            end: quote.chars().count(),
+                            quote,
+                            rect: egui::Rect::from_min_size(
+                                egui::pos2(320.0, 260.0),
+                                egui::vec2(220.0, 22.0),
+                            ),
+                            edit_id: egui::Id::new("dev-selection"),
+                        });
+                    }
                 }
                 if let Some(text) = self.dev.consulta.clone() {
                     let (source_lang, book_path, title, author) = self
@@ -1113,17 +1146,29 @@ impl Lector {
         let mut clear_history = false;
         let mut changed = false;
 
-        egui::Window::new("Configuración")
-            .open(&mut open)
-            .default_width(800.0)
-            .min_width(620.0)
-            .resizable(true)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
+        let win_w = (ctx.screen_rect().width() - 40.0).clamp(560.0, widgets::PANEL_LG);
+        let content_min = (win_w - 220.0).max(420.0);
+        let win_h = (ctx.screen_rect().height() - 80.0).clamp(360.0, 600.0);
+        let scroll_h = (win_h - 100.0).clamp(300.0, 520.0);
+
+        egui::Window::new(
+            RichText::new("Configuración")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .default_width(win_w)
+        .default_height(win_h)
+        .min_width(560.0)
+        .resizable(true)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = theme::space::SM;
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
-                        ui.set_min_width(138.0);
+                        ui.set_min_width(120.0);
                         for (tab, label) in [
                             (ConfigTab::Lectura, "Lectura"),
                             (ConfigTab::Biblioteca, "Biblioteca"),
@@ -1143,13 +1188,13 @@ impl Lector {
                     ui.separator();
                     ui.vertical(|ui| {
                         egui::ScrollArea::vertical()
-                            .max_height(480.0)
+                            .max_height(scroll_h)
                             .show(ui, |ui| {
                                 ui.vertical(|ui| {
-                                    ui.set_min_width(560.0);
+                                    ui.set_min_width(content_min);
                                     match self.config_tab {
                                 ConfigTab::Lectura => {
-                                    ui.heading(RichText::new("Lectura").size(theme::text::TITLE).color(th.fg));
+                                    widgets::section_header(ui, th, "Lectura");
                                     ui.label(
                                         RichText::new(
                                             "Tipografía global. Para un libro concreto usá el panel Aa.",
@@ -1223,7 +1268,7 @@ impl Lector {
                                         .changed();
                                     ui.add_space(6.0);
                                     if self.book.is_some() {
-                                        if ui.button("Tipografía de este libro…").clicked() {
+                                        if widgets::button(ui, th, "Tipografía de este libro…", widgets::ButtonKind::Secondary).clicked() {
                                             open_typography = true;
                                         }
                                     } else {
@@ -1237,7 +1282,7 @@ impl Lector {
                                     }
                                 }
                                 ConfigTab::Biblioteca => {
-                                    ui.heading(RichText::new("Biblioteca").size(theme::text::TITLE).color(th.fg));
+                                    widgets::section_header(ui, th, "Biblioteca");
                                     ui.label(
                                         RichText::new(format!(
                                             "{book_count} libros · {missing} faltantes · {} carpetas",
@@ -1261,18 +1306,16 @@ impl Lector {
                                     }
                                     ui.add_space(4.0);
                                     ui.horizontal(|ui| {
-                                        if ui.button("Añadir carpeta…").clicked() {
+                                        if widgets::button(ui, th, "Añadir carpeta…", widgets::ButtonKind::Primary).clicked() {
                                             add_folder = true;
                                         }
-                                        if ui.button("Refrescar").clicked() {
+                                        if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Secondary).clicked() {
                                             rescan = true;
                                         }
                                     });
                                 }
                                 ConfigTab::Anotaciones => {
-                                    ui.heading(
-                                        RichText::new("Anotaciones").size(theme::text::TITLE).color(th.fg),
-                                    );
+                                    widgets::section_header(ui, th, "Anotaciones");
                                     ui.label(
                                         RichText::new(format!(
                                             "{annotation_count} destacados/notas guardados."
@@ -1282,7 +1325,7 @@ impl Lector {
                                     );
                                     ui.add_space(4.0);
                                     if self.book.is_some() {
-                                        if ui.button("Abrir panel de destacados").clicked() {
+                                        if widgets::button(ui, th, "Abrir panel de destacados", widgets::ButtonKind::Secondary).clicked() {
                                             open_annotations = true;
                                         }
                                     } else {
@@ -1294,7 +1337,7 @@ impl Lector {
                                             .color(th.dim),
                                         );
                                     }
-                                    if ui.button("Exportar todas a Markdown…").clicked() {
+                                    if widgets::button(ui, th, "Exportar todas a Markdown…", widgets::ButtonKind::Secondary).clicked() {
                                         export_all = true;
                                     }
                                     ui.label(
@@ -1306,7 +1349,7 @@ impl Lector {
                                     );
                                 }
                                 ConfigTab::Consultas => {
-                                    ui.heading(RichText::new("Consultas").size(theme::text::TITLE).color(th.fg));
+                                    widgets::section_header(ui, th, "Consultas");
                                     if ui
                                         .checkbox(
                                             &mut self.cfg.consulta.online_enabled,
@@ -1476,21 +1519,19 @@ impl Lector {
                                     if self.config_confirm_clear {
                                         ui.horizontal(|ui| {
                                             ui.label("¿Borrar el historial?");
-                                            if ui.button("Confirmar").clicked() {
+                                            if widgets::button(ui, th, "Confirmar", widgets::ButtonKind::Destructive).clicked() {
                                                 clear_history = true;
                                             }
-                                            if ui.button("Cancelar").clicked() {
+                                            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked() {
                                                 self.config_confirm_clear = false;
                                             }
                                         });
-                                    } else if ui.button("Limpiar historial").clicked() {
+                                    } else if widgets::button(ui, th, "Limpiar historial", widgets::ButtonKind::Destructive).clicked() {
                                         self.config_confirm_clear = true;
                                     }
                                 }
                                 ConfigTab::Privacidad => {
-                                    ui.heading(
-                                        RichText::new("Privacidad").size(theme::text::TITLE).color(th.fg),
-                                    );
+                                    widgets::section_header(ui, th, "Privacidad");
                                     ui.label(
                                         RichText::new(
                                             "Nada sale a la red por seleccionar texto. Al consultar, \
@@ -1521,21 +1562,19 @@ impl Lector {
                                     if self.config_confirm_clear {
                                         ui.horizontal(|ui| {
                                             ui.label("¿Borrar el historial?");
-                                            if ui.button("Confirmar").clicked() {
+                                            if widgets::button(ui, th, "Confirmar", widgets::ButtonKind::Destructive).clicked() {
                                                 clear_history = true;
                                             }
-                                            if ui.button("Cancelar").clicked() {
+                                            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked() {
                                                 self.config_confirm_clear = false;
                                             }
                                         });
-                                    } else if ui.button("Limpiar historial").clicked() {
+                                    } else if widgets::button(ui, th, "Limpiar historial", widgets::ButtonKind::Destructive).clicked() {
                                         self.config_confirm_clear = true;
                                     }
                                 }
                                 ConfigTab::Avanzado => {
-                                    ui.heading(
-                                        RichText::new("Avanzado").size(theme::text::TITLE).color(th.fg),
-                                    );
+                                    widgets::section_header(ui, th, "Avanzado");
                                     for (label, path) in [
                                         ("config.json", Config::file()),
                                         ("library.json", Library::file()),
@@ -1551,7 +1590,7 @@ impl Lector {
                                             .color(th.dim),
                                         );
                                     }
-                                    if ui.button("Abrir carpeta de datos").clicked() {
+                                    if widgets::button(ui, th, "Abrir carpeta de datos", widgets::ButtonKind::Secondary).clicked() {
                                         open_data = true;
                                     }
                                     ui.add_space(6.0);
@@ -1567,19 +1606,21 @@ impl Lector {
                                     if self.config_confirm_reset {
                                         ui.horizontal(|ui| {
                                             ui.label("¿Restablecer tipografía y consultas?");
-                                            if ui.button("Confirmar").clicked() {
+                                            if widgets::button(ui, th, "Confirmar", widgets::ButtonKind::Destructive).clicked() {
                                                 reset_config = true;
                                             }
-                                            if ui.button("Cancelar").clicked() {
+                                            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked() {
                                                 self.config_confirm_reset = false;
                                             }
                                         });
-                                    } else if ui
-                                        .button("Restablecer configuración")
-                                        .on_hover_text(
-                                            "No borra biblioteca, anotaciones ni historial",
-                                        )
-                                        .clicked()
+                                    } else if widgets::button(
+                                        ui,
+                                        th,
+                                        "Restablecer configuración",
+                                        widgets::ButtonKind::Destructive,
+                                    )
+                                    .on_hover_text("No borra biblioteca, anotaciones ni historial")
+                                    .clicked()
                                     {
                                         self.config_confirm_reset = true;
                                     }
@@ -1854,381 +1895,412 @@ impl Lector {
             .map(|t| consulta::target_lang(&self.cfg.consulta, &t.source_lang))
             .unwrap_or_else(|| "es".into());
 
-        egui::Window::new("Consulta")
-            .open(&mut open)
-            .default_width(440.0)
-            .min_width(330.0)
-            .resizable(true)
-            .frame(
-                egui::Frame::new()
-                    .fill(consulta_window_fill(th))
-                    .stroke(egui::Stroke::new(1.0, th.dim.gamma_multiply(0.45)))
-                    .shadow(egui::epaint::Shadow {
-                        offset: [0, 6],
-                        blur: 18,
-                        spread: 0,
-                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 70),
-                    })
-                    .inner_margin(14),
-            )
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                let Some(target) = &target else {
-                    ui.label(
-                        RichText::new("Seleccioná una palabra o frase en el libro.")
-                            .size(theme::text::BODY_SMALL)
-                            .color(th.dim),
-                    );
-                    return;
-                };
+        egui::Window::new(
+            RichText::new("Consulta")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .frame(widgets::panel_frame_fill(th, consulta_window_fill(th)))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = theme::space::SM;
+            let Some(target) = &target else {
                 ui.label(
-                    RichText::new(format!("“{}”", truncate(&target.text, 220)))
-                        .size(theme::text::BODY)
-                        .color(th.fg),
+                    RichText::new("Seleccioná una palabra o frase en el libro.")
+                        .size(theme::text::BODY_SMALL)
+                        .color(th.dim),
                 );
+                return;
+            };
+            ui.label(
+                RichText::new(format!("“{}”", truncate(&target.text, 220)))
+                    .size(theme::text::BODY)
+                    .color(th.fg),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "{} → {}",
+                    target.source_lang.to_uppercase(),
+                    target_lang.to_uppercase()
+                ))
+                .size(theme::text::META)
+                .color(th.dim),
+            );
+
+            if !self.cfg.consulta.online_enabled {
+                ui.add_space(4.0);
                 ui.label(
-                    RichText::new(format!(
-                        "{} → {}",
-                        target.source_lang.to_uppercase(),
-                        target_lang.to_uppercase()
-                    ))
+                    RichText::new("Consultas online desactivadas.")
+                        .size(theme::text::LABEL)
+                        .color(th.dim),
+                );
+                if widgets::button(
+                    ui,
+                    th,
+                    "Activar consultas online",
+                    widgets::ButtonKind::Primary,
+                )
+                .on_hover_text("Se enviará solo el texto que consultes, con tu confirmación")
+                .clicked()
+                {
+                    activate_online = true;
+                }
+                ui.label(
+                    RichText::new(
+                        "Al activarlas, el texto seleccionado se envía al proveedor elegido. \
+                             Nada sale sin que pulses un botón.",
+                    )
                     .size(theme::text::META)
                     .color(th.dim),
                 );
+            }
 
-                if !self.cfg.consulta.online_enabled {
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new("Consultas online desactivadas.")
-                            .size(theme::text::LABEL)
-                            .color(th.dim),
-                    );
+            ui.horizontal(|ui| {
+                for (tab, label) in [
+                    (ConsultaTab::Diccionario, "Diccionario"),
+                    (ConsultaTab::Traduccion, "Traducción"),
+                    (ConsultaTab::Ia, "IA"),
+                    (ConsultaTab::Historial, "Historial"),
+                ] {
                     if ui
-                        .button("Activar consultas online")
-                        .on_hover_text(
-                            "Se enviará solo el texto que consultes, con tu confirmación",
+                        .selectable_label(
+                            self.consulta_tab == tab,
+                            RichText::new(label).size(theme::text::BODY),
                         )
                         .clicked()
                     {
-                        activate_online = true;
+                        self.consulta_tab = tab;
+                        self.consulta_result = None;
+                        self.consulta_error = None;
+                        self.consulta_history_view = None;
+                    }
+                }
+            });
+            ui.separator();
+
+            if self.consulta_tab == ConsultaTab::Traduccion {
+                ui.horizontal(|ui| {
+                    widgets::label(ui, th, "Destino");
+                    let before = self.cfg.consulta.target_lang.clone();
+                    egui::ComboBox::from_id_salt("consulta-target")
+                        .selected_text(
+                            self.cfg
+                                .consulta
+                                .target_lang
+                                .as_deref()
+                                .map(|s| s.to_uppercase())
+                                .unwrap_or_else(|| "Auto".into()),
+                        )
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.cfg.consulta.target_lang, None, "Auto");
+                            for lang in ["es", "en", "pt", "fr", "de", "it"] {
+                                ui.selectable_value(
+                                    &mut self.cfg.consulta.target_lang,
+                                    Some(lang.into()),
+                                    lang,
+                                );
+                            }
+                        });
+                    if before != self.cfg.consulta.target_lang {
+                        self.dirty = true;
+                    }
+                });
+            }
+
+            match self.consulta_tab {
+                ConsultaTab::Diccionario => {
+                    if target.text.split_whitespace().count() > 1 {
+                        ui.label(
+                            RichText::new("El diccionario funciona mejor con una palabra.")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
+                    }
+                    let enabled = self.cfg.consulta.online_enabled && !self.consulta_busy;
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            egui::Button::new(
+                                RichText::new("Buscar definición")
+                                    .size(theme::text::BODY)
+                                    .color(th.fg),
+                            )
+                            .min_size(Vec2::new(0.0, 30.0))
+                            .corner_radius(theme::radius::MD),
+                        )
+                        .clicked()
+                    {
+                        run_dictionary = true;
+                    }
+                }
+                ConsultaTab::Traduccion => {
+                    let enabled = self.cfg.consulta.online_enabled && !self.consulta_busy;
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            egui::Button::new(
+                                RichText::new("Traducir")
+                                    .size(theme::text::BODY)
+                                    .color(th.fg),
+                            )
+                            .min_size(Vec2::new(0.0, 30.0))
+                            .corner_radius(theme::radius::MD),
+                        )
+                        .clicked()
+                    {
+                        run_translation = true;
+                    }
+                }
+                ConsultaTab::Ia => {
+                    ui.horizontal(|ui| {
+                        widgets::label(ui, th, "Prompt");
+                        egui::ComboBox::from_id_salt("consulta-prompt")
+                            .selected_text(self.consulta_prompt.label())
+                            .show_ui(ui, |ui| {
+                                for prompt in AiPrompt::ALL {
+                                    ui.selectable_value(
+                                        &mut self.consulta_prompt,
+                                        prompt,
+                                        prompt.label(),
+                                    );
+                                }
+                            });
+                    });
+                    if has_key {
+                        ui.label(
+                            RichText::new("OPENCODE_API_KEY detectada")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
+                    } else {
+                        ui.label(
+                            RichText::new("Falta OPENCODE_API_KEY en el entorno")
+                                .size(theme::text::META)
+                                .color(th.error),
+                        );
                     }
                     ui.label(
                         RichText::new(
-                            "Al activarlas, el texto seleccionado se envía al proveedor elegido. \
-                             Nada sale sin que pulses un botón.",
+                            "Se enviará la selección y el párrafo contenedor a OpenCode Go.",
                         )
                         .size(theme::text::META)
                         .color(th.dim),
                     );
-                }
-
-                ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (ConsultaTab::Diccionario, "Diccionario"),
-                        (ConsultaTab::Traduccion, "Traducción"),
-                        (ConsultaTab::Ia, "IA"),
-                        (ConsultaTab::Historial, "Historial"),
-                    ] {
-                        if ui
-                            .selectable_label(self.consulta_tab == tab, label)
-                            .clicked()
-                        {
-                            self.consulta_tab = tab;
-                            self.consulta_result = None;
-                            self.consulta_error = None;
-                            self.consulta_history_view = None;
-                        }
-                    }
-                });
-                ui.separator();
-
-                if self.consulta_tab == ConsultaTab::Traduccion {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Destino")
-                                .size(theme::text::META)
-                                .color(th.dim),
-                        );
-                        let before = self.cfg.consulta.target_lang.clone();
-                        egui::ComboBox::from_id_salt("consulta-target")
-                            .selected_text(
-                                self.cfg
-                                    .consulta
-                                    .target_lang
-                                    .as_deref()
-                                    .map(|s| s.to_uppercase())
-                                    .unwrap_or_else(|| "Auto".into()),
-                            )
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.cfg.consulta.target_lang,
-                                    None,
-                                    "Auto",
-                                );
-                                for lang in ["es", "en", "pt", "fr", "de", "it"] {
-                                    ui.selectable_value(
-                                        &mut self.cfg.consulta.target_lang,
-                                        Some(lang.into()),
-                                        lang,
-                                    );
-                                }
-                            });
-                        if before != self.cfg.consulta.target_lang {
-                            self.dirty = true;
-                        }
-                    });
-                }
-
-                match self.consulta_tab {
-                    ConsultaTab::Diccionario => {
-                        if target.text.split_whitespace().count() > 1 {
-                            ui.label(
-                                RichText::new("El diccionario funciona mejor con una palabra.")
-                                    .size(theme::text::META)
-                                    .color(th.dim),
-                            );
-                        }
-                        if ui
-                            .add_enabled(
-                                self.cfg.consulta.online_enabled && !self.consulta_busy,
-                                egui::Button::new("Buscar definición"),
-                            )
-                            .clicked()
-                        {
-                            run_dictionary = true;
-                        }
-                    }
-                    ConsultaTab::Traduccion => {
-                        if ui
-                            .add_enabled(
-                                self.cfg.consulta.online_enabled && !self.consulta_busy,
-                                egui::Button::new("Traducir"),
-                            )
-                            .clicked()
-                        {
-                            run_translation = true;
-                        }
-                    }
-                    ConsultaTab::Ia => {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("Prompt")
-                                    .size(theme::text::META)
-                                    .color(th.dim),
-                            );
-                            egui::ComboBox::from_id_salt("consulta-prompt")
-                                .selected_text(self.consulta_prompt.label())
-                                .show_ui(ui, |ui| {
-                                    for prompt in AiPrompt::ALL {
-                                        ui.selectable_value(
-                                            &mut self.consulta_prompt,
-                                            prompt,
-                                            prompt.label(),
-                                        );
-                                    }
-                                });
-                        });
-                        if has_key {
-                            ui.label(
-                                RichText::new("OPENCODE_API_KEY detectada")
-                                    .size(theme::text::META)
-                                    .color(th.dim),
-                            );
-                        } else {
-                            ui.label(
-                                RichText::new("Falta OPENCODE_API_KEY en el entorno")
-                                    .size(theme::text::META)
-                                    .color(th.error),
-                            );
-                        }
-                        ui.label(
-                            RichText::new(
-                                "Se enviará la selección y el párrafo contenedor a OpenCode Go.",
-                            )
-                            .size(theme::text::META)
-                            .color(th.dim),
-                        );
-                        if ui
-                            .add_enabled(
-                                self.cfg.consulta.online_enabled && !self.consulta_busy && has_key,
-                                egui::Button::new("Analizar con IA"),
-                            )
-                            .clicked()
-                        {
-                            run_ai = true;
-                        }
-                    }
-                    ConsultaTab::Historial => {
-                        if let Some(view) = &self.consulta_history_view {
-                            let mut meta = format!(
-                                "{} · {} · {} · Cap. {}",
-                                view.kind.label(),
-                                view.provider,
-                                truncate(&view.book_title, 32),
-                                view.chapter + 1
-                            );
-                            if let Some(prompt) = &view.prompt {
-                                meta.push_str(" · ");
-                                meta.push_str(prompt);
-                            }
-                            ui.label(RichText::new(meta).size(theme::text::META).color(th.dim));
-                            ui.label(
-                                RichText::new(format!("“{}”", truncate(&view.quote, 220)))
+                    let enabled =
+                        self.cfg.consulta.online_enabled && !self.consulta_busy && has_key;
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            egui::Button::new(
+                                RichText::new("Analizar con IA")
                                     .size(theme::text::BODY)
                                     .color(th.fg),
-                            );
-                            if let Some(error) = &view.error {
-                                ui.label(
-                                    RichText::new(error)
-                                        .size(theme::text::LABEL)
-                                        .color(th.error),
-                                );
-                            } else {
-                                egui::ScrollArea::vertical()
-                                    .max_height(330.0)
-                                    .show(ui, |ui| {
-                                        ui.label(
-                                            RichText::new(&view.response)
-                                                .size(theme::text::BODY_SMALL)
-                                                .color(th.fg),
-                                        );
-                                    });
-                            }
-                            ui.horizontal(|ui| {
-                                if ui.button("Ir al texto").clicked() {
-                                    jump_history = Some(view.clone());
-                                }
-                                if ui.button("Copiar").clicked() {
-                                    ctx.copy_text(view.response.clone());
-                                }
-                                if ui.button("Volver").clicked() {
-                                    back_history = true;
-                                }
-                            });
-                        } else if history_entries.is_empty() {
+                            )
+                            .min_size(Vec2::new(0.0, 30.0))
+                            .corner_radius(theme::radius::MD),
+                        )
+                        .clicked()
+                    {
+                        run_ai = true;
+                    }
+                }
+                ConsultaTab::Historial => {
+                    if let Some(view) = &self.consulta_history_view {
+                        let mut meta = format!(
+                            "{} · {} · {} · Cap. {}",
+                            view.kind.label(),
+                            view.provider,
+                            truncate(&view.book_title, 32),
+                            view.chapter + 1
+                        );
+                        if let Some(prompt) = &view.prompt {
+                            meta.push_str(" · ");
+                            meta.push_str(prompt);
+                        }
+                        ui.label(RichText::new(meta).size(theme::text::META).color(th.dim));
+                        ui.label(
+                            RichText::new(format!("“{}”", truncate(&view.quote, 220)))
+                                .size(theme::text::BODY)
+                                .color(th.fg),
+                        );
+                        if let Some(error) = &view.error {
                             ui.label(
-                                RichText::new("Sin consultas guardadas.")
+                                RichText::new(error)
                                     .size(theme::text::LABEL)
-                                    .color(th.dim),
+                                    .color(th.error),
                             );
                         } else {
                             egui::ScrollArea::vertical()
                                 .max_height(330.0)
                                 .show(ui, |ui| {
-                                    for entry in &history_entries {
-                                        let label = format!(
-                                            "{} · {} · {}",
-                                            entry.kind.label(),
-                                            truncate(&entry.quote, 50),
-                                            human_age(entry.created)
-                                        );
-                                        if ui.selectable_label(false, label).clicked() {
-                                            open_history = Some(entry.clone());
-                                        }
-                                        if let Some(error) = &entry.error {
-                                            ui.label(
-                                                RichText::new(truncate(error, 100))
-                                                    .size(theme::text::META)
-                                                    .color(th.error),
-                                            );
-                                        }
-                                    }
+                                    ui.label(
+                                        RichText::new(&view.response)
+                                            .size(theme::text::BODY_SMALL)
+                                            .color(th.fg),
+                                    );
                                 });
-                            ui.separator();
-                            if self.consulta_confirm_clear {
-                                ui.label(
-                                    RichText::new("¿Borrar todo el historial?")
-                                        .size(theme::text::META)
-                                        .color(th.dim),
-                                );
-                                if ui.button("Confirmar").clicked() {
-                                    clear_history = true;
-                                }
-                                if ui.button("Cancelar").clicked() {
-                                    self.consulta_confirm_clear = false;
-                                }
-                            } else if ui.button("Limpiar historial").clicked() {
-                                self.consulta_confirm_clear = true;
-                            }
                         }
+                        ui.horizontal(|ui| {
+                            if widgets::button(ui, th, "Ir al texto", widgets::ButtonKind::Primary)
+                                .clicked()
+                            {
+                                jump_history = Some(view.clone());
+                            }
+                            if widgets::button(ui, th, "Copiar", widgets::ButtonKind::Ghost)
+                                .clicked()
+                            {
+                                ctx.copy_text(view.response.clone());
+                            }
+                            if widgets::button(ui, th, "Volver", widgets::ButtonKind::Ghost)
+                                .clicked()
+                            {
+                                back_history = true;
+                            }
+                        });
+                    } else if history_entries.is_empty() {
                         ui.label(
-                            RichText::new(format!(
-                                "{} entradas · límite {}",
-                                self.consulta_history.items.len(),
-                                self.cfg.consulta.history_limit
-                            ))
-                            .size(theme::text::META)
-                            .color(th.dim),
-                        );
-                    }
-                }
-
-                ui.separator();
-                if self.consulta_busy {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(
-                            RichText::new("Consultando…")
+                            RichText::new("Sin consultas guardadas.")
                                 .size(theme::text::LABEL)
                                 .color(th.dim),
                         );
-                    });
-                } else if let Some(error) = &self.consulta_error {
-                    ui.label(
-                        RichText::new(error)
-                            .size(theme::text::LABEL)
-                            .color(th.error),
-                    );
-                } else if let Some(result) = &self.consulta_result {
-                    ui.label(
-                        RichText::new(format!(
-                            "Fuente: {}{}",
-                            result.provider,
-                            result
-                                .model
-                                .as_deref()
-                                .map(|m| format!(" · {m}"))
-                                .unwrap_or_default()
-                        ))
-                        .size(theme::text::META)
-                        .color(th.dim),
-                    );
-                    egui::ScrollArea::vertical()
-                        .max_height(360.0)
-                        .show(ui, |ui| {
-                            for section in &result.sections {
-                                ui.label(
-                                    RichText::new(&section.title)
-                                        .size(theme::text::META)
-                                        .color(th.dim),
-                                );
-                                ui.label(
-                                    RichText::new(&section.body)
-                                        .size(theme::text::BODY_SMALL)
-                                        .color(th.fg),
-                                );
-                                ui.add_space(3.0);
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(330.0)
+                            .show(ui, |ui| {
+                                for entry in &history_entries {
+                                    let label = format!(
+                                        "{} · {} · {}",
+                                        entry.kind.label(),
+                                        truncate(&entry.quote, 50),
+                                        human_age(entry.created)
+                                    );
+                                    if ui.selectable_label(false, label).clicked() {
+                                        open_history = Some(entry.clone());
+                                    }
+                                    if let Some(error) = &entry.error {
+                                        ui.label(
+                                            RichText::new(truncate(error, 100))
+                                                .size(theme::text::META)
+                                                .color(th.error),
+                                        );
+                                    }
+                                }
+                            });
+                        ui.separator();
+                        if self.consulta_confirm_clear {
+                            ui.label(
+                                RichText::new("¿Borrar todo el historial?")
+                                    .size(theme::text::META)
+                                    .color(th.dim),
+                            );
+                            if widgets::button(
+                                ui,
+                                th,
+                                "Confirmar",
+                                widgets::ButtonKind::Destructive,
+                            )
+                            .clicked()
+                            {
+                                clear_history = true;
                             }
-                        });
-                    ui.horizontal(|ui| {
-                        if ui.button("Copiar").clicked() {
-                            ctx.copy_text(result.plain_text());
+                            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary)
+                                .clicked()
+                            {
+                                self.consulta_confirm_clear = false;
+                            }
+                        } else if widgets::button(
+                            ui,
+                            th,
+                            "Limpiar historial",
+                            widgets::ButtonKind::Destructive,
+                        )
+                        .clicked()
+                        {
+                            self.consulta_confirm_clear = true;
                         }
-                        if let Some(url) = &result.source_url {
-                            ui.hyperlink_to("Abrir fuente", url);
-                        }
-                    });
-                } else if self.consulta_tab != ConsultaTab::Historial {
+                    }
                     ui.label(
                         RichText::new(format!(
-                            "Pulsá el botón para consultar {}.",
-                            self.consulta_provider_label()
+                            "{} entradas · límite {}",
+                            self.consulta_history.items.len(),
+                            self.cfg.consulta.history_limit
                         ))
                         .size(theme::text::META)
                         .color(th.dim),
                     );
                 }
-            });
+            }
+
+            ui.separator();
+            if self.consulta_busy {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(
+                        RichText::new("Consultando…")
+                            .size(theme::text::LABEL)
+                            .color(th.dim),
+                    );
+                });
+            } else if let Some(error) = &self.consulta_error {
+                ui.label(
+                    RichText::new(error)
+                        .size(theme::text::LABEL)
+                        .color(th.error),
+                );
+            } else if let Some(result) = &self.consulta_result {
+                ui.label(
+                    RichText::new(format!(
+                        "Fuente: {}{}",
+                        result.provider,
+                        result
+                            .model
+                            .as_deref()
+                            .map(|m| format!(" · {m}"))
+                            .unwrap_or_default()
+                    ))
+                    .size(theme::text::META)
+                    .color(th.dim),
+                );
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        for section in &result.sections {
+                            ui.label(
+                                RichText::new(&section.title)
+                                    .size(theme::text::META)
+                                    .color(th.dim),
+                            );
+                            ui.label(
+                                RichText::new(&section.body)
+                                    .size(theme::text::BODY_SMALL)
+                                    .color(th.fg),
+                            );
+                            ui.add_space(3.0);
+                        }
+                    });
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, th, "Copiar", widgets::ButtonKind::Secondary).clicked() {
+                        ctx.copy_text(result.plain_text());
+                    }
+                    if let Some(url) = &result.source_url {
+                        ui.hyperlink_to("Abrir fuente", url);
+                    }
+                });
+            } else if self.consulta_tab != ConsultaTab::Historial {
+                ui.label(
+                    RichText::new(format!(
+                        "Pulsá el botón para consultar {}.",
+                        self.consulta_provider_label()
+                    ))
+                    .size(theme::text::META)
+                    .color(th.dim),
+                );
+            }
+        });
 
         self.show_consulta = open;
         if activate_online {
@@ -2477,101 +2549,135 @@ impl Lector {
 
         let mut open = self.show_search;
         let mut jump = None;
-        egui::Window::new("Buscar en el libro")
-            .open(&mut open)
-            .default_width(460.0)
-            .min_width(320.0)
-            .resizable(true)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.search_query)
-                        .id(egui::Id::new("book-search"))
-                        .hint_text("Buscar en el libro…")
-                        .desired_width(f32::INFINITY),
-                );
-                if self.search_focus {
-                    response.request_focus();
-                    self.search_focus = false;
-                }
-                if response.changed() {
-                    self.search_dirty = true;
-                    self.search_highlight = None;
-                    self.pending_search_jump = None;
-                }
+        egui::Window::new(
+            RichText::new("Buscar en el libro")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.search_query)
+                    .id(egui::Id::new("book-search"))
+                    .hint_text("Buscar en el libro…")
+                    .desired_width(f32::INFINITY),
+            );
+            if self.search_focus {
+                response.request_focus();
+                self.search_focus = false;
+            }
+            if response.changed() {
+                self.search_dirty = true;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+            }
 
-                let query_len = self.search_query.trim().chars().count();
-                if query_len < 2 {
-                    ui.label(
-                        RichText::new("Escribí al menos 2 letras.")
-                            .size(theme::text::META)
-                            .color(th.dim),
-                    );
-                    return;
-                }
-
-                let total = self.search_results.len();
-                if total == 0 {
-                    ui.label(
-                        RichText::new("Sin coincidencias.")
-                            .size(theme::text::LABEL)
-                            .color(th.dim),
-                    );
-                    return;
-                }
-
-                let count = if self.search_truncated {
-                    format!("Mostrando los primeros {total}; afiná la búsqueda.",)
-                } else {
-                    format!("{total} resultado(s)")
-                };
-                ui.label(RichText::new(count).size(theme::text::META).color(th.dim));
-
-                let dim = TextFormat {
-                    font_id: FontId::new(12.5, fonts::family(false, false)),
-                    color: th.dim,
-                    ..Default::default()
-                };
-                let mut accent = dim.clone();
-                accent.color = th.accent;
-
-                egui::ScrollArea::vertical()
-                    .max_height(380.0)
-                    .show(ui, |ui| {
-                        for (index, hit) in self.search_results.iter().enumerate() {
-                            let mut job = LayoutJob::default();
-                            job.wrap.max_width = ui.available_width();
-                            job.append(&hit.before, 0.0, dim.clone());
-                            job.append(&hit.matched, 0.0, accent.clone());
-                            job.append(&hit.after, 0.0, dim.clone());
-                            let row = ui.add(egui::Label::new(job).wrap().sense(Sense::click()));
-                            if row.clicked() {
-                                jump = Some(index);
-                            }
-                            ui.label(
-                                RichText::new(format!(
-                                    "Cap. {} · {}",
-                                    hit.chapter + 1,
-                                    truncate(
-                                        titles.get(index).map(String::as_str).unwrap_or(""),
-                                        44
-                                    )
-                                ))
-                                .size(theme::text::META)
-                                .color(th.dim),
-                            );
-                            ui.separator();
-                        }
-                    });
-
-                ui.add_space(2.0);
+            let query_len = self.search_query.trim().chars().count();
+            if query_len < 2 {
                 ui.label(
-                    RichText::new("Enter: ir · n/N: siguiente/anterior · Esc: cerrar")
+                    RichText::new("Escribí al menos 2 letras.")
                         .size(theme::text::META)
                         .color(th.dim),
                 );
-            });
+                return;
+            }
+
+            let total = self.search_results.len();
+            if total == 0 {
+                ui.label(
+                    RichText::new("Sin coincidencias.")
+                        .size(theme::text::LABEL)
+                        .color(th.dim),
+                );
+                return;
+            }
+
+            let count = if self.search_truncated {
+                format!("Mostrando los primeros {total}; afiná la búsqueda.",)
+            } else {
+                format!("{total} resultado(s)")
+            };
+            ui.label(RichText::new(count).size(theme::text::META).color(th.dim));
+
+            let dim = TextFormat {
+                font_id: FontId::new(theme::text::BODY_SMALL, fonts::family(false, false)),
+                color: th.dim,
+                ..Default::default()
+            };
+            let mut accent = dim.clone();
+            accent.color = th.accent;
+
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
+                    for (index, hit) in self.search_results.iter().enumerate() {
+                        let row_frame =
+                            egui::Frame::new()
+                                .inner_margin(theme::space::SM)
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    let mut job = LayoutJob::default();
+                                    job.wrap.max_width = ui.available_width();
+                                    job.append(&hit.before, 0.0, dim.clone());
+                                    job.append(&hit.matched, 0.0, accent.clone());
+                                    job.append(&hit.after, 0.0, dim.clone());
+                                    ui.add(egui::Label::new(job).wrap().sense(Sense::hover()));
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Cap. {} · {}",
+                                            hit.chapter + 1,
+                                            truncate(
+                                                titles.get(index).map(String::as_str).unwrap_or(""),
+                                                44
+                                            )
+                                        ))
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                });
+                        let id = ui.make_persistent_id(("search-row", index));
+                        let response = ui.interact(row_frame.response.rect, id, Sense::click());
+                        let active = index == self.search_active;
+                        if response.has_focus() {
+                            ui.painter().rect_stroke(
+                                row_frame.response.rect,
+                                theme::radius::SM,
+                                Stroke::new(2.0, th.accent),
+                                egui::StrokeKind::Inside,
+                            );
+                        } else if response.hovered() || active {
+                            ui.painter().rect_stroke(
+                                row_frame.response.rect,
+                                theme::radius::SM,
+                                Stroke::new(1.0, th.accent.gamma_multiply(0.55)),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        let activated = response.clicked()
+                            || (response.has_focus()
+                                && ui.input(|i| {
+                                    i.key_pressed(Key::Enter) || i.key_pressed(Key::Space)
+                                }));
+                        if activated {
+                            jump = Some(index);
+                        }
+                        ui.add_space(theme::space::XS);
+                    }
+                });
+
+            ui.add_space(2.0);
+            ui.label(
+                RichText::new("Enter: ir · n/N: siguiente/anterior · Esc: cerrar")
+                    .size(theme::text::META)
+                    .color(th.dim),
+            );
+        });
 
         self.show_search = open;
         if !open {
@@ -3032,7 +3138,14 @@ impl Lector {
                         ui.menu_button(
                             RichText::new("…").size(theme::text::TITLE).color(th.fg),
                             |ui| {
-                                if ui.button("Refrescar").clicked() {
+                                if widgets::button(
+                                    ui,
+                                    th,
+                                    "Refrescar",
+                                    widgets::ButtonKind::Secondary,
+                                )
+                                .clicked()
+                                {
                                     rescan = true;
                                     ui.close();
                                 }
@@ -3077,7 +3190,14 @@ impl Lector {
                                         });
                                     }
                                     ui.separator();
-                                    if ui.button("Añadir carpeta…").clicked() {
+                                    if widgets::button(
+                                        ui,
+                                        th,
+                                        "Añadir carpeta…",
+                                        widgets::ButtonKind::Primary,
+                                    )
+                                    .clicked()
+                                    {
                                         add_folder = true;
                                         ui.close();
                                     }
@@ -3723,14 +3843,15 @@ impl Lector {
             .map(|b| b.chapter_title(self.chapter))
             .unwrap_or_default();
         let book_override = self.has_book_override();
+        let compact = ctx.screen_rect().width() < 820.0;
 
         egui::TopBottomPanel::top("bar")
             .show_separator_line(false)
-            .exact_height(38.0)
+            .exact_height(40.0)
             .frame(
                 egui::Frame::new()
                     .fill(th.panel)
-                    .inner_margin(egui::Margin::symmetric(10, 6)),
+                    .inner_margin(egui::Margin::symmetric(16, 6)),
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
@@ -3794,21 +3915,34 @@ impl Lector {
                         self.selection = None;
                         self.note = None;
                     }
-                    if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost)
-                        .on_hover_text("Configuración (⌘,)")
-                        .clicked()
-                    {
-                        self.open_config(ctx, ConfigTab::Consultas);
-                    }
-                    ui.add_space(6.0);
+
+                    ui.add_space(theme::space::SM);
                     let shown = if chapter_title.is_empty() {
                         title.clone()
                     } else {
                         format!("{} · {}", title, chapter_title)
                     };
-                    let shown = truncate(&shown, 70);
-                    ui.label(RichText::new(shown).size(theme::text::BODY).color(th.fg));
-                    if !author.is_empty() {
+                    let author_reserve = if !compact && !author.is_empty() {
+                        170.0
+                    } else {
+                        0.0
+                    };
+                    let reserve = if compact {
+                        176.0
+                    } else {
+                        220.0 + author_reserve
+                    };
+                    let title_w = (ui.available_width() - reserve).max(110.0);
+                    ui.add_sized(
+                        [title_w, 20.0],
+                        egui::Label::new(
+                            RichText::new(truncate(&shown, 120))
+                                .size(theme::text::BODY)
+                                .color(th.fg),
+                        )
+                        .truncate(),
+                    );
+                    if !compact && !author.is_empty() && ui.available_width() > 90.0 {
                         ui.label(
                             RichText::new(truncate(&author, 34))
                                 .size(theme::text::LABEL)
@@ -3817,6 +3951,32 @@ impl Lector {
                     }
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if compact {
+                            ui.scope(|ui| {
+                                let visuals = ui.visuals_mut();
+                                visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                                visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+                                visuals.widgets.hovered.weak_bg_fill =
+                                    th.accent.gamma_multiply(0.12);
+                                visuals.widgets.hovered.bg_stroke = Stroke::NONE;
+                                visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.accent);
+                                ui.menu_button(
+                                    RichText::new("…").size(theme::text::TITLE).color(th.fg),
+                                    |ui| {
+                                        if ui.button("Configuración").clicked() {
+                                            self.open_config(ctx, ConfigTab::Consultas);
+                                            ui.close();
+                                        }
+                                    },
+                                );
+                            });
+                        } else if widgets::button(ui, th, "Ajustes", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Configuración (⌘,)")
+                            .clicked()
+                        {
+                            self.open_config(ctx, ConfigTab::Consultas);
+                        }
+
                         let pct = ui.add(
                             egui::Label::new(
                                 RichText::new(format!("{:.0}%", self.progress() * 100.0))
@@ -3879,33 +4039,75 @@ impl Lector {
         };
         let mut open = self.show_toc;
         let mut jump: Option<(usize, Option<String>)> = None;
-        egui::Window::new("Índice")
-            .open(&mut open)
-            .resizable(true)
-            .default_size([460.0, 540.0])
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(12))
-            .show(ctx, |ui| {
-                ScrollArea::vertical().show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    let mut chapter_marked = false;
-                    for (title, spine, anchor) in &entries {
-                        let selected = if let Some(current) = &self.current_anchor {
-                            *spine == self.chapter && anchor.as_deref() == Some(current.as_str())
-                        } else {
-                            *spine == self.chapter && !chapter_marked
-                        };
-                        if *spine == self.chapter {
-                            chapter_marked = true;
-                        }
-                        let text = RichText::new(title)
-                            .size(theme::text::BODY)
-                            .color(if selected { th.accent } else { th.fg });
-                        if ui.selectable_label(selected, text).clicked() {
-                            jump = Some((*spine, anchor.clone()));
-                        }
+        let toc_h = (ctx.screen_rect().height() - 120.0).clamp(320.0, 540.0);
+        egui::Window::new(
+            RichText::new("Índice")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .min_width(widgets::PANEL_MD)
+        .max_width(widgets::PANEL_MD)
+        .default_width(widgets::PANEL_MD)
+        .default_height(toc_h)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ScrollArea::vertical().show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = theme::space::XS;
+                let mut chapter_marked = false;
+                for (title, spine, anchor) in &entries {
+                    let selected = if let Some(current) = &self.current_anchor {
+                        *spine == self.chapter && anchor.as_deref() == Some(current.as_str())
+                    } else {
+                        *spine == self.chapter && !chapter_marked
+                    };
+                    if *spine == self.chapter {
+                        chapter_marked = true;
                     }
-                });
+                    let text = RichText::new(title)
+                        .size(theme::text::BODY)
+                        .color(if selected { th.accent } else { th.fg });
+                    let fill = if selected {
+                        Color32::from_rgba_unmultiplied(
+                            th.accent.r(),
+                            th.accent.g(),
+                            th.accent.b(),
+                            38,
+                        )
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    let clicked = ui
+                        .horizontal(|ui| {
+                            if selected {
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::new(3.0, 18.0), Sense::hover());
+                                ui.painter().rect_filled(rect, 1.0, th.accent);
+                            } else {
+                                ui.add_space(3.0);
+                            }
+                            ui.add_space(theme::space::XS);
+                            egui::Frame::new()
+                                .fill(fill)
+                                .corner_radius(theme::radius::SM)
+                                .inner_margin(egui::Margin::symmetric(6, 3))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.add(egui::Label::new(text).wrap().sense(Sense::click()))
+                                        .clicked()
+                                })
+                                .inner
+                        })
+                        .inner;
+                    if clicked {
+                        jump = Some((*spine, anchor.clone()));
+                    }
+                }
             });
+        });
         self.show_toc = open;
         if let Some((spine, anchor)) = jump {
             self.jump_to(spine, anchor);
@@ -3936,110 +4138,106 @@ impl Lector {
         let mut changed = false;
         let mut toggle_changed = false;
 
-        egui::Window::new("Tipografía")
-            .open(&mut open)
-            .resizable(false)
-            .default_width(340.0)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 8.0;
-                if let Some(_index) = book_index {
-                    if ui
-                        .checkbox(&mut only_book, "Solo para este libro")
-                        .on_hover_text("Guarda tema y tipografía en library.json para este libro")
-                        .changed()
-                    {
-                        toggle_changed = true;
-                    }
-                    if only_book {
-                        ui.label(
-                            RichText::new("Ajustes propios de este libro.")
-                                .size(theme::text::META)
-                                .color(th.dim),
-                        );
-                    }
-                } else if has_book {
-                    ui.label(
-                        RichText::new(
-                            "El libro no está en la biblioteca; los ajustes son globales.",
-                        )
-                        .size(theme::text::META)
-                        .color(th.dim),
-                    );
+        egui::Window::new(
+            RichText::new("Tipografía")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_SM)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            if let Some(_index) = book_index {
+                if ui
+                    .checkbox(&mut only_book, "Solo para este libro")
+                    .on_hover_text("Guarda tema y tipografía en library.json para este libro")
+                    .changed()
+                {
+                    toggle_changed = true;
                 }
-
-                widgets::label(ui, th, "Tema");
-                ui.horizontal_wrapped(|ui| {
-                    for (i, t) in THEMES.iter().enumerate() {
-                        if widgets::theme_swatch(ui, th, t, i == settings.theme)
-                            .on_hover_text(t.name)
-                            .clicked()
-                        {
-                            settings.theme = i;
-                            changed = true;
-                        }
-                    }
-                });
-
-                ui.add_space(4.0);
-                changed |= ui
-                    .add(
-                        egui::Slider::new(
-                            &mut settings.font_size,
-                            config::FONT_MIN..=config::FONT_MAX,
-                        )
-                        .text("tamaño")
-                        .step_by(0.5),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(
-                            &mut settings.line_height,
-                            config::LINE_MIN..=config::LINE_MAX,
-                        )
-                        .text("interlineado")
-                        .step_by(0.02),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(
-                            &mut settings.column_width,
-                            config::COLUMN_MIN..=config::COLUMN_MAX,
-                        )
-                        .text("ancho de columna")
-                        .step_by(10.0),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(
-                            &mut settings.paragraph_space,
-                            config::PARAGRAPH_MIN..=config::PARAGRAPH_MAX,
-                        )
-                        .text("espacio entre párrafos")
-                        .step_by(0.05),
-                    )
-                    .changed();
-
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if widgets::button(ui, th, "Restablecer", widgets::ButtonKind::Secondary)
-                        .clicked()
-                    {
-                        let theme_keep = settings.theme;
-                        settings = Settings::default();
-                        settings.theme = theme_keep;
-                        changed = true;
-                    }
+                if only_book {
                     ui.label(
-                        RichText::new("Space / ← → / T / S")
-                            .size(theme::text::LABEL)
+                        RichText::new("Ajustes propios de este libro.")
+                            .size(theme::text::META)
                             .color(th.dim),
                     );
-                });
+                }
+            } else if has_book {
+                ui.label(
+                    RichText::new("El libro no está en la biblioteca; los ajustes son globales.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+            }
+
+            widgets::label(ui, th, "Tema");
+            ui.horizontal_wrapped(|ui| {
+                for (i, t) in THEMES.iter().enumerate() {
+                    if widgets::theme_swatch(ui, th, t, i == settings.theme)
+                        .on_hover_text(t.name)
+                        .clicked()
+                    {
+                        settings.theme = i;
+                        changed = true;
+                    }
+                }
             });
+
+            ui.add_space(4.0);
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut settings.font_size, config::FONT_MIN..=config::FONT_MAX)
+                        .text("tamaño")
+                        .step_by(0.5),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(
+                        &mut settings.line_height,
+                        config::LINE_MIN..=config::LINE_MAX,
+                    )
+                    .text("interlineado")
+                    .step_by(0.02),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(
+                        &mut settings.column_width,
+                        config::COLUMN_MIN..=config::COLUMN_MAX,
+                    )
+                    .text("ancho de columna")
+                    .step_by(10.0),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(
+                        &mut settings.paragraph_space,
+                        config::PARAGRAPH_MIN..=config::PARAGRAPH_MAX,
+                    )
+                    .text("espacio entre párrafos")
+                    .step_by(0.05),
+                )
+                .changed();
+
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, th, "Restablecer", widgets::ButtonKind::Secondary).clicked()
+                {
+                    let theme_keep = settings.theme;
+                    settings = Settings::default();
+                    settings.theme = theme_keep;
+                    changed = true;
+                }
+                widgets::meta(ui, th, "Space / ← → / T / S");
+            });
+        });
 
         self.show_settings = open;
         settings.clamp();
@@ -4082,7 +4280,7 @@ impl Lector {
         }
         pos.x = pos.x.clamp(
             screen.left() + 8.0,
-            (screen.right() - 430.0).max(screen.left() + 8.0),
+            (screen.right() - 400.0).max(screen.left() + 8.0),
         );
 
         let mut highlight = false;
@@ -4094,9 +4292,9 @@ impl Lector {
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(th.panel)
-                    .stroke(egui::Stroke::new(1.0, th.dim.gamma_multiply(0.45)))
-                    .corner_radius(6.0)
-                    .inner_margin(egui::Margin::symmetric(6, 4))
+                    .stroke(egui::Stroke::new(1.0, th.border))
+                    .corner_radius(theme::radius::MD)
+                    .inner_margin(egui::Margin::symmetric(8, 6))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
@@ -4215,139 +4413,146 @@ impl Lector {
         let mut recolor = None;
         let mut export = false;
 
-        egui::Window::new("Destacados y notas")
-            .open(&mut open)
-            .default_width(410.0)
-            .min_width(320.0)
-            .resizable(true)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.annotations_global, false, "Este libro");
-                    ui.selectable_value(&mut self.annotations_global, true, "Todos");
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui
-                            .button(RichText::new("Exportar…").size(theme::text::LABEL))
-                            .on_hover_text("Exportar las citas visibles a Markdown")
-                            .clicked()
-                        {
-                            export = true;
-                        }
-                    });
+        egui::Window::new(
+            RichText::new("Destacados y notas")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.annotations_global, false, "Este libro");
+                ui.selectable_value(&mut self.annotations_global, true, "Todos");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if widgets::button(ui, th, "Exportar…", widgets::ButtonKind::Secondary)
+                        .on_hover_text("Exportar las citas visibles a Markdown")
+                        .clicked()
+                    {
+                        export = true;
+                    }
                 });
-                ui.separator();
+            });
+            ui.separator();
 
-                let rows = if self.annotations_global {
-                    &rows_all
+            let rows = if self.annotations_global {
+                &rows_all
+            } else {
+                &rows_book
+            };
+
+            if rows.is_empty() {
+                let message = if self.annotations_global {
+                    "Todavía no hay destacados en ningún libro."
                 } else {
-                    &rows_book
+                    "Todavía no destacaste nada."
                 };
+                ui.label(
+                    RichText::new(message)
+                        .size(theme::text::BODY_SMALL)
+                        .color(th.dim),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Seleccioná una frase y usá Destacar o Nota.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                return;
+            }
 
-                if rows.is_empty() {
-                    let message = if self.annotations_global {
-                        "Todavía no hay destacados en ningún libro."
-                    } else {
-                        "Todavía no destacaste nada."
-                    };
-                    ui.label(
-                        RichText::new(message)
-                            .size(theme::text::BODY_SMALL)
-                            .color(th.dim),
-                    );
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new("Seleccioná una frase y usá Destacar o Nota.")
-                            .size(theme::text::META)
-                            .color(th.dim),
-                    );
-                    return;
-                }
-
-                egui::ScrollArea::vertical()
-                    .max_height(430.0)
-                    .show(ui, |ui| {
-                        for row in rows {
-                            let a = &row.annotation;
-                            ui.horizontal_top(|ui| {
-                                let color_button = widgets::color_swatch(
+            egui::ScrollArea::vertical()
+                .max_height(430.0)
+                .show(ui, |ui| {
+                    for row in rows {
+                        let a = &row.annotation;
+                        ui.horizontal_top(|ui| {
+                            let color_button = widgets::color_swatch(
+                                ui,
+                                th,
+                                highlight_swatch(th, a.color),
+                                false,
+                                "Cambiar color",
+                            );
+                            if color_button.clicked() {
+                                recolor = Some((a.id, (a.color + 1) % 3));
+                            }
+                            ui.label(
+                                RichText::new(format!("“{}”", truncate(&a.quote, 150)))
+                                    .size(theme::text::BODY)
+                                    .color(th.fg),
+                            );
+                        });
+                        if row.missing {
+                            ui.label(
+                                RichText::new("(no encontrada en este capítulo)")
+                                    .size(theme::text::META)
+                                    .color(th.error),
+                            );
+                        }
+                        if !a.note.is_empty() {
+                            ui.label(
+                                RichText::new(truncate(&a.note, 220))
+                                    .size(theme::text::LABEL)
+                                    .italics()
+                                    .color(th.fg.gamma_multiply(0.88)),
+                            );
+                        }
+                        ui.horizontal(|ui| {
+                            let place = if self.annotations_global {
+                                format!(
+                                    "{} · Cap. {}",
+                                    truncate(&row.book_title, 32),
+                                    a.chapter + 1
+                                )
+                            } else {
+                                format!("Cap. {}", a.chapter + 1)
+                            };
+                            let place = if row.chapter_title.is_empty() {
+                                place
+                            } else {
+                                format!("{place} · {}", truncate(&row.chapter_title, 26))
+                            };
+                            ui.label(RichText::new(place).size(theme::text::META).color(th.dim));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                                    .on_hover_text("Borrar destacado")
+                                    .clicked()
+                                {
+                                    remove = Some(a.id);
+                                }
+                                if widgets::button(ui, th, "Editar", widgets::ButtonKind::Ghost)
+                                    .on_hover_text("Editar la nota y el color")
+                                    .clicked()
+                                {
+                                    edit = Some(a.id);
+                                }
+                                if widgets::button(
                                     ui,
                                     th,
-                                    highlight_swatch(th, a.color),
-                                    false,
-                                    "Cambiar color",
-                                );
-                                if color_button.clicked() {
-                                    recolor = Some((a.id, (a.color + 1) % 3));
+                                    "Ir al texto",
+                                    widgets::ButtonKind::Ghost,
+                                )
+                                .clicked()
+                                {
+                                    jump = Some(a.id);
                                 }
-                                ui.label(
-                                    RichText::new(format!("“{}”", truncate(&a.quote, 150)))
-                                        .size(theme::text::BODY)
-                                        .color(th.fg),
-                                );
                             });
-                            if row.missing {
-                                ui.label(
-                                    RichText::new("(no encontrada en este capítulo)")
-                                        .size(theme::text::META)
-                                        .color(th.error),
-                                );
-                            }
-                            if !a.note.is_empty() {
-                                ui.label(
-                                    RichText::new(truncate(&a.note, 220))
-                                        .size(theme::text::LABEL)
-                                        .italics()
-                                        .color(th.fg.gamma_multiply(0.88)),
-                                );
-                            }
-                            ui.horizontal(|ui| {
-                                let place = if self.annotations_global {
-                                    format!(
-                                        "{} · Cap. {}",
-                                        truncate(&row.book_title, 32),
-                                        a.chapter + 1
-                                    )
-                                } else {
-                                    format!("Cap. {}", a.chapter + 1)
-                                };
-                                let place = if row.chapter_title.is_empty() {
-                                    place
-                                } else {
-                                    format!("{place} · {}", truncate(&row.chapter_title, 26))
-                                };
-                                ui.label(
-                                    RichText::new(place).size(theme::text::META).color(th.dim),
-                                );
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui
-                                        .small_button("×")
-                                        .on_hover_text("Borrar destacado")
-                                        .clicked()
-                                    {
-                                        remove = Some(a.id);
-                                    }
-                                    if ui
-                                        .small_button("Editar")
-                                        .on_hover_text("Editar la nota y el color")
-                                        .clicked()
-                                    {
-                                        edit = Some(a.id);
-                                    }
-                                    if ui.small_button("Ir").clicked() {
-                                        jump = Some(a.id);
-                                    }
-                                });
-                            });
-                            ui.separator();
-                        }
-                    });
-            });
+                        });
+                        ui.separator();
+                    }
+                });
+        });
 
         self.show_annotations = open;
         let acted = remove.is_some() || edit.is_some() || jump.is_some() || recolor.is_some();
         if let Some(id) = remove {
-            self.remove_annotation(id);
+            self.confirm_delete_annotation = Some(id);
         }
         if let Some((id, color)) = recolor {
             if self.annotations.update_color(id, color) {
@@ -4382,6 +4587,72 @@ impl Lector {
         }
     }
 
+    fn confirm_delete_annotation_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(id) = self.confirm_delete_annotation else {
+            return;
+        };
+        let Some(annotation) = self.annotations.get(id).cloned() else {
+            self.confirm_delete_annotation = None;
+            return;
+        };
+        let mut confirm = false;
+        let mut cancel = false;
+        let _ = egui::Modal::new(egui::Id::new("delete-annotation-modal"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Borrar destacado")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cancelar")
+                            .clicked()
+                        {
+                            cancel = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!("“{}”", truncate(&annotation.quote, 160)))
+                            .size(theme::text::BODY)
+                            .color(th.fg),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(theme::space::SM);
+                ui.label(
+                    RichText::new("Se borra el destacado y su nota; el texto del libro no cambia.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                ui.add_space(theme::space::MD);
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, th, "Borrar", widgets::ButtonKind::Destructive).clicked()
+                    {
+                        confirm = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if confirm {
+            self.confirm_delete_annotation = None;
+            self.remove_annotation(id);
+        } else if cancel {
+            self.confirm_delete_annotation = None;
+        }
+    }
+
     fn note_window(&mut self, ctx: &egui::Context, th: &Theme) {
         let Some(editor) = self.note.as_mut() else {
             return;
@@ -4392,55 +4663,57 @@ impl Lector {
         let editing = editor.id.is_some();
         let title = if editing { "Editar nota" } else { "Nueva nota" };
 
-        egui::Window::new(title)
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_width(420.0)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Color").size(theme::text::META).color(th.dim));
-                    for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
-                        let color = highlight_swatch(th, index as u8);
-                        if widgets::color_swatch(
-                            ui,
-                            th,
-                            color,
-                            editor.color == index as u8,
-                            &format!("Color {name}"),
-                        )
-                        .clicked()
-                        {
-                            editor.color = index as u8;
-                        }
+        egui::Window::new(
+            RichText::new(title)
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            ui.horizontal(|ui| {
+                widgets::label(ui, th, "Color");
+                for (index, name) in ["acento", "ámbar", "verde"].iter().enumerate() {
+                    let color = highlight_swatch(th, index as u8);
+                    if widgets::color_swatch(
+                        ui,
+                        th,
+                        color,
+                        editor.color == index as u8,
+                        &format!("Color {name}"),
+                    )
+                    .clicked()
+                    {
+                        editor.color = index as u8;
                     }
-                });
-                ui.label(
-                    RichText::new("Nota (opcional; vacía deja solo el destacado)")
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-                let response = ui.add(
-                    egui::TextEdit::multiline(&mut editor.draft)
-                        .id(egui::Id::new("note-editor"))
-                        .desired_rows(5)
-                        .desired_width(f32::INFINITY),
-                );
-                if editor.focus {
-                    response.request_focus();
-                    editor.focus = false;
                 }
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Guardar").clicked() {
-                        save = true;
-                    }
-                    if ui.button("Cancelar").clicked() {
-                        cancel = true;
-                    }
-                });
             });
+            widgets::label(ui, th, "Nota (opcional; vacía deja solo el destacado)");
+            let response = ui.add(
+                egui::TextEdit::multiline(&mut editor.draft)
+                    .id(egui::Id::new("note-editor"))
+                    .desired_rows(5)
+                    .desired_width(f32::INFINITY),
+            );
+            if editor.focus {
+                response.request_focus();
+                editor.focus = false;
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, th, "Guardar", widgets::ButtonKind::Primary).clicked() {
+                    save = true;
+                }
+                if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked() {
+                    cancel = true;
+                }
+            });
+        });
 
         if save {
             self.save_note();
@@ -4466,50 +4739,45 @@ impl Lector {
         let mut by_percent = false;
         let mut by_chapter = false;
 
-        egui::Window::new("Ir a")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(340.0)
-            .frame(egui::Frame::new().fill(th.panel).inner_margin(14))
-            .show(ctx, |ui| {
-                ui.label(
-                    RichText::new("Porcentaje del libro")
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.goto_percent, 0.0..=100.0)
-                        .suffix(" %")
-                        .step_by(0.5),
-                );
-                if ui.button("Ir al porcentaje").clicked() {
-                    by_percent = true;
-                }
+        egui::Window::new(
+            RichText::new("Ir a")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_SM)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            widgets::label(ui, th, "Porcentaje del libro");
+            ui.add(
+                egui::Slider::new(&mut self.goto_percent, 0.0..=100.0)
+                    .suffix(" %")
+                    .step_by(0.5),
+            );
+            if widgets::button(ui, th, "Ir al porcentaje", widgets::ButtonKind::Primary).clicked() {
+                by_percent = true;
+            }
 
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new(format!("Capítulo (1–{chapters})"))
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut self.goto_chapter_number)
-                        .range(1..=chapters)
-                        .speed(0.2),
-                );
-                if ui.button("Ir al capítulo").clicked() {
-                    by_chapter = true;
-                }
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new("G para abrir/cerrar · Esc para cerrar")
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-            });
+            ui.add_space(theme::space::SM);
+            ui.separator();
+            ui.add_space(theme::space::XS);
+            widgets::label(ui, th, format!("Capítulo (1–{chapters})"));
+            ui.add(
+                egui::DragValue::new(&mut self.goto_chapter_number)
+                    .range(1..=chapters)
+                    .speed(0.2),
+            );
+            if widgets::button(ui, th, "Ir al capítulo", widgets::ButtonKind::Secondary).clicked()
+            {
+                by_chapter = true;
+            }
+            ui.add_space(theme::space::XS);
+            widgets::meta(ui, th, "G para abrir/cerrar · Esc para cerrar");
+        });
 
         self.show_goto = open;
         if by_percent {
@@ -4780,6 +5048,7 @@ impl Lector {
         self.goto_window(ctx, th);
         self.selection_bar(ctx, th);
         self.annotations_window(ctx, th);
+        self.confirm_delete_annotation_window(ctx, th);
         self.consulta_ui(ctx, th);
         self.note_window(ctx, th);
     }

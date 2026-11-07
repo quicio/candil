@@ -25,17 +25,17 @@
 
 ## 3. Lector y paneles
 
-- [ ] 3.1 Reorganizar la barra del lector: índice, tipografía, notas y búsqueda a la izquierda; título/autor truncados; capítulo y porcentaje agrupados a la derecha; configuración en overflow/engranaje. Verificación: `--shot` a 980×780 y 720×600 sin recortes.
-- [ ] 3.2 Igualar la altura y el padding de la barra del lector con la de biblioteca y mantener el progreso de 2 px. Verificación: comparación visual y `cargo test`.
-- [ ] 3.3 Migrar la barra de selección a los helpers: swatches reales, botones `Destacar`/`Nota`/`Consultar` con foco visible y cierre con Esc. Verificación: seleccionar texto y recorrer con teclado.
-- [ ] 3.4 Unificar el panel de anotaciones: frame, header, ancho `panel-md`, filas con cita dominante, metadata secundaria, `Ir al texto` y swatch seleccionable. Verificación: captura de `reader-notes` y salto a la cita.
-- [ ] 3.5 Añadir confirmación o undo al borrar un destacado. Verificación: borrar una nota muestra confirmación/undo y persiste solo tras confirmar.
-- [ ] 3.6 Unificar el editor de nota con el frame y los swatches; etiquetas y foco consistentes. Verificación: crear y editar una nota en Papel y Noche.
-- [ ] 3.7 Unificar el panel de búsqueda: filas con hover/foco, contexto, capítulo y contador; conservar Enter, n/N y Esc. Verificación: buscar y recorrer resultados con teclado.
-- [ ] 3.8 Unificar `Ir a` con botones explícitos para porcentaje y capítulo, validación y foco. Verificación: saltar por porcentaje y por capítulo.
-- [ ] 3.9 Unificar el índice (`T`) con el frame y ancho de panel; marcar la entrada activa sin depender solo del color. Verificación: captura y salto a un ancla.
-- [ ] 3.10 Unificar Configuración con `panel-lg`, navegación por tabs, section headers y controles agrupados; eliminar la flecha de colapso. Verificación: captura de cada tab y recorrido por teclado.
-- [ ] 3.11 Unificar Consulta con `panel-md`, estados offline/busy/error y acciones de historial (`Ir al texto`, copiar, borrar) consistentes. Verificación: capturas de diccionario, historial y offline.
+- [x] 3.1 Reorganizar la barra del lector: índice, tipografía, notas y búsqueda a la izquierda; título/autor truncados; capítulo y porcentaje agrupados a la derecha; configuración en overflow/engranaje. Verificación: `--shot` a 980×780 y 720×600 sin recortes.
+- [x] 3.2 Mantener la barra del lector en 40 px con padding horizontal de 16, coherente con la biblioteca, y el progreso de 2 px. Verificación: comparación visual y `cargo test`.
+- [x] 3.3 Migrar la barra de selección a los helpers: swatches reales, botones `Destacar`/`Nota`/`Consultar` con foco visible y cierre con Esc. Verificación: seleccionar texto y recorrer con teclado.
+- [x] 3.4 Unificar el panel de anotaciones: frame, header, ancho `panel-md`, filas con cita dominante, metadata secundaria, `Ir al texto` y swatch seleccionable. Verificación: captura de `reader-notes` y salto a la cita.
+- [x] 3.5 Añadir confirmación o undo al borrar un destacado. Verificación: borrar una nota muestra confirmación/undo y persiste solo tras confirmar.
+- [x] 3.6 Unificar el editor de nota con el frame y los swatches; etiquetas y foco consistentes. Verificación: crear y editar una nota en Papel y Noche.
+- [x] 3.7 Unificar el panel de búsqueda: filas con hover/foco, contexto, capítulo y contador; conservar Enter, n/N y Esc. Verificación: buscar y recorrer resultados con teclado.
+- [x] 3.8 Unificar `Ir a` con botones explícitos para porcentaje y capítulo, validación y foco. Verificación: saltar por porcentaje y por capítulo.
+- [x] 3.9 Unificar el índice (`T`) con el frame y ancho de panel; marcar la entrada activa sin depender solo del color. Verificación: captura y salto a un ancla.
+- [x] 3.10 Unificar Configuración con `panel-lg`, navegación por tabs, section headers y controles agrupados; eliminar la flecha de colapso. Verificación: captura de cada tab y recorrido por teclado.
+- [x] 3.11 Unificar Consulta con `panel-md`, estados offline/busy/error y acciones de historial (`Ir al texto`, copiar, borrar) consistentes. Verificación: capturas de diccionario, historial y offline.
 
 ## 4. Interacción y accesibilidad
 

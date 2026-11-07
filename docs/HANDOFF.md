@@ -41,9 +41,11 @@ origen.
 `openspec/` es la fuente de verdad para cambios nuevos. El cambio activo es
 `consolidar-ux-ui` (sistema de diseño, biblioteca, lector, paneles y
 accesibilidad). `docs/specs/` queda como archivo histórico de M1–M6.
-Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches) y 2
+Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
-en segundo plano) están implementadas; las fases 3–5 siguen abiertas.
+en segundo plano) y 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
+Ir a, índice, configuración y consulta) están implementadas. Quedan las fases
+4 (interacción/accesibilidad fina) y 5 (capturas públicas, docs y validación).
 
 ## Estado medido (no estimado)
 
@@ -62,7 +64,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 98 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 6.714.144 B | `cargo build --profile dist` (2026-11-06) |
+| binario `dist` | 6.747.280 B | `cargo build --profile dist` (2026-11-06) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -140,6 +142,8 @@ cargo run --profile fast -- --shot /tmp/p.png --screen library --confirm-remove
 cargo run --profile fast -- --shot /tmp/p.png --screen library --confirm-folder
 cargo run --profile fast -- --shot /tmp/p.png --screen library --recover
 cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
+cargo run --profile fast -- --shot /tmp/p.png --selection libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --confirm-delete libro.epub
 
 # test live (no corre en el gate normal)
 cargo test --lib red_real_wiktionary_y_mymemory -- --ignored

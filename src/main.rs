@@ -57,6 +57,14 @@ fn main() -> eframe::Result<()> {
                 dev.focus_card = true;
                 i += 1;
             }
+            "--confirm-delete" => {
+                dev.confirm_delete = true;
+                i += 1;
+            }
+            "--selection" => {
+                dev.selection = true;
+                i += 1;
+            }
             "--chapter" => {
                 dev.chapter = args.get(i + 1).and_then(|s| s.parse().ok());
                 i += 2;

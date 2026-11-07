@@ -6,6 +6,11 @@ use eframe::egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
 
 use crate::theme::{self, radius, space, text, Theme};
 
+/// Anchos de panel: compacto, medio y configuración.
+pub const PANEL_SM: f32 = 340.0;
+pub const PANEL_MD: f32 = 420.0;
+pub const PANEL_LG: f32 = 760.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonKind {
     Primary,
@@ -99,8 +104,14 @@ pub fn icon_button(ui: &mut Ui, th: &Theme, icon: &str, tooltip: &str) -> Respon
 
 /// Frame común de panel: superficie, borde hairline y padding de 16.
 pub fn panel_frame(th: &Theme) -> egui::Frame {
+    panel_frame_fill(th, th.panel)
+}
+
+/// Igual que `panel_frame`, pero con otra superficie. La usa Consulta para
+/// mantener su tono elevado sin romper geometría ni bordes.
+pub fn panel_frame_fill(th: &Theme, fill: Color32) -> egui::Frame {
     egui::Frame::new()
-        .fill(th.panel)
+        .fill(fill)
         .stroke(Stroke::new(1.0, th.border))
         .corner_radius(radius::LG)
         .inner_margin(space::LG)

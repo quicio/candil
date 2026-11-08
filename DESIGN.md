@@ -316,6 +316,14 @@ solo cuando representan filtros o carpetas.
 - **States:** hover con tinte, foco con anillo, activo con subrayado o peso; los
   iconos siempre tienen tooltip y, cuando existe, atajo.
 
+### App icon
+
+- **Composición:** libro abierto en papel sobre fondo Noche, con una llama ámbar
+  que nace del lomo. Sin texto; legible a 16 px.
+- **Archivos:** `assets/candil-icon.svg` (fuente), `assets/candil-icon.png`
+  (1024), `assets/candil-icon-256.png` y `assets/candil.icns` (macOS).
+- **Uso:** icono de ventana (`with_icon`) y bundle `Candil.app` en macOS.
+
 ### Color swatch
 
 - **Shape:** círculo de 14 px con anillo de 2 px cuando está seleccionado.

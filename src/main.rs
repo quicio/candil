@@ -139,11 +139,15 @@ fn main() -> eframe::Result<()> {
     }
 
     let (window_w, window_h) = dev.size.unwrap_or((980.0, 780.0));
+    let mut viewport = eframe::egui::ViewportBuilder::default()
+        .with_inner_size([window_w, window_h])
+        .with_min_inner_size([420.0, 360.0])
+        .with_app_id("candil");
+    if let Some(icon) = window_icon() {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([window_w, window_h])
-            .with_min_inner_size([420.0, 360.0])
-            .with_app_id("candil"),
+        viewport,
         ..Default::default()
     };
 
@@ -152,6 +156,20 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| Ok(Box::new(app::Lector::new(cc, path, dev)))),
     )
+}
+
+/// Icono de ventana. En macOS el icono de Finder/Dock lo aporta el bundle
+/// (`scripts/make_app.sh`); esto cubre la ventana y las demás plataformas.
+fn window_icon() -> Option<eframe::egui::IconData> {
+    let image = image::load_from_memory(include_bytes!("../assets/candil-icon-256.png"))
+        .ok()?
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    Some(eframe::egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    })
 }
 
 /// Indexa una carpeta en `library.json` y extrae portadas. Es el banco de

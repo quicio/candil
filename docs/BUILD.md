@@ -55,6 +55,28 @@ lipo -create \
 La app no está empaquetada como `.app`; para distribuirla como aplicación de
 Finder hay que crear el bundle (`Contents/MacOS/candil`, `Info.plist`, icono).
 
+### macOS: `Candil.app` con icono
+
+El binario suelto funciona desde la terminal, pero Finder/Dock usan el icono
+del bundle. Para armar `Candil.app`:
+
+```bash
+cargo build --profile dist
+scripts/make_app.sh target/dist/candil "$HOME/Applications/Candil.app"
+open "$HOME/Applications/Candil.app"
+```
+
+El script copia el binario, `assets/candil.icns` y un `Info.plist` con
+`CFBundleIdentifier=com.quicio.candil`, firma ad-hoc y quita la cuarentena.
+También se puede envolver un binario ya instalado:
+
+```bash
+scripts/make_app.sh "$HOME/.local/bin/candil" "$HOME/Applications/Candil.app"
+```
+
+El icono fuente es `assets/candil-icon.svg`; los PNG y el `.icns` se generan
+desde ahí.
+
 ## Linux
 
 Dependencias típicas en Ubuntu/Debian:

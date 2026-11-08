@@ -105,7 +105,8 @@ src/fonts.rs   familias Literata en egui
 ```
 
 Build en otros sistemas: [`BUILD.md`](BUILD.md) y la matriz de CI
-`.github/workflows/build.yml` (macOS/Linux/Windows).
+`.github/workflows/build.yml` (macOS/Linux/Windows). En macOS,
+`scripts/make_app.sh` arma `Candil.app` con el icono (`assets/candil.icns`).
 
 ## Cómo verificar sin ojos humanos
 

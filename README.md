@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/candil-icon-256.png" width="96" alt="Icono de Candil">
+</p>
+
 # Candil
 
 **Leer despacio, sin ruido.**
@@ -73,6 +77,8 @@ cargo build --profile dist
 El binario queda en `target/dist/candil` (o `candil.exe`). La matriz
 `.github/workflows/build.yml` compila y sube artefactos en macOS, Linux y
 Windows. Para build universal de macOS hay instrucciones con `lipo` en la guía.
+En macOS, `scripts/make_app.sh` arma un `Candil.app` con el icono y el
+`Info.plist`; ver [`docs/BUILD.md`](docs/BUILD.md).
 
 ### Teclas
 

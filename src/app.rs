@@ -340,6 +340,8 @@ impl Lector {
             FontId::new(14.5, FontFamily::Proportional),
         );
         cc.egui_ctx.set_style(style);
+        #[cfg(target_os = "macos")]
+        crate::macos::set_app_icon();
 
         let theme_idx = cfg.settings.theme;
         let initial_delete = if dev.confirm_delete {

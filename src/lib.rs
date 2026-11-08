@@ -9,6 +9,8 @@ pub mod covers;
 pub mod epub;
 pub mod fonts;
 pub mod library;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod search;
 pub mod store;
 pub mod theme;

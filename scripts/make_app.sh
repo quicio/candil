@@ -22,7 +22,8 @@ if [ ! -x "$BIN" ]; then
   fi
 fi
 OUT="${2:-$ROOT/target/Candil.app}"
-VERSION="${CANDIL_VERSION:-0.2.0}"
+VERSION="${CANDIL_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)}"
+VERSION="${VERSION:-0.2.1}"
 
 if [ ! -f "$ROOT/assets/candil.icns" ]; then
   echo "falta assets/candil.icns" >&2

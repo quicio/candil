@@ -38,6 +38,7 @@ cargo run --profile dist -- /ruta/libro.epub   # artefacto final, más chico
 cargo run --profile fast                       # abre la biblioteca
 cargo run --profile fast -- --resume           # reabre el último libro
 cargo run --profile fast -- --scan ~/Libros    # indexa una carpeta sin abrir la UI
+cargo run --profile fast -- --version          # versión del binario
 scripts/check.sh                               # fmt + clippy + tests + inspect
 ```
 

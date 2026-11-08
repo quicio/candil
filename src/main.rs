@@ -9,6 +9,11 @@ use candil::xhtml;
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("candil {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     if let Some(pos) = args.iter().position(|a| a == "--inspect") {
         let path = args.get(pos + 1).cloned().unwrap_or_default();
         inspect(&path);

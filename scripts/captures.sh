@@ -31,7 +31,7 @@ for spec in "${MAGS[@]}"; do
   id="${spec%%:*}"
   name="${spec#*:}"
   if [ ! -s "$BOOKS/$name" ]; then
-    echo "descargando $name…"
+    echo "descargando ${name}..."
     curl -L --fail --silent --show-error --max-time 180 \
       -o "$BOOKS/$name" \
       "https://www.gutenberg.org/cache/epub/$id/pg$id.epub"

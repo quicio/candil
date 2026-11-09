@@ -84,6 +84,7 @@ jobs:
         run: |
           scripts/make_app.sh target/dist/candil out/Candil.app
           ditto -c -k --sequesterRsrc --keepParent out/Candil.app out/candil-macos-arm64-app.zip
+          COPYFILE_DISABLE=1 tar -C out -czf out/candil-macos-arm64-app.tar.gz Candil.app
 
       - name: Subir binario
         uses: actions/upload-artifact@v4
@@ -117,7 +118,7 @@ jobs:
             elif [ -f "$dir/candil" ]; then
               cp "$dir/candil" "dist/$name"
             fi
-            find "$dir" -maxdepth 1 -name '*.zip' -exec cp {} dist/ \;
+            find "$dir" -maxdepth 1 \( -name '*.zip' -o -name '*.tar.gz' \) -exec cp {} dist/ \;
           done
           chmod +x dist/candil-* 2>/dev/null || true
           cd dist

@@ -45,11 +45,13 @@ build del tag recién creado sin depender de un PAT.
 ### macOS: `.app.zip` ad-hoc
 
 El job de macOS ejecuta `scripts/make_app.sh` (firma ad-hoc) y empaqueta el
-bundle como `candil-macos-arm64-app.zip` con `ditto`. El release publica:
+bundle como `candil-macos-arm64-app.zip` con `ditto` y como
+`candil-macos-arm64-app.tar.gz` para Homebrew. El release publica:
 
 - `candil-linux-x86_64`
 - `candil-macos-arm64`
 - `candil-macos-arm64-app.zip`
+- `candil-macos-arm64-app.tar.gz`
 - `candil-windows-x86_64.exe`
 - `SHA256SUMS.txt`
 
@@ -61,11 +63,11 @@ instalación sigue siendo manual: no se reemplaza el `.app` en ejecución.
 Se agrega `Casks/candil.rb` y un tap `quicio/homebrew-tap`:
 
 ```bash
-brew install --cask quicio/tap/candil
+brew install --cask --no-quarantine quicio/tap/candil
 ```
 
 El cask usa `version :latest` y `sha256 :no_check` contra
-`releases/latest/download/candil-macos-arm64-app.zip`; no hay que actualizarlo
+`releases/latest/download/candil-macos-arm64-app.tar.gz`; no hay que actualizarlo
 por release. Un `postflight` intenta quitar `com.apple.quarantine`; si falla, el
 usuario puede abrir con clic derecho → Abrir. El cask declara la advertencia en
 `caveats`.
@@ -103,4 +105,4 @@ límite.
 - El tap con `:latest` no necesita actualización por release, a costa de no
   fijar una versión/sha en el cask.
 - El `dist` no cambia por el empaquetado; el workflow tarda más por el `.app` y
-  el zip.
+  el zip y el tar.gz.

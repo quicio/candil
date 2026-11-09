@@ -24,7 +24,8 @@ Candil se publica solo. No hay que tocar `Cargo.toml` ni crear tags a mano.
 |---|---|
 | `candil-linux-x86_64` | binario Linux |
 | `candil-macos-arm64` | binario macOS (CLI) |
-| `candil-macos-arm64-app.zip` | `Candil.app` firmado ad-hoc |
+| `candil-macos-arm64-app.zip` | `Candil.app` firmado ad-hoc (descarga manual) |
+| `candil-macos-arm64-app.tar.gz` | el mismo `Candil.app` para el cask de Homebrew |
 | `candil-windows-x86_64.exe` | binario Windows |
 | `SHA256SUMS.txt` | checksums; la app los verifica |
 
@@ -35,7 +36,7 @@ instala**.
 ## Instalación en macOS
 
 ```bash
-brew install --cask quicio/tap/candil
+brew install --cask --no-quarantine quicio/tap/candil
 ```
 
 o descargar `candil-macos-arm64-app.zip`, descomprimir, arrastrar `Candil.app` a

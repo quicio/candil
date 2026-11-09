@@ -30,7 +30,9 @@ historial en `consultas.json` y el centro de configuración. La API key se guard
 en el llavero del sistema; `OPENCODE_API_KEY` sigue como override. M8 agrega
 edición de metadatos y portada dentro del EPUB, con backup y validación. M9
 agrega selección y anotación entre párrafos, con migración v2 de
-`annotations.json` y reanclaje por partes.
+`annotations.json` y reanclaje por partes. M10 agrega vista previa de enlaces
+internos y notas al pie, con “Ir al texto” y un regreso al punto exacto de
+lectura.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -47,10 +49,10 @@ origen.
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
 `interaction-accessibility`, `ai-providers`, `ai-credentials`,
-`epub-editing` y `reading-workspace` (ampliada por M9) viven en
+`epub-editing` y `reading-workspace` (ampliada por M9 y M10) viven en
 `openspec/specs/`; los cambios `consolidar-ux-ui`, `proveedores-ia-clave`,
-`editar-metadata-epub` y `seleccion-entre-parrafos` quedaron archivados en
-`openspec/changes/archive/`. `docs/specs/` queda como
+`editar-metadata-epub`, `seleccion-entre-parrafos` y `notas-al-pie-y-volver`
+quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
 archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -75,11 +77,11 @@ el mismo):
 | capturas | 16 en `docs/img/` (biblioteca ×4, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 116 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 119 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.250.944 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.250.976 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
-| fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
+| fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
 
 La medición de biblioteca se hizo con 43 EPUB. Después `~/Libros` quedó en 40
 (limpieza manual de duplicados); hoy la biblioteca tiene 40 entradas y 40
@@ -160,6 +162,7 @@ cargo run --profile fast -- --shot /tmp/p.png --screen library --confirm-folder
 cargo run --profile fast -- --shot /tmp/p.png --screen library --recover
 cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
 cargo run --profile fast -- --shot /tmp/p.png --selection libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --link-preview libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --confirm-delete libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --help libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --screen library --edit
@@ -251,6 +254,9 @@ flotante tapando texto) solo aparecieron así.
     `end_block` y una parte de cita por bloque; `block`/`start`/`end` siguen
     siendo el ancla y siguen siendo válidos para archivos v1. No se convierten a
     píxeles ni se separan en varias anotaciones.
+23. **Un enlace interno no navega solo**: abre una vista previa; “Ir al texto”
+    es la acción explícita y guarda un único `Progress` de regreso. Los enlaces
+    externos no se abren sin una decisión aparte.
 
 ## Definición de terminado (por tarea)
 

@@ -503,14 +503,14 @@ mod tests {
         assert_eq!(
             first,
             ScanStats {
-                found: 2,
-                added: 2,
+                found: 3,
+                added: 3,
                 updated: 0,
                 unchanged: 0,
                 failed: 0,
             }
         );
-        assert_eq!(lib.books.len(), 2);
+        assert_eq!(lib.books.len(), 3);
         assert!(
             lib.books.iter().all(|b| b.cover.is_some()),
             "{:?}",
@@ -518,7 +518,7 @@ mod tests {
         );
         assert_eq!(
             std::fs::read_dir(data.join("covers")).unwrap().count(),
-            2,
+            3,
             "una portada por libro"
         );
 
@@ -526,10 +526,10 @@ mod tests {
         assert_eq!(
             second,
             ScanStats {
-                found: 2,
+                found: 3,
                 added: 0,
                 updated: 0,
-                unchanged: 2,
+                unchanged: 3,
                 failed: 0,
             }
         );
@@ -545,15 +545,15 @@ mod tests {
         };
         std::fs::remove_file(&cover_path).unwrap();
         let third = lib.scan_folder(&fixtures());
-        assert_eq!(third.found, 2);
+        assert_eq!(third.found, 3);
         assert_eq!(third.updated, 1);
-        assert_eq!(third.unchanged, 1);
+        assert_eq!(third.unchanged, 2);
         assert!(cover_path.is_file(), "la portada debe regenerarse");
 
         let path = data.join("library.json");
         lib.save_to(&path).expect("guardar biblioteca");
         let loaded = Library::load_from(&path);
-        assert_eq!(loaded.books.len(), 2);
+        assert_eq!(loaded.books.len(), 3);
         assert_eq!(loaded.folders.len(), 1);
         assert_eq!(loaded.schema_version, SCHEMA_VERSION);
 

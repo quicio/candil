@@ -10,12 +10,12 @@ Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
-destacados/notas —con colores, selección entre párrafos, índice global y export
-Markdown—, búsqueda dentro del libro, salto por porcentaje/capítulo,
-diccionario/traducción, análisis con IA multi-proveedor y edición de
-metadatos/portada del EPUB.
+destacados/notas —con colores, selección entre párrafos, notas al pie con vista
+previa y regreso, índice global y export Markdown—, búsqueda dentro del libro,
+salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
+multi-proveedor y edición de metadatos/portada del EPUB.
 
-Binario final (`dist`): **6.9 MiB** (7.250.944 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.250.976 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -157,9 +157,9 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 116
-tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
-(`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 119
+tests unitarios (1 live ignorado) y 10 de integración sobre fixtures propios versionados
+(`mini.epub`, `edge.epub` y `notes.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
 
 La biblioteca (M2, cerrada) indexa `~/Libros` en **1.57 s** la primera vez y
@@ -237,8 +237,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 ## Limitaciones conocidas
 
 - CSS del libro ignorado por diseño (los temas mandan).
-- Índice con anclas y enlaces internos: el salto intra/intercapítulo y los
-  enlaces `<a href="#…">` funcionan; los enlaces externos todavía se ignoran.
+- Índice con anclas y enlaces internos: los enlaces internos abren una vista
+  previa con “Ir al texto” y “Volver”; los enlaces externos todavía se ignoran.
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - La búsqueda dentro del libro es substring sin regex/stemming y resalta solo la
   coincidencia activa. La selección de destacados cruza párrafos del mismo
@@ -294,6 +294,7 @@ cargo run --release -- --shot out.png --screen library --library-path /tmp/libra
 cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del lector
 cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un ancla
 cargo run --release -- --shot out.png --selection libro.epub    # selección de dos párrafos
+cargo run --release -- --shot out.png --link-preview libro.epub # vista previa de una nota
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```
 

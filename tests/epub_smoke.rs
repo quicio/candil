@@ -114,6 +114,53 @@ fn portada_declarada_y_fallback_de_imagen() {
 }
 
 #[test]
+fn notas_resuelven_anclas_y_texto() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/notes.epub");
+    let mut book = Book::open(path).expect("notes.epub debe abrir");
+    assert_eq!(book.chapter_count(), 2);
+    assert_eq!(
+        book.link_target("#fn1", 0),
+        Some((0, Some("fn1".to_string())))
+    );
+    assert_eq!(
+        book.link_target("notas.xhtml#fn2", 0),
+        Some((1, Some("fn2".to_string())))
+    );
+    assert!(book.link_target("https://example.com", 0).is_none());
+
+    let blocks = book.chapter_blocks(0);
+    let links: Vec<(String, String)> = blocks
+        .iter()
+        .flat_map(|block| {
+            block.runs.iter().filter_map(|run| {
+                run.href
+                    .as_ref()
+                    .map(|href| (run.text.trim().to_string(), href.clone()))
+            })
+        })
+        .collect();
+    assert_eq!(
+        links,
+        vec![
+            ("1".to_string(), "#fn1".to_string()),
+            ("2".to_string(), "notas.xhtml#fn2".to_string())
+        ]
+    );
+    let note = blocks
+        .iter()
+        .find(|block| block.anchor.as_deref() == Some("fn1"))
+        .expect("nota en el mismo capítulo");
+    assert!(note.text().contains("Nota al pie en el mismo capítulo"));
+
+    let notes = book.chapter_blocks(1);
+    let note = notes
+        .iter()
+        .find(|block| block.anchor.as_deref() == Some("fn2"))
+        .expect("nota en otro documento");
+    assert!(note.text().contains("Nota dos"));
+}
+
+#[test]
 fn busqueda_encuentra_con_acentos_y_mapea_al_bloque_real() {
     let mut book = abrir();
     let index = candil::search::build(&mut book);

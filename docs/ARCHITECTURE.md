@@ -153,6 +153,24 @@ un destacado). La barra flotante y el editor de nota comparten `active_color`.
 `H`/`N`/`D` son los atajos; `Esc` sale de la selección o cierra la ventana
 activa.
 
+## Navegación interna y notas al pie
+
+`Book::link_target` resuelve un `href` interno a `(spine, ancla)`; los enlaces
+externos siguen devolviendo `None`. Al hacer clic en un enlace interno, el lector
+no navega: guarda un `LinkClick` y abre `open_link_preview`. Para el mismo
+capítulo lee el texto de `self.blocks`; para otro documento llama a
+`chapter_blocks(spine)` y descarta el `Vec` después de extraer la nota.
+`preview_text` toma el bloque del ancla, salta bloques vacíos y encabezados, y
+trunca a 600 caracteres.
+
+La vista previa es un `egui::Area` cerca del clic con “Ir al texto” y “Volver”;
+se cierra con Escape, con el botón o al desplazarse. Solo “Ir al texto” llama a
+`jump_to`. Antes de saltar, `jump_from_preview` guarda `current_progress()` (la
+misma lógica de `top_block` + `block_fraction` que `persist`) en `back_spot`; el
+botón flotante “← Volver al texto” restaura el `Progress` con `load_chapter` o
+`pending_restore`. Cualquier navegación manual limpia `back_spot` para no ofrecer
+un regreso engañoso. Decisión y alternativas en ADR-0015.
+
 ## Búsqueda
 
 `search.rs` construye un `SearchIndex` la primera vez que se busca en el libro:

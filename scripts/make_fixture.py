@@ -12,6 +12,9 @@
   6. `<pre>` con saltos e indentación.
   7. Tabla, `<dl>` y `<svg><image/></svg>`.
 
+`notes.epub` cubre las notas al pie:
+  8. Nota en el mismo capítulo y nota en otro documento del spine.
+
 Las entradas usan una fecha fija para que regenerar no cambie el binario.
 
 Uso:  python3 scripts/make_fixture.py
@@ -162,6 +165,66 @@ EDGE_C1 = """<?xml version="1.0" encoding="utf-8"?>
 </html>
 """
 
+NOTES_OUT = ROOT / "tests" / "fixtures" / "notes.epub"
+
+NOTES_OPF = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="id">urn:uuid:6d0f1f3e-fixture-0000-0000-000000000003</dc:identifier>
+    <dc:title>Notas de prueba</dc:title>
+    <dc:creator>Autora Ficticia</dc:creator>
+    <dc:language>es</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="c1" href="Text/cap1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="n1" href="Text/notas.xhtml" media-type="application/xhtml+xml"/>
+    <item id="img" href="Images/punto.png" media-type="image/png" properties="cover-image"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+    <itemref idref="n1"/>
+  </spine>
+</package>
+"""
+
+NOTES_NAV = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Índice</title></head>
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="Text/cap1.xhtml">Con notas</a></li>
+        <li><a href="Text/notas.xhtml">Notas</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>
+"""
+
+NOTES_CAP1 = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Con notas</title></head>
+  <body>
+    <h1>Con notas</h1>
+    <p>Una idea con una nota al pie.<a epub:type="noteref" href="#fn1">1</a> Y el texto sigue.</p>
+    <p>Otra idea con una nota en otro documento.<a epub:type="noteref" href="notas.xhtml#fn2">2</a></p>
+    <hr/>
+    <p id="fn1">1. Nota al pie en el mismo capítulo.</p>
+  </body>
+</html>
+"""
+
+NOTES_NOTES = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>Notas</title></head>
+  <body>
+    <h1>Notas</h1>
+    <p id="fn2">2. Nota dos, en un documento aparte.</p>
+  </body>
+</html>
+"""
+
 def png_2x2() -> bytes:
     """PNG RGBA 2x2 negro, generado con zlib para no depender de Pillow."""
 
@@ -217,12 +280,25 @@ def write_edge() -> None:
         add(z, "OEBPS/Images/punto.png", PNG)
 
 
+def write_notes() -> None:
+    with zipfile.ZipFile(NOTES_OUT, "w") as z:
+        add(z, "mimetype", "application/epub+zip", stored=True)
+        add(z, "META-INF/container.xml", CONTAINER)
+        add(z, "OEBPS/content.opf", NOTES_OPF)
+        add(z, "OEBPS/nav.xhtml", NOTES_NAV)
+        add(z, "OEBPS/Text/cap1.xhtml", NOTES_CAP1)
+        add(z, "OEBPS/Text/notas.xhtml", NOTES_NOTES)
+        add(z, "OEBPS/Images/punto.png", PNG)
+
+
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     write_mini()
     write_edge()
+    write_notes()
     print(f"escrito {OUT} ({OUT.stat().st_size} bytes)")
     print(f"escrito {EDGE_OUT} ({EDGE_OUT.stat().st_size} bytes)")
+    print(f"escrito {NOTES_OUT} ({NOTES_OUT.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

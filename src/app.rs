@@ -162,6 +162,26 @@ struct Segment {
     end: usize,
 }
 
+/// Enlace interno clickeado, con la posición para anclar la vista previa.
+#[derive(Clone, Debug)]
+struct LinkClick {
+    spine: usize,
+    anchor: Option<String>,
+    rect: egui::Rect,
+    label: String,
+}
+
+/// Vista previa de una nota o enlace interno. No navega hasta confirmar.
+#[derive(Clone, Debug)]
+struct LinkPreview {
+    spine: usize,
+    anchor: Option<String>,
+    chapter_title: String,
+    text: String,
+    rect: egui::Rect,
+    is_note: bool,
+}
+
 /// Geometría de un bloque de texto dibujado en el frame actual. Sirve para
 /// mapear el puntero a un bloque y offset cuando la selección sale del
 /// `TextEdit` que tiene el foco.
@@ -444,6 +464,8 @@ pub struct Lector {
     pending_block_jump: Option<(usize, String)>,
     annotations: Annotations,
     selection: Option<Selection>,
+    link_preview: Option<LinkPreview>,
+    back_spot: Option<Progress>,
     note: Option<NoteEditor>,
     epub_editor: Option<EpubEditor>,
     show_annotations: bool,
@@ -517,6 +539,8 @@ pub struct DevOpts {
     pub confirm_delete: bool,
     /// Muestra la barra de selección con una selección sintética (capturas).
     pub selection: bool,
+    /// Abre una vista previa de enlace interno (capturas).
+    pub link_preview: bool,
     /// Abre la ventana de atajos (capturas).
     pub help: bool,
     /// Abre el editor de metadatos/portada del primer libro (capturas).
@@ -661,6 +685,8 @@ impl Lector {
             pending_block_jump: None,
             annotations,
             selection: None,
+            link_preview: None,
+            back_spot: None,
             note: None,
             epub_editor: None,
             show_annotations: false,
@@ -754,6 +780,9 @@ impl Lector {
             }
             if app.dev.selection {
                 app.seed_dev_selection();
+            }
+            if app.dev.link_preview {
+                app.seed_dev_link_preview();
             }
         }
         app
@@ -957,6 +986,8 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.reader_focus = None;
+        self.link_preview = None;
+        self.back_spot = None;
         self.scroll = 0.0;
         self.delta = 0.0;
         self.dirty = true;
@@ -988,6 +1019,214 @@ impl Lector {
         }
         self.current_anchor = None;
         self.delta = 0.0;
+        self.back_spot = None;
+    }
+
+    /// Abre la vista previa de un enlace interno sin cambiar de posición.
+    fn open_link_preview(&mut self, click: LinkClick) {
+        let is_note = looks_like_note_marker(&click.label);
+        let (text, chapter_title) = if click.spine == self.chapter {
+            let text = preview_text(&self.blocks, click.anchor.as_deref(), 600);
+            let title = self
+                .book
+                .as_mut()
+                .map(|book| book.chapter_title(click.spine))
+                .unwrap_or_default();
+            (text, title)
+        } else {
+            let blocks = self
+                .book
+                .as_mut()
+                .map(|book| book.chapter_blocks(click.spine))
+                .unwrap_or_default();
+            let text = preview_text(&blocks, click.anchor.as_deref(), 600);
+            let title = self
+                .book
+                .as_mut()
+                .map(|book| book.chapter_title(click.spine))
+                .unwrap_or_default();
+            (text, title)
+        };
+        self.link_preview = Some(LinkPreview {
+            spine: click.spine,
+            anchor: click.anchor,
+            chapter_title,
+            text,
+            rect: click.rect,
+            is_note,
+        });
+        self.selection = None;
+        self.reader_focus = None;
+    }
+
+    /// Salta al destino de la vista previa y guarda el punto de regreso.
+    fn jump_from_preview(&mut self, preview: &LinkPreview) {
+        let spot = self.current_progress();
+        self.link_preview = None;
+        self.jump_to(preview.spine, preview.anchor.clone());
+        self.back_spot = spot;
+    }
+
+    /// Restaura el capítulo, bloque y fracción anteriores.
+    fn go_back(&mut self, ctx: &egui::Context) {
+        let Some(spot) = self.back_spot.take() else {
+            return;
+        };
+        self.link_preview = None;
+        self.selection = None;
+        self.note = None;
+        if spot.chapter != self.chapter {
+            self.load_chapter(spot.chapter, Some(spot));
+        } else {
+            self.pending_restore = Some(spot);
+        }
+        ctx.request_repaint();
+    }
+
+    fn link_preview_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(preview) = self.link_preview.clone() else {
+            return;
+        };
+        let screen = ctx.screen_rect();
+        let width = 380.0f32.min((screen.width() - 24.0).max(240.0));
+        let estimated_height = 200.0;
+        let mut pos = egui::pos2(preview.rect.left(), preview.rect.bottom() + 10.0);
+        if pos.y + estimated_height > screen.bottom() - 8.0 {
+            pos.y = (preview.rect.top() - estimated_height - 10.0).max(screen.top() + 8.0);
+        }
+        let max_x = (screen.right() - width - 12.0).max(screen.left() + 12.0);
+        pos.x = pos.x.clamp(screen.left() + 12.0, max_x);
+
+        let mut jump = false;
+        let mut close = false;
+        egui::Area::new(egui::Id::new("link-preview"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(th.panel)
+                    .stroke(egui::Stroke::new(1.0, th.border))
+                    .corner_radius(theme::radius::MD)
+                    .inner_margin(egui::Margin::symmetric(12, 10))
+                    .show(ui, |ui| {
+                        ui.set_width(width - 24.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(if preview.is_note {
+                                    "Nota al pie"
+                                } else {
+                                    "Enlace interno"
+                                })
+                                .size(theme::text::LABEL)
+                                .strong()
+                                .color(th.fg),
+                            );
+                            if !preview.chapter_title.is_empty() {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "· {}",
+                                        truncate(&preview.chapter_title, 34)
+                                    ))
+                                    .size(theme::text::META)
+                                    .color(th.dim),
+                                );
+                            }
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                                    .on_hover_text("Volver")
+                                    .clicked()
+                                {
+                                    close = true;
+                                }
+                            });
+                        });
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .max_height(180.0)
+                            .show(ui, |ui| {
+                                let empty = preview.text.is_empty();
+                                let text = if empty {
+                                    "El destino no tiene texto legible."
+                                } else {
+                                    preview.text.as_str()
+                                };
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(text)
+                                            .size(theme::text::BODY)
+                                            .color(if empty { th.dim } else { th.fg }),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                        ui.add_space(theme::space::SM);
+                        ui.horizontal(|ui| {
+                            if widgets::button(ui, th, "Ir al texto", widgets::ButtonKind::Primary)
+                                .clicked()
+                            {
+                                jump = true;
+                            }
+                            if widgets::button(ui, th, "Volver", widgets::ButtonKind::Secondary)
+                                .clicked()
+                            {
+                                close = true;
+                            }
+                        });
+                    });
+            });
+
+        if jump {
+            self.jump_from_preview(&preview);
+            ctx.request_repaint();
+        } else if close {
+            self.link_preview = None;
+        }
+    }
+
+    fn back_to_text(&mut self, ctx: &egui::Context, th: &Theme) {
+        if self.back_spot.is_none() {
+            return;
+        }
+        let mut back = false;
+        egui::Area::new(egui::Id::new("back-to-text"))
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(24.0, -30.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if widgets::button(ui, th, "← Volver al texto", widgets::ButtonKind::Secondary)
+                    .on_hover_text("Volver al punto anterior")
+                    .clicked()
+                {
+                    back = true;
+                }
+            });
+        if back {
+            self.go_back(ctx);
+        }
+    }
+
+    /// Capturas: abre la vista previa del primer enlace interno del capítulo.
+    fn seed_dev_link_preview(&mut self) {
+        let Some(book) = self.book.as_ref() else {
+            return;
+        };
+        let Some((href, label)) = self.blocks.iter().find_map(|block| {
+            block.runs.iter().find_map(|run| {
+                run.href
+                    .as_ref()
+                    .map(|href| (href.clone(), run.text.trim().to_string()))
+            })
+        }) else {
+            return;
+        };
+        let Some((spine, anchor)) = book.link_target(&href, self.chapter) else {
+            return;
+        };
+        self.open_link_preview(LinkClick {
+            spine,
+            anchor,
+            rect: egui::Rect::from_min_size(egui::pos2(340.0, 260.0), egui::vec2(1.0, 1.0)),
+            label,
+        });
     }
 
     /// Capturas: siembra una selección de dos bloques en el capítulo actual.
@@ -1056,25 +1295,33 @@ impl Lector {
         (((self.chapter as f32) + within) / n as f32).clamp(0.0, 1.0)
     }
 
+    /// Posición actual como `Progress`, con la misma lógica que la persistencia.
+    fn current_progress(&self) -> Option<Progress> {
+        self.book.as_ref()?;
+        let ratio = if self.max_scroll > 1.0 {
+            (self.scroll / self.max_scroll).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let anchor = top_block(self.scroll, &self.block_positions);
+        let anchor_ratio = anchor.map(|index| {
+            block_fraction(self.scroll, index, &self.block_positions, self.max_scroll)
+        });
+        Some(Progress {
+            chapter: self.chapter,
+            ratio,
+            anchor,
+            anchor_ratio,
+            legacy_offset: None,
+        })
+    }
+
     fn persist(&mut self) {
-        if let Some(book) = &self.book {
-            let key = book.path.to_string_lossy().to_string();
-            let ratio = if self.max_scroll > 1.0 {
-                (self.scroll / self.max_scroll).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let anchor = top_block(self.scroll, &self.block_positions);
-            let anchor_ratio = anchor.map(|index| {
-                block_fraction(self.scroll, index, &self.block_positions, self.max_scroll)
-            });
-            let progress = Progress {
-                chapter: self.chapter,
-                ratio,
-                anchor,
-                anchor_ratio,
-                legacy_offset: None,
-            };
+        let key = self
+            .book
+            .as_ref()
+            .map(|book| book.path.to_string_lossy().to_string());
+        if let (Some(key), Some(progress)) = (key, self.current_progress()) {
             if let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) {
                 entry.progress = progress;
                 entry.last_opened = Some(crate::library::now());
@@ -1343,6 +1590,7 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.reader_focus = None;
+        self.back_spot = None;
     }
 
     fn open_consulta(&mut self, ctx: &egui::Context) {
@@ -2914,6 +3162,7 @@ impl Lector {
         self.show_config = false;
         self.selection = None;
         self.note = None;
+        self.back_spot = None;
         ctx.request_repaint();
     }
 
@@ -3031,6 +3280,7 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.reader_focus = None;
+        self.back_spot = None;
         ctx.memory_mut(|memory| memory.surrender_focus(egui::Id::new("book-search")));
         ctx.request_repaint();
     }
@@ -3357,7 +3607,9 @@ impl Lector {
         }
 
         if key_esc {
-            if self.show_help {
+            if self.link_preview.is_some() {
+                self.link_preview = None;
+            } else if self.show_help {
                 self.show_help = false;
             } else if self.note.is_some() {
                 self.note = None;
@@ -5743,7 +5995,7 @@ impl Lector {
 
         let mut colw = 660.0;
         let s = self.effective_settings();
-        let mut link_target: Option<(usize, Option<String>)> = None;
+        let mut link_click: Option<LinkClick> = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
@@ -5813,7 +6065,7 @@ impl Lector {
                                         book,
                                         blocks.as_slice(),
                                         current_chapter,
-                                        &mut link_target,
+                                        &mut link_click,
                                         selection,
                                         &mut extend_to,
                                         &mut geoms,
@@ -5944,13 +6196,18 @@ impl Lector {
                 }
             });
 
-        if (self.scroll - offset).abs() > 0.5 && !self.dev.selection {
-            self.selection = None;
-            self.reader_focus = None;
+        if (self.scroll - offset).abs() > 0.5 {
+            if !self.dev.selection {
+                self.selection = None;
+                self.reader_focus = None;
+            }
+            if !self.dev.link_preview {
+                self.link_preview = None;
+            }
         }
 
-        if let Some((spine, anchor)) = link_target {
-            self.jump_to(spine, anchor);
+        if let Some(click) = link_click {
+            self.open_link_preview(click);
             ctx.request_repaint();
         }
 
@@ -5961,6 +6218,8 @@ impl Lector {
         self.search_window(ctx, th);
         self.goto_window(ctx, th);
         self.selection_bar(ctx, th);
+        self.link_preview_window(ctx, th);
+        self.back_to_text(ctx, th);
         self.annotations_window(ctx, th);
         self.confirm_delete_annotation_window(ctx, th);
         self.consulta_ui(ctx, th);
@@ -6598,6 +6857,50 @@ fn quote_inline(quote: &str) -> String {
     quote.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// ¿El texto del enlace parece un marcador de nota (`1`, `iv`, `[2]`)?
+fn looks_like_note_marker(label: &str) -> bool {
+    let label = label.trim();
+    if label.is_empty() || label.chars().count() > 6 {
+        return false;
+    }
+    label.chars().all(|ch| {
+        ch.is_ascii_digit()
+            || matches!(
+                ch,
+                'i' | 'v' | 'x' | 'I' | 'V' | 'X' | '[' | ']' | '*' | '.' | '-'
+            )
+    })
+}
+
+/// Texto de la nota o del bloque destino, para la vista previa.
+fn preview_text(blocks: &[Block], anchor: Option<&str>, max_chars: usize) -> String {
+    let start = anchor
+        .and_then(|anchor| {
+            blocks
+                .iter()
+                .position(|block| block.anchor.as_deref() == Some(anchor))
+        })
+        .or_else(|| {
+            blocks
+                .iter()
+                .position(|block| !block.text().trim().is_empty())
+        })
+        .unwrap_or(0);
+    let mut texts = blocks.iter().skip(start).filter_map(|block| {
+        let text = block.text().trim().to_string();
+        (!text.is_empty()).then_some((block.kind, text))
+    });
+    let Some(first) = texts.next() else {
+        return String::new();
+    };
+    let text = if matches!(first.0, Kind::Heading(_)) {
+        texts.next().map(|(_, text)| text).unwrap_or(first.1)
+    } else {
+        first.1
+    };
+    truncate(&text, max_chars)
+}
+
 fn collate(s: &str) -> String {
     s.to_lowercase()
         .chars()
@@ -6706,7 +7009,7 @@ fn add_selectable_text(
     job: LayoutJob,
     args: &TextArgs<'_>,
     blocks: &[Block],
-    link_target: &mut Option<(usize, Option<String>)>,
+    link_click: &mut Option<LinkClick>,
     selection: &mut Option<Selection>,
     extend_to: &mut Option<Anchor>,
     geoms: &mut Vec<BlockGeom>,
@@ -6841,10 +7144,22 @@ fn add_selectable_text(
     if !shift_extend && !args.links.is_empty() && response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
             let index = output.galley.cursor_from_pos(pos - output.galley_pos).index;
-            if let Some((_, href)) = args.links.iter().find(|(range, _)| range.contains(&index)) {
+            if let Some((range, href)) = args.links.iter().find(|(range, _)| range.contains(&index))
+            {
                 if let Some(book) = args.book {
-                    if let Some(target) = book.link_target(href, args.chapter) {
-                        *link_target = Some(target);
+                    if let Some((spine, anchor)) = book.link_target(href, args.chapter) {
+                        let label = args
+                            .full_text
+                            .chars()
+                            .skip(range.start)
+                            .take(range.end.saturating_sub(range.start))
+                            .collect::<String>();
+                        *link_click = Some(LinkClick {
+                            spine,
+                            anchor,
+                            rect: egui::Rect::from_min_size(pos, egui::vec2(1.0, 1.0)),
+                            label,
+                        });
                     }
                 }
             }
@@ -7119,7 +7434,7 @@ fn draw_block(
     book: &mut Option<Book>,
     blocks: &[Block],
     chapter: usize,
-    link_target: &mut Option<(usize, Option<String>)>,
+    link_click: &mut Option<LinkClick>,
     selection: &mut Option<Selection>,
     extend_to: &mut Option<Anchor>,
     geoms: &mut Vec<BlockGeom>,
@@ -7298,7 +7613,7 @@ fn draw_block(
                     j2,
                     &args,
                     blocks,
-                    link_target,
+                    link_click,
                     selection,
                     extend_to,
                     geoms,
@@ -7326,7 +7641,7 @@ fn draw_block(
                 job,
                 &args,
                 blocks,
-                link_target,
+                link_click,
                 selection,
                 extend_to,
                 geoms,
@@ -7651,6 +7966,43 @@ mod tests {
     #[test]
     fn quote_inline_colapsa_espacios_y_saltos() {
         assert_eq!(quote_inline("uno\n  dos\t tres"), "uno dos tres");
+    }
+
+    #[test]
+    fn preview_text_usa_el_ancla_y_salta_bloques_vacios() {
+        let mut blocks = vec![paragraph(""), paragraph("Nota uno"), paragraph("Otra nota")];
+        blocks[0].anchor = Some("fn1".into());
+        assert_eq!(preview_text(&blocks, Some("fn1"), 600), "Nota uno");
+        assert_eq!(preview_text(&blocks, Some("no-existe"), 600), "Nota uno");
+        assert_eq!(preview_text(&blocks, None, 600), "Nota uno");
+        assert_eq!(preview_text(&[], None, 600), "");
+    }
+
+    #[test]
+    fn preview_text_salta_encabezado_y_trunca() {
+        let heading = Block {
+            kind: Kind::Heading(1),
+            runs: vec![crate::xhtml::Run {
+                text: "Notas".into(),
+                ..Default::default()
+            }],
+            src: None,
+            alt: String::new(),
+            anchor: Some("notas".into()),
+        };
+        let blocks = vec![heading, paragraph("Una nota breve")];
+        assert_eq!(preview_text(&blocks, Some("notas"), 600), "Una nota breve");
+        assert_eq!(preview_text(&blocks, Some("notas"), 4), "Una…");
+    }
+
+    #[test]
+    fn detecta_marcadores_de_nota() {
+        for label in ["1", "12", "iv", "IV", "[2]", "*"] {
+            assert!(looks_like_note_marker(label), "{label}");
+        }
+        for label in ["", "nota", "ver", "1234567"] {
+            assert!(!looks_like_note_marker(label), "{label}");
+        }
     }
 
     #[test]

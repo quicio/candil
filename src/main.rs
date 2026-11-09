@@ -70,6 +70,10 @@ fn main() -> eframe::Result<()> {
                 dev.selection = true;
                 i += 1;
             }
+            "--link-preview" => {
+                dev.link_preview = true;
+                i += 1;
+            }
             "--help" => {
                 dev.help = true;
                 i += 1;

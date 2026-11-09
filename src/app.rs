@@ -543,6 +543,8 @@ pub struct Lector {
     applied_theme: Option<usize>,
     dirty: bool,
     last_save: Instant,
+    was_focused: bool,
+    last_auto_scan: Option<Instant>,
     dev: DevOpts,
     shot_frames: u32,
     shot_requested: bool,
@@ -772,6 +774,8 @@ impl Lector {
             applied_theme: Some(theme_idx),
             dirty: false,
             last_save: Instant::now(),
+            was_focused: true,
+            last_auto_scan: None,
             dev,
             shot_frames: 0,
             shot_requested: false,
@@ -4067,6 +4071,19 @@ impl Lector {
         });
     }
 
+    fn refresh_library_on_focus(&mut self, ctx: &egui::Context) {
+        if self.scanning || self.dev.shot.is_some() || self.library.folders.is_empty() {
+            return;
+        }
+        if let Some(last) = self.last_auto_scan {
+            if last.elapsed() < Duration::from_secs(30) {
+                return;
+            }
+        }
+        self.last_auto_scan = Some(Instant::now());
+        self.start_scan(None, ctx);
+    }
+
     fn start_scan(&mut self, folder: Option<PathBuf>, ctx: &egui::Context) {
         if self.scanning {
             return;
@@ -4149,6 +4166,13 @@ impl Lector {
             .join("\n");
         let folders = self.library.folders.clone();
         let has_books = !self.library.books.is_empty();
+        let recent = self
+            .library
+            .books
+            .iter()
+            .filter(|book| !book.missing && book.error.is_none() && book.last_opened.is_some())
+            .max_by_key(|book| book.last_opened.unwrap_or(0))
+            .map(|book| (book.path.clone(), book.title.clone(), book.author.clone()));
         let show_second_row = has_books || !folders.is_empty();
         let wide = ctx.screen_rect().width() >= 820.0;
 
@@ -4211,7 +4235,17 @@ impl Lector {
                     ui.add_space(4.0);
 
                     let compact = ui.available_width() < 520.0;
-                    let reserve = if compact { 130.0 } else { 208.0 };
+                    let show_continue = recent.is_some() && ui.available_width() >= 380.0;
+                    let continue_reserve = if show_continue {
+                        if compact {
+                            92.0
+                        } else {
+                            158.0
+                        }
+                    } else {
+                        0.0
+                    };
+                    let reserve = if compact { 130.0 } else { 208.0 } + continue_reserve;
                     let search_w = (ui.available_width() - reserve).max(150.0);
                     let search = egui::Frame::new()
                         .fill(th.bg)
@@ -4239,6 +4273,22 @@ impl Lector {
                         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
                     }) {
                         search.inner.request_focus();
+                    }
+
+                    if let Some((path, title, author)) = &recent {
+                        if show_continue {
+                            let label = if compact {
+                                "Continuar"
+                            } else {
+                                "Continuar leyendo"
+                            };
+                            if widgets::button(ui, th, label, widgets::ButtonKind::Secondary)
+                                .on_hover_text(format!("{title} · {author}"))
+                                .clicked()
+                            {
+                                open_path = Some(PathBuf::from(path));
+                            }
+                        }
                     }
 
                     if !self.scanning
@@ -6927,6 +6977,11 @@ impl eframe::App for Lector {
             self.start_scan(None, ctx);
         }
         self.handle_input(ctx);
+        let focused = ctx.input(|i| i.focused);
+        if self.screen == Screen::Library && focused && !self.was_focused {
+            self.refresh_library_on_focus(ctx);
+        }
+        self.was_focused = focused;
         self.poll_scan(ctx);
         self.poll_consulta();
         self.poll_update(ctx);

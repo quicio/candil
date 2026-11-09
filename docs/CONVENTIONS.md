@@ -77,7 +77,7 @@ supersede con uno nuevo (`supersedes: 0003`).
 
 - Dependencia nueva = ADR obligatorio (peso, licencia, mantenimiento, alternativa
   stdlib o código propio).
-- Binario `dist` objetivo: < 8 MB. Hoy 7.284.288 B (medido 2026-11-09).
+- Binario `dist` objetivo: < 8 MB. Hoy 7.284.320 B (medido 2026-11-09).
 - Arranque objetivo: < 300 ms en frío.
 - Disco: no acumular `target/` de varios perfiles (ver HANDOFF; el disco de la
   máquina trabaja al límite).

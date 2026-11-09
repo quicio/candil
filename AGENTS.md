@@ -69,6 +69,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
   publica. Si falla, relanzá `gh workflow run release.yml -f tag=vX.Y.Z`
   (ADR-0017). macOS publica `Candil.app.zip` ad-hoc; no prometas doble clic sin
   Gatekeeper ni notarización.
+- La biblioteca se refresca al recuperar el foco (debounce 30 s); no agregues un
+  watcher del sistema sin ADR (ADR-0018). “Continuar leyendo” usa `last_opened`,
+  no el orden visible de la grilla.
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

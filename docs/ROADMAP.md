@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # Roadmap
 
-Doce milestones. Cada uno tiene criterio de salida **verificable**, no una
+Trece milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -25,6 +25,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M10 | Lectura de estudio II | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Previsualizar una nota o enlace interno sin salir del texto y volver al punto exacto |
 | M11 | Actualizaciones | **Hecho** | [app-updates](../openspec/specs/app-updates/spec.md) | Comprobar una release a pedido, descargar el binario correcto y verificar SHA-256 sin autoinstalar |
 | M12 | Entrega automática | **Hecho** | [RELEASING](../docs/RELEASING.md), [ADR-0017](../docs/adr/0017-entrega-automatica.md) | Release automático al pasar CI, `.app.zip` ad-hoc y cask de Homebrew |
+| M13 | Biblioteca viva I | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Retomar el último libro con un clic y refrescar la biblioteca al recuperar el foco |
 
 ## M1 — Lector (terminado)
 
@@ -260,6 +261,21 @@ Cerrado el 2026-11-09:
 - ADR-0017 y `docs/RELEASING.md`; el flujo manual queda como fallback.
 - Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.288 B**.
+
+## M13 — Biblioteca viva I (terminado)
+
+Cerrado el 2026-11-09:
+
+- **Continuar leyendo** en la cabecera: abre el libro con mayor `last_opened`
+  válido, con etiqueta compacta y tooltip.
+- **Refresco al recuperar el foco**: escaneo incremental en un hilo, con debounce
+  de 30 s y guardas de escaneo/carpetas/captura.
+- Capturas de biblioteca con un libro abierto y ADR-0018.
+- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+  **7.284.320 B**.
+
+Queda para la siguiente fase de biblioteca: series/colecciones, detección de
+duplicados, virtualización de la grilla y búsqueda full-text de la biblioteca.
 
 ## Consolidación UX/UI (2026-11-08)
 

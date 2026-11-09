@@ -64,12 +64,14 @@ PY
 
 # El libro de lectura arranca en Chapter I, tema Noche. No toca datos reales.
 python3 - "$DATA_DIR/library.json" "$PP" <<'PY'
-import json, sys
+import json, sys, time
 path, pp = sys.argv[1], sys.argv[2]
+now = int(time.time())
 data = json.load(open(path))
 for book in data['books']:
     if book['path'] == pp:
-        book['progress'] = {'chapter': 1, 'ratio': 0.0, 'anchor': None}
+        book['progress'] = {'chapter': 1, 'ratio': 0.12, 'anchor': 0, 'anchor_ratio': 0.0}
+        book['last_opened'] = now - 300
         book['settings'] = {
             'theme': 0, 'font_size': 19.0, 'line_height': 1.55,
             'column_width': 660.0, 'paragraph_space': 0.75,

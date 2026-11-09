@@ -34,7 +34,9 @@ agrega selección y anotación entre párrafos, con migración v2 de
 internos y notas al pie, con “Ir al texto” y un regreso al punto exacto de
 lectura. M11 agrega actualización asistida desde Configuración: consulta manual
 de GitHub, descarga verificada y ningún reemplazo automático. M12 automatiza la
-entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew.
+entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew. M13
+agrega “Continuar leyendo” y refresco incremental de la biblioteca al recuperar
+el foco.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -53,7 +55,8 @@ origen.
 `interaction-accessibility`, `ai-providers`, `ai-credentials`, `epub-editing` y
 `app-updates`) viven en `openspec/specs/`; los cambios `consolidar-ux-ui`,
 `proveedores-ia-clave`, `editar-metadata-epub`, `seleccion-entre-parrafos`,
-`notas-al-pie-y-volver` y `actualizaciones-desde-la-app` quedaron archivados en
+`notas-al-pie-y-volver`, `actualizaciones-desde-la-app` y
+`biblioteca-continuar-leyendo` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -80,7 +83,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 126 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.284.288 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.284.320 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
 
@@ -280,6 +283,9 @@ flotante tapando texto) solo aparecieron así.
 25. **La entrega es automática**: no bumpees `Cargo.toml` ni crees tags a mano;
     push a `main` y `auto-release` publica. Si falla, relanzá `release.yml` con
     el tag existente (ADR-0017).
+26. **La biblioteca se refresca al recuperar el foco**, con debounce de 30 s y
+    sin bloquear la UI; no es un watcher en tiempo real (ADR-0018). “Continuar
+    leyendo” usa el mayor `last_opened` válido, no el orden de la grilla.
 
 ## Definición de terminado (por tarea)
 
@@ -301,7 +307,8 @@ flotante tapando texto) solo aparecieron así.
   cientos, no de millones).
 - No copiar ni mover los libros al directorio de datos: la biblioteca indexa
   rutas (ADR-0007).
-- No agregar un watcher del sistema en M2; se refresca a mano.
+- No agregar un watcher del sistema; la biblioteca se refresca al recuperar el
+  foco o a mano (ADR-0018).
 - No implementar paginado por columnas: la decisión de M1 fue scroll continuo.
 - No rasterizar SVG vectorial ni agregar `resvg` sin ADR (solo se soporta
   `<svg><image>` raster, ver ADR-0009).

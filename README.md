@@ -11,12 +11,13 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
-previa y regreso, índice global y export Markdown—, búsqueda dentro del libro,
+previa y regreso, índice global y export Markdown—, **Continuar leyendo** y
+refresco de la biblioteca al recuperar el foco, búsqueda dentro del libro,
 salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
 multi-proveedor, edición de metadatos/portada del EPUB y actualizaciones
 asistidas desde Configuración.
 
-Binario final (`dist`): **6.9 MiB** (7.284.288 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.284.320 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -275,7 +276,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   capítulo (arrastrando o con Mayúsculas + clic), pero no capítulos.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
-- La biblioteca no tiene watcher: se refresca a mano.
+- La biblioteca no tiene watcher en tiempo real: se refresca al recuperar el foco
+  (con debounce) o a mano desde “Refrescar”.
 - Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
   borrar una portada existente ni editar series/editorial/fecha.
 - La actualización desde la app consulta GitHub a pedido, descarga el binario

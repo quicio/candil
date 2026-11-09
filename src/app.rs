@@ -1794,6 +1794,7 @@ impl Lector {
                         ("N", "Nota sobre la selección"),
                         ("D", "Destacados y notas"),
                         ("K", "Consultar selección"),
+                        ("⇧K", "Traducir selección"),
                     ],
                 ),
                 (
@@ -3925,6 +3926,12 @@ impl Lector {
 
         if key_k && self.book.is_some() && self.note.is_none() && self.selection.is_some() {
             self.open_consulta(ctx);
+            if shift && self.show_consulta {
+                self.consulta_tab = ConsultaTab::Traduccion;
+                self.consulta_result = None;
+                self.consulta_error = None;
+                self.run_consulta(ConsultaKind::Traduccion);
+            }
         }
 
         if key_g && !typing && self.book.is_some() && self.note.is_none() {
@@ -5980,7 +5987,9 @@ impl Lector {
                                 note = true;
                             }
                             if widgets::button(ui, th, "Consultar", widgets::ButtonKind::Ghost)
-                                .on_hover_text("Diccionario, traducción o IA (K)")
+                                .on_hover_text(
+                                    "Diccionario, traducción o IA (K) · Mayúsculas + K traduce directo",
+                                )
                                 .clicked()
                             {
                                 consultar = true;

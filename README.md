@@ -128,6 +128,7 @@ En macOS, `scripts/make_app.sh` arma un `Candil.app` con el icono y el
 | `D` | destacados y notas (por libro o global) |
 | `G` | ir a porcentaje/capítulo |
 | `K` | consultar selección (diccionario/traducción/IA) |
+| `⇧K` | traducir la selección directo |
 | `⌘,` | configuración |
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
@@ -225,7 +226,8 @@ key en el llavero del sistema desde Configuración; `OPENCODE_API_KEY` sigue com
 override.
 
 M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar**
-(o `K`) para Wiktionary, MyMemory o un proveedor de IA. El panel tiene
+(o `K`) para Wiktionary, MyMemory o un proveedor de IA; `⇧K` abre Traducción y
+lanza la consulta directo. El panel tiene
 Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
 defecto. La API key se guarda en el **llavero del sistema** (Keychain/Secret
 Service/Credential Manager) y `OPENCODE_API_KEY` sigue como override. El historial se guarda

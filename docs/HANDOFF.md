@@ -58,8 +58,9 @@ origen.
 `consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
-`respaldo-y-filtro-notas` y `series-desde-opf` quedaron archivados en
-`openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
+`respaldo-y-filtro-notas`, `series-desde-opf` y `atajo-traducir-seleccion`
+quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
+archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,

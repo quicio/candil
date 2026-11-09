@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # Roadmap
 
-Trece milestones. Cada uno tiene criterio de salida **verificable**, no una
+Catorce milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -26,6 +26,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M11 | Actualizaciones | **Hecho** | [app-updates](../openspec/specs/app-updates/spec.md) | Comprobar una release a pedido, descargar el binario correcto y verificar SHA-256 sin autoinstalar |
 | M12 | Entrega automática | **Hecho** | [RELEASING](../docs/RELEASING.md), [ADR-0017](../docs/adr/0017-entrega-automatica.md) | Release automático al pasar CI, `.app.zip` ad-hoc y cask de Homebrew |
 | M13 | Biblioteca viva I | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Retomar el último libro con un clic y refrescar la biblioteca al recuperar el foco |
+| M14 | Respaldo y notas | **Hecho** | [data-backup](../openspec/specs/data-backup/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Exportar/importar los datos de usuario con validación y filtrar el panel de anotaciones |
 
 ## M1 — Lector (terminado)
 
@@ -164,7 +165,7 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
 - Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
-- Verificación: **126 unit (1 live ignorado) + 10 integración**, clippy limpio,
+- Verificación: **132 unit (1 live ignorado) + 10 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
@@ -182,7 +183,7 @@ Cerrado el 2026-11-08:
 - Selector, campo de clave, Guardar/Borrar con confirmación y estado en
   Configuración; el valor nunca se muestra ni se persiste en JSON/logs/URLs.
 - ADR-0012, tests de protocolos y captura de Configuración sin llavero.
-- Verificación: **126 unit (1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M8 — Editar EPUB (terminado)
@@ -196,7 +197,7 @@ Cerrado el 2026-11-09:
 - Actualización de biblioteca preservando progreso, ajustes, fechas y
   anotaciones.
 - ADR-0013, tests con `mini.epub` y `edge.epub`, captura del editor.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M9 — Lectura de estudio (terminado)
@@ -213,7 +214,7 @@ Cerrado el 2026-11-09:
 - Panel con vista previa de una línea, cantidad de párrafos y salto al inicio.
 - Consulta y nota sobre el texto completo; `rekey` conserva los rangos.
 - ADR-0014, tests de migración/rangos/reanclaje y captura de selección.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M10 — Lectura de estudio II (terminado)
@@ -226,7 +227,7 @@ Cerrado el 2026-11-09:
   y fracción de scroll.
 - Cierre por “Volver”, “×”, Escape o desplazamiento, sin navegar.
 - Fixture `notes.epub`, tests de anclas/extracción y ADR-0015.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.976 B**.
 
 ## M11 — Actualizaciones (terminado)
@@ -242,7 +243,7 @@ Cerrado el 2026-11-09:
   manual y no se reemplaza el binario ni el `.app`.
 - ADR-0016, tests de parseo/versiones/checksum y descarga contra un servidor
   local; captura con `--update-demo`.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.288 B**.
 
 ## M12 — Entrega automática (terminado)
@@ -259,7 +260,7 @@ Cerrado el 2026-11-09:
 - `Candil.app` se firma ad-hoc; cask `quicio/tap/candil` para instalar en macOS
   con Homebrew.
 - ADR-0017 y `docs/RELEASING.md`; el flujo manual queda como fallback.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.288 B**.
 
 ## M13 — Biblioteca viva I (terminado)
@@ -271,11 +272,26 @@ Cerrado el 2026-11-09:
 - **Refresco al recuperar el foco**: escaneo incremental en un hilo, con debounce
   de 30 s y guardas de escaneo/carpetas/captura.
 - Capturas de biblioteca con un libro abierto y ADR-0018.
-- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.320 B**.
 
 Queda para la siguiente fase de biblioteca: series/colecciones, detección de
 duplicados, virtualización de la grilla y búsqueda full-text de la biblioteca.
+
+## M14 — Respaldo y notas (terminado)
+
+Cerrado el 2026-11-09:
+
+- **Exportar datos…**: ZIP con `config.json`, `library.json`,
+  `annotations.json`, `consultas.json` y un manifiesto con checksums.
+- **Importar datos…**: valida manifiesto, lista blanca, SHA-256 y JSON; guarda
+  `pre-import-*.zip`, escribe atómico, recarga la app y rescanea.
+- El respaldo no incluye EPUB, portadas ni claves.
+- **Filtro en Destacados y notas** por cita, nota, libro o capítulo; la
+  exportación Markdown respeta el filtro.
+- ADR-0019, tests de respaldo/checksum/lista blanca y captura de Configuración.
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+  **7.367.584 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 
@@ -292,7 +308,7 @@ comportamiento funcional de M1–M6:
   destructivas.
 - Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
   en Papel 19 px.
-- Verificación: **126 unit (1 live ignorado) + 10 integración**, clippy limpio,
+- Verificación: **132 unit (1 live ignorado) + 10 integración**, clippy limpio,
   `scripts/check.sh` verde y `dist` **7.250.944 B**.
 
 ## Orden de ataque recomendado

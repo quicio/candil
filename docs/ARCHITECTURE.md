@@ -47,6 +47,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
 | `update.rs` | releases de GitHub, asset por plataforma, descarga y SHA-256 | no conoce egui ni reemplaza nada |
+| `backup.rs` | respaldo ZIP de los JSON de usuario: manifiesto, checksums e importación validada | no conoce egui |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
 | `config.rs` | settings globales, `consulta` y `Progress` con ratio/ancla/fracción; compatibilidad con el offset legado | no conoce el contenido |
@@ -189,6 +190,19 @@ no reinicia y no ejecuta el archivo; solo ofrece mostrarlo o abrir el release. L
 UI maneja un `UpdateState` (`Idle`, `Checking`, `UpToDate`, `Available`,
 `Downloading`, `Downloaded`, `Error`) y un `mpsc` para no bloquear. Decisión y
 alternativas en ADR-0016.
+
+## Respaldo de datos
+
+`backup.rs` empaqueta `config.json`, `library.json`, `annotations.json` y
+`consultas.json` en un ZIP con `candil-backup.json`: formato, versión, fecha y
+checksums SHA-256. No incluye EPUB, `covers/`, `backups/` ni claves.
+
+La importación solo acepta los cuatro nombres conocidos, limita cada archivo a
+64 MB, valida tamaño/checksum y parsea el JSON con su tipo antes de escribir. Si
+ya hay datos, exporta un `pre-import-*.zip`; luego reemplaza cada archivo con
+`store::write_atomic`. Después recarga `Config`, `Library`, `Annotations` y
+`ConsultaHistory`, vuelve a la biblioteca y lanza un escaneo. Decisión y
+alternativas en ADR-0019.
 
 ## Búsqueda
 

@@ -14,6 +14,7 @@ use eframe::egui::{
 
 use crate::ai;
 use crate::annotations::{Annotation, Annotations};
+use crate::backup;
 use crate::config::{self, Config, Progress, Settings};
 use crate::consulta::{
     self, AiPrompt, ConsultaEntry, ConsultaHistory, ConsultaKind, ConsultaRequest, ConsultaResponse,
@@ -496,10 +497,12 @@ pub struct Lector {
     back_spot: Option<Progress>,
     update_state: UpdateState,
     update_rx: Option<Receiver<UpdateMsg>>,
+    data_notice: Option<String>,
     note: Option<NoteEditor>,
     epub_editor: Option<EpubEditor>,
     show_annotations: bool,
     annotations_global: bool,
+    notes_query: String,
     confirm_delete_annotation: Option<u64>,
     active_color: u8,
     consulta_history: ConsultaHistory,
@@ -731,10 +734,12 @@ impl Lector {
             back_spot: None,
             update_state,
             update_rx: None,
+            data_notice: None,
             note: None,
             epub_editor: None,
             show_annotations: false,
             annotations_global: false,
+            notes_query: String::new(),
             active_color: 0,
             consulta_history,
             consulta_session: new_session_id(),
@@ -803,6 +808,10 @@ impl Lector {
         if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("config") {
             app.show_config = true;
             app.config_tab = ConfigTab::Biblioteca;
+        }
+        if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("advanced") {
+            app.show_config = true;
+            app.config_tab = ConfigTab::Avanzado;
         }
         if app.dev.update_demo {
             app.show_config = true;
@@ -1843,6 +1852,8 @@ impl Lector {
         let mut download_update: Option<update::ReleaseInfo> = None;
         let mut open_release: Option<String> = None;
         let mut reveal_download: Option<PathBuf> = None;
+        let mut export_data = false;
+        let mut import_data = false;
 
         let win_w = (ctx.screen_rect().width() - 40.0).clamp(560.0, widgets::PANEL_LG);
         let content_min = (win_w - 220.0).max(420.0);
@@ -2386,7 +2397,50 @@ impl Lector {
                                     if widgets::button(ui, th, "Abrir carpeta de datos", widgets::ButtonKind::Secondary).clicked() {
                                         open_data = true;
                                     }
-                                    ui.add_space(6.0);
+                                    ui.add_space(theme::space::SM);
+                                    ui.separator();
+                                    widgets::section_header(ui, th, "Datos");
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Respaldo local de biblioteca, progreso, anotaciones, \
+                                                 historial y ajustes. No incluye EPUB, portadas ni claves.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                    ui.label(
+                                        RichText::new(
+                                            "Importar reemplaza los datos actuales; antes se guarda un backup.",
+                                        )
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                    ui.horizontal(|ui| {
+                                        if widgets::button(
+                                            ui,
+                                            th,
+                                            "Exportar datos…",
+                                            widgets::ButtonKind::Secondary,
+                                        )
+                                        .clicked()
+                                        {
+                                            export_data = true;
+                                        }
+                                        if widgets::button(
+                                            ui,
+                                            th,
+                                            "Importar datos…",
+                                            widgets::ButtonKind::Secondary,
+                                        )
+                                        .clicked()
+                                        {
+                                            import_data = true;
+                                        }
+                                    });
+                                    ui.add_space(theme::space::SM);
                                     ui.label(
                                         RichText::new(format!(
                                             "Candil {}",
@@ -2753,6 +2807,12 @@ impl Lector {
         }
         if let Some(path) = reveal_download {
             reveal_path(&path);
+        }
+        if export_data {
+            self.export_data();
+        }
+        if import_data {
+            self.import_data(ctx);
         }
         if reset_config {
             self.cfg.settings = Settings::default();
@@ -3486,6 +3546,17 @@ impl Lector {
             };
             entries.push((book_title, chapter_title, annotation));
         }
+        if !self.notes_query.trim().is_empty() {
+            entries.retain(|(book, chapter, annotation)| {
+                note_matches(
+                    &self.notes_query,
+                    &annotation.quote,
+                    &annotation.note,
+                    book,
+                    chapter,
+                )
+            });
+        }
         entries
     }
 
@@ -4069,6 +4140,94 @@ impl Lector {
             let result = update::download_release(&release, &dir);
             let _ = tx.send(UpdateMsg::Downloaded { release, result });
         });
+    }
+
+    fn reload_user_data(&mut self) {
+        self.cfg = Config::load();
+        self.library = Library::load();
+        self.annotations = Annotations::load().0;
+        self.consulta_history = ConsultaHistory::load().0;
+        self.library_textures.clear();
+        self.applied_theme = None;
+        self.dirty = false;
+    }
+
+    fn export_data(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(backup::default_name())
+            .add_filter("ZIP", &["zip"])
+            .save_file()
+        else {
+            return;
+        };
+        match backup::export(&self.library.data_dir, &path) {
+            Ok(result) => self.say(format!("Datos exportados a {}", result.path.display())),
+            Err(error) => self.say(format!("No pude exportar: {error}")),
+        }
+    }
+
+    fn import_data(&mut self, ctx: &egui::Context) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Respaldo de Candil", &["zip"])
+            .pick_file()
+        else {
+            return;
+        };
+        match backup::import(&path, &self.library.data_dir) {
+            Ok(result) => {
+                self.reload_user_data();
+                self.go_library();
+                self.data_notice = Some(match result.backup {
+                    Some(backup) => format!("Backup previo: {}", backup.display()),
+                    None => "No había datos previos que respaldar.".to_string(),
+                });
+                if !self.library.folders.is_empty() {
+                    self.start_scan(None, ctx);
+                }
+            }
+            Err(error) => self.say(format!("No pude importar: {error}")),
+        }
+    }
+
+    fn data_notice_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(notice) = self.data_notice.clone() else {
+            return;
+        };
+        let mut close = false;
+        let _ = egui::Modal::new(egui::Id::new("data-import-notice"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(440.0);
+                ui.label(
+                    RichText::new("Datos importados")
+                        .size(theme::text::TITLE)
+                        .strong()
+                        .color(th.fg),
+                );
+                ui.add_space(theme::space::SM);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "La biblioteca, el progreso y las anotaciones se recargaron.",
+                        )
+                        .size(theme::text::BODY)
+                        .color(th.fg),
+                    )
+                    .wrap(),
+                );
+                ui.add(
+                    egui::Label::new(RichText::new(&notice).size(theme::text::META).color(th.dim))
+                        .wrap(),
+                );
+                ui.add_space(theme::space::SM);
+                if widgets::button(ui, th, "Cerrar", widgets::ButtonKind::Primary).clicked() {
+                    close = true;
+                }
+            });
+        if close {
+            self.data_notice = None;
+        }
     }
 
     fn refresh_library_on_focus(&mut self, ctx: &egui::Context) {
@@ -5875,6 +6034,27 @@ impl Lector {
             })
             .collect();
 
+        let query = self.notes_query.clone();
+        let filter_rows = |rows: Vec<AnnRow>| -> Vec<AnnRow> {
+            if query.trim().is_empty() {
+                return rows;
+            }
+            rows.into_iter()
+                .filter(|row| {
+                    note_matches(
+                        &query,
+                        &row.annotation.quote,
+                        &row.annotation.note,
+                        &row.book_title,
+                        &row.chapter_title,
+                    )
+                })
+                .collect()
+        };
+        let rows_book = filter_rows(rows_book);
+        let rows_all = filter_rows(rows_all);
+        let filtering = !self.notes_query.trim().is_empty();
+
         let mut open = self.show_annotations;
         let mut remove = None;
         let mut edit = None;
@@ -5907,6 +6087,22 @@ impl Lector {
                     }
                 });
             });
+            ui.horizontal(|ui| {
+                let width = (ui.available_width() - 30.0).max(120.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.notes_query)
+                        .hint_text("Filtrar citas y notas…")
+                        .desired_width(width),
+                );
+                if !self.notes_query.is_empty()
+                    && ui
+                        .small_button("×")
+                        .on_hover_text("Limpiar filtro")
+                        .clicked()
+                {
+                    self.notes_query.clear();
+                }
+            });
             ui.separator();
 
             let rows = if self.annotations_global {
@@ -5916,7 +6112,9 @@ impl Lector {
             };
 
             if rows.is_empty() {
-                let message = if self.annotations_global {
+                let message = if filtering {
+                    "No hay citas ni notas que coincidan."
+                } else if self.annotations_global {
                     "Todavía no hay destacados en ningún libro."
                 } else {
                     "Todavía no destacaste nada."
@@ -5927,11 +6125,19 @@ impl Lector {
                         .color(th.dim),
                 );
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new("Seleccioná una frase y usá Destacar o Nota.")
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
+                if filtering {
+                    if widgets::button(ui, th, "Limpiar filtro", widgets::ButtonKind::Secondary)
+                        .clicked()
+                    {
+                        self.notes_query.clear();
+                    }
+                } else {
+                    ui.label(
+                        RichText::new("Seleccioná una frase y usá Destacar o Nota.")
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    );
+                }
                 return;
             }
 
@@ -6995,6 +7201,7 @@ impl eframe::App for Lector {
         }
 
         self.config_window(ctx, &th);
+        self.data_notice_window(ctx, &th);
         self.help_window(ctx, &th);
         self.status_toast(ctx, &th);
 
@@ -7245,6 +7452,18 @@ fn truncate(s: &str, max_chars: usize) -> String {
 /// Cita en una sola línea para el panel: colapsa saltos y espacios repetidos.
 fn quote_inline(quote: &str) -> String {
     quote.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Filtro del panel de anotaciones: cita, nota, libro o capítulo.
+fn note_matches(query: &str, quote: &str, note: &str, book: &str, chapter: &str) -> bool {
+    let query = collate(query.trim());
+    if query.is_empty() {
+        return true;
+    }
+    collate(quote).contains(&query)
+        || collate(note).contains(&query)
+        || collate(book).contains(&query)
+        || collate(chapter).contains(&query)
 }
 
 /// ¿El texto del enlace parece un marcador de nota (`1`, `iv`, `[2]`)?
@@ -8395,6 +8614,16 @@ mod tests {
     #[test]
     fn quote_inline_colapsa_espacios_y_saltos() {
         assert_eq!(quote_inline("uno\n  dos\t tres"), "uno dos tres");
+    }
+
+    #[test]
+    fn filtro_de_notas_busca_cita_nota_libro_y_capitulo() {
+        assert!(note_matches("", "x", "", "", ""));
+        assert!(note_matches("mundo", "Hola mundo", "", "", ""));
+        assert!(note_matches("ironia", "Hola", "La ironía", "", ""));
+        assert!(note_matches("austen", "Hola", "", "Jane Austen", ""));
+        assert!(note_matches("capitulo 1", "Hola", "", "", "Capítulo 1"));
+        assert!(!note_matches("zzz", "Hola", "nota", "libro", "cap"));
     }
 
     #[test]

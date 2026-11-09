@@ -155,6 +155,7 @@ shot() {
 shot library-full.png --screen library
 shot library-search.png --screen library --search austen
 shot library-edit.png --screen library --edit
+shot config-data.png --screen library --panel advanced
 
 # Lector: Chapter I de Pride and Prejudice (dominio público).
 ANCHOR=pgepubid00022
@@ -213,6 +214,7 @@ png "$SHOTS/library-error.png" library-error.png
 png "$SHOTS/library-full.png" library-full.png
 png "$SHOTS/library-search.png" library-search.png
 png "$SHOTS/library-edit.png" library-edit.png
+png "$SHOTS/config-data.png" config-data.png
 png "$SHOTS/reader-settings.png" reader-settings.png
 jpg "$SHOTS/reader-highlight.png" reader-highlight.jpg
 jpg "$SHOTS/reader-selection.png" reader-selection.jpg

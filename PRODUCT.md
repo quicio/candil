@@ -46,11 +46,11 @@ tipografía y composición cuidadas con un binario pequeño y arranque instantá
 **Implementado:** biblioteca con portadas, búsqueda, orden, filtros, carpetas y edición de
 metadatos/portada del EPUB; lector con temas, tipografía, anclas, progreso por
 bloque, enlaces internos e imágenes; destacados y notas con tres colores,
-selección entre párrafos, notas al pie con vista previa y regreso, vista global y
-export Markdown;
+selección entre párrafos, notas al pie con vista previa y regreso, vista global,
+filtro de notas y export Markdown;
 búsqueda dentro del libro; navegación por porcentaje/capítulo; diccionario,
-traducción e IA con historial local; centro de configuración y actualización
-asistida desde Configuración.
+traducción e IA con historial local; centro de configuración, actualización
+asistida y respaldo/restauración local de datos.
 
 **Restricciones técnicas:** Rust + egui/eframe; sin WebView ni motor CSS; sin
 dependencias innecesarias; renderizado EPUB existente; atajos, persistencia,

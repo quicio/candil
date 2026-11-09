@@ -11,13 +11,13 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
-previa y regreso, índice global y export Markdown—, **Continuar leyendo** y
-refresco de la biblioteca al recuperar el foco, búsqueda dentro del libro,
-salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
-multi-proveedor, edición de metadatos/portada del EPUB y actualizaciones
-asistidas desde Configuración.
+previa y regreso, índice global, filtro de notas y export Markdown—,
+**Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
+búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción,
+análisis con IA multi-proveedor, edición de metadatos/portada del EPUB,
+actualizaciones asistidas y respaldo/restauración local de datos.
 
-Binario final (`dist`): **6.9 MiB** (7.284.320 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.367.584 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -188,7 +188,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 126
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 132
 tests unitarios (1 live ignorado) y 10 de integración sobre fixtures propios versionados
 (`mini.epub`, `edge.epub` y `notes.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -242,6 +242,10 @@ avanzado.
 | **Búsqueda** | **Error de importación** |
 | ![Búsqueda](docs/img/library-search.png) | ![Error](docs/img/library-error.png) |
 
+| **Respaldo de datos** |
+|---|
+| ![Exportar e importar datos desde Configuración → Avanzado](docs/img/config-data.png) |
+
 | **Tipografía por libro** |
 |---|
 | ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
@@ -285,8 +289,11 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   siendo manual.
 - El progreso por fracción y las preferencias por libro están desde M3; el
   filtro “Terminados” del roadmap original quedó fuera de alcance.
-- La búsqueda sigue siendo substring sin regex/stemming; el índice de
-  anotaciones global es una lista plana (sin búsqueda dentro de las notas).
+- La búsqueda dentro del libro sigue siendo substring sin regex/stemming. El
+  panel de anotaciones permite filtrar por texto, pero no busca dentro del EPUB.
+- El respaldo de datos incluye solo los JSON de usuario; no incluye EPUB,
+  portadas ni claves. Al restaurarlo en otra Mac, las rutas de los libros pueden
+  quedar faltantes hasta reindexar.
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
 - Diccionario y traducción usan Wiktionary/MyMemory (online); la IA admite

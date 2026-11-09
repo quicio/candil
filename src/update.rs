@@ -270,12 +270,25 @@ pub fn expected_sha(sums: &str, asset_name: &str) -> Option<String> {
     })
 }
 
+fn next_minor(version: &str) -> String {
+    let mut parts = version.split('.');
+    let major = parts.next().unwrap_or("0");
+    let minor = parts
+        .next()
+        .and_then(|part| part.parse::<u64>().ok())
+        .unwrap_or(0)
+        + 1;
+    format!("{major}.{minor}.0")
+}
+
 /// Release simulada para `--update-demo`; no toca la red.
 pub fn demo_release() -> ReleaseInfo {
+    let version = next_minor(current_version());
+    let tag = format!("v{version}");
     ReleaseInfo {
-        version: "0.6.0".into(),
-        tag: "v0.6.0".into(),
-        page_url: "https://github.com/quicio/candil/releases/tag/v0.6.0".into(),
+        version,
+        page_url: format!("https://github.com/quicio/candil/releases/tag/{tag}"),
+        tag,
         notes: "Vista previa de la actualización: comprobación manual, descarga \
                 verificada con SHA-256 y ningún reemplazo automático."
             .into(),
@@ -312,6 +325,12 @@ mod tests {
             {"name":"SHA256SUMS.txt","browser_download_url":"https://example.com/sums","size":263}
         ]
     }"#;
+
+    #[test]
+    fn demo_usa_la_siguiente_minor() {
+        assert_eq!(next_minor("0.7.0"), "0.8.0");
+        assert_eq!(next_minor("1.2.3"), "1.3.0");
+    }
 
     #[test]
     fn compara_versiones_numericas() {

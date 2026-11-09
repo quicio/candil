@@ -36,7 +36,8 @@ lectura. M11 agrega actualización asistida desde Configuración: consulta manua
 de GitHub, descarga verificada y ningún reemplazo automático. M12 automatiza la
 entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew. M13
 agrega “Continuar leyendo” y refresco incremental de la biblioteca al recuperar
-el foco.
+el foco. M14 agrega respaldo/restauración local de datos y filtro en el panel de
+notas.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -52,12 +53,13 @@ origen.
 
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
-`interaction-accessibility`, `ai-providers`, `ai-credentials`, `epub-editing` y
-`app-updates`) viven en `openspec/specs/`; los cambios `consolidar-ux-ui`,
-`proveedores-ia-clave`, `editar-metadata-epub`, `seleccion-entre-parrafos`,
-`notas-al-pie-y-volver`, `actualizaciones-desde-la-app` y
-`biblioteca-continuar-leyendo` quedaron archivados en
-`openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
+`interaction-accessibility`, `ai-providers`, `ai-credentials`, `epub-editing`,
+`app-updates` y `data-backup`) viven en `openspec/specs/`; los cambios
+`consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
+`seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
+`actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo` y
+`respaldo-y-filtro-notas` quedaron archivados en `openspec/changes/archive/`.
+`docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
@@ -78,12 +80,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 16 en `docs/img/` (biblioteca ×4, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
+| capturas | 17 en `docs/img/` (biblioteca ×4, respaldo de datos, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 126 unit (1 live ignorado) + 10 integración | `cargo test` |
+| tests | 132 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.284.320 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.367.584 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
 
@@ -115,6 +117,7 @@ src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
 src/update.rs  consulta de releases, asset por plataforma, descarga y SHA-256
+src/backup.rs  respaldo ZIP de datos, manifiesto, checksums e importación segura
 src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
@@ -286,6 +289,9 @@ flotante tapando texto) solo aparecieron así.
 26. **La biblioteca se refresca al recuperar el foco**, con debounce de 30 s y
     sin bloquear la UI; no es un watcher en tiempo real (ADR-0018). “Continuar
     leyendo” usa el mayor `last_opened` válido, no el orden de la grilla.
+27. **El respaldo de datos incluye solo los cuatro JSON de usuario**; nunca EPUB,
+    portadas ni claves. La importación valida manifiesto, checksums y JSON, y
+    guarda un `pre-import-*.zip` antes de escribir (ADR-0019).
 
 ## Definición de terminado (por tarea)
 

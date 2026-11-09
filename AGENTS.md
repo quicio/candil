@@ -15,7 +15,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 126 unit (1 live ignorado) + 10 integración
+cargo test                                  # 132 unit (1 live ignorado) + 10 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
@@ -72,6 +72,10 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - La biblioteca se refresca al recuperar el foco (debounce 30 s); no agregues un
   watcher del sistema sin ADR (ADR-0018). “Continuar leyendo” usa `last_opened`,
   no el orden visible de la grilla.
+- El respaldo de datos incluye solo los cuatro JSON de usuario (`config`,
+  `library`, `annotations`, `consultas`); nunca EPUB, portadas ni claves. La
+  importación valida manifiesto/checksums/JSON y guarda un backup previo
+  (ADR-0019).
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

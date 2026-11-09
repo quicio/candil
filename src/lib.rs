@@ -4,6 +4,7 @@
 pub mod ai;
 pub mod annotations;
 pub mod app;
+pub mod backup;
 pub mod config;
 pub mod consulta;
 pub mod covers;

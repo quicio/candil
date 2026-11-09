@@ -10,11 +10,12 @@ Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
-destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
-del libro, salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
-multi-proveedor y edición de metadatos/portada del EPUB.
+destacados/notas —con colores, selección entre párrafos, índice global y export
+Markdown—, búsqueda dentro del libro, salto por porcentaje/capítulo,
+diccionario/traducción, análisis con IA multi-proveedor y edición de
+metadatos/portada del EPUB.
 
-Binario final (`dist`): **6.9 MiB** (7.234.320 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.250.944 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -156,7 +157,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 105
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 116
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -214,6 +215,10 @@ avanzado.
 |---|
 | ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
 
+| **Selección entre párrafos** |
+|---|
+| ![Selección de dos párrafos con la barra de acciones](docs/img/reader-selection.jpg) |
+
 | **Destacados de tres colores** | **Panel de notas** | **Nota abierta** |
 |---|---|---|
 | ![Tres colores de destacado](docs/img/reader-highlight.jpg) | ![Panel de destacados y notas](docs/img/reader-notes.jpg) | ![Editor de nota](docs/img/reader-note.jpg) |
@@ -236,7 +241,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   enlaces `<a href="#…">` funcionan; los enlaces externos todavía se ignoran.
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - La búsqueda dentro del libro es substring sin regex/stemming y resalta solo la
-  coincidencia activa; la selección de destacados no cruza párrafos (MVP).
+  coincidencia activa. La selección de destacados cruza párrafos del mismo
+  capítulo (arrastrando o con Mayúsculas + clic), pero no capítulos.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher: se refresca a mano.
@@ -287,6 +293,7 @@ cargo run --release -- --shot out.png --screen library --search flores
 cargo run --release -- --shot out.png --screen library --library-path /tmp/library.json
 cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del lector
 cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un ancla
+cargo run --release -- --shot out.png --selection libro.epub    # selección de dos párrafos
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```
 

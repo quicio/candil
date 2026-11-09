@@ -24,7 +24,9 @@ fragmento exacto.
 
 Entra:
 
-1. Selección de una frase **dentro de un párrafo** (no cruza bloques).
+1. Selección de una frase **dentro de un párrafo** (no cruza bloques). M9 lo
+   extendió a rangos entre párrafos del mismo capítulo (ADR-0014 y
+   `openspec/specs/reading-workspace`).
 2. Barra flotante al soltar: **Destacar** y **Nota**.
 3. Un único color de destacado (el acento del tema). La nota es opcional y vive
    sobre el mismo fragmento.
@@ -207,7 +209,7 @@ barra del lector:  ☰  Aa  ✎  …
 
 | riesgo | mitigación |
 |---|---|
-| Selección por bloque no cruza párrafos | aceptado en MVP; se puede extender después |
+| Selección por bloque no cruza párrafos | aceptado en MVP; M9 lo resolvió con `end_block` + `parts` (ADR-0014) |
 | `TextEdit` por bloque degrada el capítulo gigante | medir `flores-del-mal`; si hace falta, activar selección solo en modo “Anotar” |
 | Índice de bloque cambia si cambia el parser | reanclar por `quote`; M3 aporta anclas de fragmento |
 | Muchas anotaciones hinchan el JSON | archivo aparte, escritura atómica; revisar si supera ~5.000 |

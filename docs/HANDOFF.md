@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.10.0
+version: 1.11.0
 updated: 2026-11-09
 ---
 
@@ -28,7 +28,9 @@ interna. M5 agrega anotaciones globales, colores, export Markdown y navegación.
 M6 agrega diccionario Wiktionary, traducción MyMemory, IA multi-proveedor,
 historial en `consultas.json` y el centro de configuración. La API key se guarda
 en el llavero del sistema; `OPENCODE_API_KEY` sigue como override. M8 agrega
-edición de metadatos y portada dentro del EPUB, con backup y validación.
+edición de metadatos y portada dentro del EPUB, con backup y validación. M9
+agrega selección y anotación entre párrafos, con migración v2 de
+`annotations.json` y reanclaje por partes.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -44,9 +46,10 @@ origen.
 
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
-`interaction-accessibility`, `ai-providers`, `ai-credentials` y
-`epub-editing`) viven en `openspec/specs/`; los cambios `consolidar-ux-ui`,
-`proveedores-ia-clave` y `editar-metadata-epub` quedaron archivados en
+`interaction-accessibility`, `ai-providers`, `ai-credentials`,
+`epub-editing` y `reading-workspace` (ampliada por M9) viven en
+`openspec/specs/`; los cambios `consolidar-ux-ui`, `proveedores-ia-clave`,
+`editar-metadata-epub` y `seleccion-entre-parrafos` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como
 archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
@@ -69,12 +72,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 15 en `docs/img/` (biblioteca ×4, editor de EPUB, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
+| capturas | 16 en `docs/img/` (biblioteca ×4, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 105 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 116 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.234.320 B | `cargo build --profile dist` (2026-11-08) |
+| binario `dist` | 7.250.944 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -100,7 +103,7 @@ src/app.rs     ventana, biblioteca, lector, barra, scroll, paneles, teclado
 src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada (con #ancla)
 src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
-src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
+src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes, JSON atómico v2
 src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
@@ -244,6 +247,10 @@ flotante tapando texto) solo aparecieron así.
     preferencia de reduced motion del SO, así que no se anima nada decorativo.
 21. **Editar un EPUB no es leerlo**: reescribir el ZIP exige backup, validación
     y reemplazo seguro. Nunca se modifica el original sin esas tres cosas.
+22. **Las anotaciones pueden cruzar párrafos**: `annotations.json` v2 guarda
+    `end_block` y una parte de cita por bloque; `block`/`start`/`end` siguen
+    siendo el ancla y siguen siendo válidos para archivos v1. No se convierten a
+    píxeles ni se separan en varias anotaciones.
 
 ## Definición de terminado (por tarea)
 

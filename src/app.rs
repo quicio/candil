@@ -94,18 +94,251 @@ enum CardAction {
     Edit,
 }
 
-/// Selección activa de texto dentro de un bloque, lista para destacar.
+/// Un extremo de la selección: bloque y offset de caracteres dentro de
+/// `Block::text()` (sin contar el prefijo de viñeta/numeración).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Anchor {
+    block: usize,
+    offset: usize,
+}
+
+impl Anchor {
+    fn key(self) -> (usize, usize) {
+        (self.block, self.offset)
+    }
+}
+
+/// Selección activa de texto, posiblemente a través de varios bloques.
 #[derive(Clone, Debug)]
 struct Selection {
     chapter: usize,
-    block: usize,
-    start: usize,
-    end: usize,
+    /// Extremo fijo: donde empezó el arrastre o el clic con Mayúsculas.
+    anchor: Anchor,
+    /// Extremo móvil: donde está el cursor o el puntero.
+    focus: Anchor,
     quote: String,
+    /// Texto seleccionado por bloque, en orden.
+    parts: Vec<String>,
     /// Rect en pantalla, para ubicar la barra flotante.
     rect: egui::Rect,
     /// Id del `TextEdit` que la contiene; se usa para soltar el foco.
     edit_id: egui::Id,
+}
+
+impl Selection {
+    fn ordered(&self) -> (Anchor, Anchor) {
+        if self.anchor.key() <= self.focus.key() {
+            (self.anchor, self.focus)
+        } else {
+            (self.focus, self.anchor)
+        }
+    }
+
+    fn start_block(&self) -> usize {
+        self.ordered().0.block
+    }
+
+    fn start_offset(&self) -> usize {
+        self.ordered().0.offset
+    }
+
+    fn end_block(&self) -> usize {
+        self.ordered().1.block
+    }
+
+    fn end_offset(&self) -> usize {
+        self.ordered().1.offset
+    }
+
+    fn is_multi_block(&self) -> bool {
+        self.start_block() != self.end_block()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Segment {
+    block: usize,
+    start: usize,
+    end: usize,
+}
+
+/// Geometría de un bloque de texto dibujado en el frame actual. Sirve para
+/// mapear el puntero a un bloque y offset cuando la selección sale del
+/// `TextEdit` que tiene el foco.
+struct BlockGeom {
+    block: usize,
+    rect: egui::Rect,
+    galley: std::sync::Arc<egui::Galley>,
+    prefix_len: usize,
+    text_len: usize,
+}
+
+/// Construye una selección normalizada a partir de dos extremos. Devuelve
+/// `None` si no cubre texto visible.
+fn selection_from_anchors(
+    chapter: usize,
+    blocks: &[Block],
+    anchor: Anchor,
+    focus: Anchor,
+    rect: egui::Rect,
+    edit_id: egui::Id,
+) -> Option<Selection> {
+    if blocks.is_empty() {
+        return None;
+    }
+    let clamp = |anchor: Anchor| {
+        let block = anchor.block.min(blocks.len() - 1);
+        Anchor {
+            block,
+            offset: anchor.offset.min(blocks[block].text().chars().count()),
+        }
+    };
+    let anchor = clamp(anchor);
+    let focus = clamp(focus);
+    let (start, end) = if anchor.key() <= focus.key() {
+        (anchor, focus)
+    } else {
+        (focus, anchor)
+    };
+    let mut parts = Vec::new();
+    for (block, current) in blocks
+        .iter()
+        .enumerate()
+        .take(end.block + 1)
+        .skip(start.block)
+    {
+        let text = current.text();
+        if text.trim().is_empty() {
+            continue;
+        }
+        let len = text.chars().count();
+        let from = if block == start.block {
+            start.offset.min(len)
+        } else {
+            0
+        };
+        let to = if block == end.block {
+            end.offset.min(len)
+        } else {
+            len
+        };
+        if to > from {
+            parts.push(text.chars().skip(from).take(to - from).collect::<String>());
+        }
+    }
+    if parts.iter().all(|part| part.trim().is_empty()) {
+        return None;
+    }
+    let quote = parts.join("\n");
+    Some(Selection {
+        chapter,
+        anchor,
+        focus,
+        quote,
+        parts,
+        rect,
+        edit_id,
+    })
+}
+
+/// Convierte una selección activa en la anotación que se va a persistir.
+fn annotation_from_selection(
+    selection: &Selection,
+    book: String,
+    note: String,
+    color: u8,
+) -> Annotation {
+    Annotation {
+        book,
+        chapter: selection.chapter,
+        block: selection.start_block(),
+        start: selection.start_offset(),
+        end: selection.end_offset(),
+        end_block: selection.is_multi_block().then(|| selection.end_block()),
+        parts: selection.parts.clone(),
+        quote: selection.quote.clone(),
+        note,
+        color,
+        ..Annotation::default()
+    }
+}
+
+/// Segmentos por bloque de una selección activa, para previsualizar el rango
+/// mientras se arrastra.
+fn selection_segments(selection: &Selection, blocks: &[Block]) -> Vec<Segment> {
+    let (start, end) = selection.ordered();
+    let mut out = Vec::new();
+    if start.block >= blocks.len() {
+        return out;
+    }
+    let last = end.block.min(blocks.len() - 1);
+    for (block, current) in blocks.iter().enumerate().take(last + 1).skip(start.block) {
+        let len = current.text().chars().count();
+        let from = if block == start.block {
+            start.offset.min(len)
+        } else {
+            0
+        };
+        let to = if block == end.block {
+            end.offset.min(len)
+        } else {
+            len
+        };
+        if to > from {
+            out.push(Segment {
+                block,
+                start: from,
+                end: to,
+            });
+        }
+    }
+    out
+}
+
+/// Bloque y offset más cercanos a un punto de pantalla. `upward` sesga la
+/// elección al bloque anterior cuando el puntero está en el espacio entre dos
+/// párrafos.
+fn pointer_anchor(geoms: &[BlockGeom], pos: egui::Pos2, upward: bool) -> Option<Anchor> {
+    if geoms.is_empty() {
+        return None;
+    }
+    let geom = if upward {
+        geoms
+            .iter()
+            .rev()
+            .find(|geom| geom.rect.top() < pos.y)
+            .or_else(|| geoms.first())
+    } else {
+        geoms
+            .iter()
+            .find(|geom| geom.rect.bottom() > pos.y)
+            .or_else(|| geoms.last())
+    }?;
+    let index = geom
+        .galley
+        .cursor_from_pos(pos - geom.rect.min)
+        .index
+        .saturating_sub(geom.prefix_len);
+    Some(Anchor {
+        block: geom.block,
+        offset: index.min(geom.text_len),
+    })
+}
+
+/// Rect de pantalla de un extremo, para ubicar la barra flotante.
+fn anchor_screen_rect(geoms: &[BlockGeom], anchor: Anchor) -> Option<egui::Rect> {
+    let geom = geoms.iter().find(|geom| geom.block == anchor.block)?;
+    let cursor = egui::text::CCursor::new(
+        anchor
+            .offset
+            .saturating_add(geom.prefix_len)
+            .min(geom.text_len + geom.prefix_len),
+    );
+    Some(
+        geom.galley
+            .pos_from_cursor(cursor)
+            .translate(geom.rect.min.to_vec2()),
+    )
 }
 
 /// Ventana de nota abierta: crear desde una selección o editar una existente.
@@ -519,6 +752,9 @@ impl Lector {
                 });
                 app.jump_to(spine.unwrap_or(app.chapter), Some(anchor));
             }
+            if app.dev.selection {
+                app.seed_dev_selection();
+            }
         }
         app
     }
@@ -631,28 +867,6 @@ impl Lector {
                         }
                     }
                     _ => {}
-                }
-                if self.dev.selection {
-                    if let Some((block, text)) =
-                        self.blocks.iter().enumerate().find_map(|(i, b)| {
-                            let text = b.text();
-                            (text.trim().chars().count() >= 10).then_some((i, text))
-                        })
-                    {
-                        let quote: String = text.chars().take(24).collect();
-                        self.selection = Some(Selection {
-                            chapter: self.chapter,
-                            block,
-                            start: 0,
-                            end: quote.chars().count(),
-                            quote,
-                            rect: egui::Rect::from_min_size(
-                                egui::pos2(320.0, 260.0),
-                                egui::vec2(220.0, 22.0),
-                            ),
-                            edit_id: egui::Id::new("dev-selection"),
-                        });
-                    }
                 }
                 if let Some(text) = self.dev.consulta.clone() {
                     let (source_lang, book_path, title, author) = self
@@ -774,6 +988,57 @@ impl Lector {
         }
         self.current_anchor = None;
         self.delta = 0.0;
+    }
+
+    /// Capturas: siembra una selección de dos bloques en el capítulo actual.
+    /// Si hay un ancla de desarrollo, empieza por su bloque.
+    fn seed_dev_selection(&mut self) {
+        let start = self
+            .dev
+            .anchor
+            .as_ref()
+            .and_then(|anchor| {
+                self.blocks
+                    .iter()
+                    .position(|block| block.anchor.as_deref() == Some(anchor.as_str()))
+            })
+            .unwrap_or(0);
+        let candidates: Vec<(usize, usize)> = self
+            .blocks
+            .iter()
+            .enumerate()
+            .skip(start)
+            .filter_map(|(index, block)| {
+                let len = block.text().chars().count();
+                (!matches!(block.kind, Kind::Heading(_)) && len >= 10).then_some((index, len))
+            })
+            .take(2)
+            .collect();
+        let Some(&(first, first_len)) = candidates.first() else {
+            return;
+        };
+        let anchor = Anchor {
+            block: first,
+            offset: 0,
+        };
+        let focus = candidates.get(1).map_or(
+            Anchor {
+                block: first,
+                offset: first_len.min(24),
+            },
+            |&(second, second_len)| Anchor {
+                block: second,
+                offset: second_len.min(24),
+            },
+        );
+        self.selection = selection_from_anchors(
+            self.chapter,
+            &self.blocks,
+            anchor,
+            focus,
+            egui::Rect::from_min_size(egui::pos2(320.0, 260.0), egui::vec2(300.0, 40.0)),
+            egui::Id::new("dev-selection"),
+        );
     }
 
     fn progress(&self) -> f32 {
@@ -1003,17 +1268,12 @@ impl Lector {
         let Some(book) = self.book_key() else {
             return;
         };
-        self.annotations.add(Annotation {
+        self.annotations.add(annotation_from_selection(
+            &selection,
             book,
-            chapter: selection.chapter,
-            block: selection.block,
-            start: selection.start,
-            end: selection.end,
-            quote: selection.quote,
-            note: String::new(),
-            color: self.active_color.min(2),
-            ..Annotation::default()
-        });
+            String::new(),
+            self.active_color.min(2),
+        ));
         self.save_annotations();
         self.reader_focus = Some(selection.edit_id);
         self.surrender_reader_focus(ctx);
@@ -1052,17 +1312,12 @@ impl Lector {
             self.annotations.update_note(id, &draft);
             self.annotations.update_color(id, editor.color.min(2));
         } else if let Some(selection) = editor.selection {
-            self.annotations.add(Annotation {
-                book: editor.book,
-                chapter: selection.chapter,
-                block: selection.block,
-                start: selection.start,
-                end: selection.end,
-                quote: selection.quote,
-                note: draft,
-                color: editor.color.min(2),
-                ..Annotation::default()
-            });
+            self.annotations.add(annotation_from_selection(
+                &selection,
+                editor.book,
+                draft,
+                editor.color.min(2),
+            ));
         }
         self.save_annotations();
         self.say("Nota guardada.");
@@ -1083,7 +1338,7 @@ impl Lector {
             self.load_chapter(annotation.chapter, None);
         }
         self.pending_restore = None;
-        self.pending_block_jump = Some((annotation.block, annotation.quote.clone()));
+        self.pending_block_jump = Some((annotation.block, annotation.first_part()));
         self.show_annotations = false;
         self.selection = None;
         self.note = None;
@@ -1097,7 +1352,11 @@ impl Lector {
         let Some(book) = self.book.as_ref() else {
             return;
         };
-        let text = selection.quote.trim().to_string();
+        let text = selection
+            .quote
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         if text.is_empty() {
             return;
         }
@@ -1107,12 +1366,19 @@ impl Lector {
         self.consulta_pending_request = None;
         self.consulta_pending_prompt = None;
         self.consulta_id = self.consulta_id.wrapping_add(1);
+        let start_block = selection.start_block();
+        let start_offset = selection.start_offset();
         let block_text = self
             .blocks
-            .get(selection.block)
+            .get(start_block)
             .map(|block| block.text())
             .unwrap_or_default();
-        let context = context_around(&block_text, selection.start, selection.end, 1_500);
+        let end_offset = if selection.is_multi_block() {
+            block_text.chars().count()
+        } else {
+            selection.end_offset()
+        };
+        let context = context_around(&block_text, start_offset, end_offset, 1_500);
         let source_lang = consulta::normalize_lang(&book.lang);
         let book_path = book.path.to_string_lossy().to_string();
         let title = book.title.clone();
@@ -1125,7 +1391,7 @@ impl Lector {
             title,
             author,
             chapter: selection.chapter,
-            block: selection.block,
+            block: start_block,
         });
         self.consulta_tab = if text.split_whitespace().count() <= 1 {
             ConsultaTab::Diccionario
@@ -4878,7 +5144,9 @@ impl Lector {
                             }
                             ui.separator();
                             if widgets::button(ui, th, "Destacar", widgets::ButtonKind::Secondary)
-                                .on_hover_text("Destacar selección (H)")
+                                .on_hover_text(
+                                    "Destacar selección (H) · Mayúsculas + clic extiende entre párrafos",
+                                )
                                 .clicked()
                             {
                                 highlight = true;
@@ -5048,9 +5316,12 @@ impl Lector {
                                 recolor = Some((a.id, (a.color + 1) % 3));
                             }
                             ui.label(
-                                RichText::new(format!("“{}”", truncate(&a.quote, 150)))
-                                    .size(theme::text::BODY)
-                                    .color(th.fg),
+                                RichText::new(format!(
+                                    "“{}”",
+                                    truncate(&quote_inline(&a.quote), 150)
+                                ))
+                                .size(theme::text::BODY)
+                                .color(th.fg),
                             );
                         });
                         if row.missing {
@@ -5082,6 +5353,11 @@ impl Lector {
                                 place
                             } else {
                                 format!("{place} · {}", truncate(&row.chapter_title, 26))
+                            };
+                            let place = if a.paragraph_count() > 1 {
+                                format!("{place} · {} párrafos", a.paragraph_count())
+                            } else {
+                                place
                             };
                             ui.label(RichText::new(place).size(theme::text::META).color(th.dim));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -5186,9 +5462,12 @@ impl Lector {
                 ui.separator();
                 ui.add(
                     egui::Label::new(
-                        RichText::new(format!("“{}”", truncate(&annotation.quote, 160)))
-                            .size(theme::text::BODY)
-                            .color(th.fg),
+                        RichText::new(format!(
+                            "“{}”",
+                            truncate(&quote_inline(&annotation.quote), 160)
+                        ))
+                        .size(theme::text::BODY)
+                        .color(th.fg),
                     )
                     .wrap(),
                 );
@@ -5441,6 +5720,18 @@ impl Lector {
             }
             None => HashMap::new(),
         };
+        if let Some(selection) = self.selection.as_ref() {
+            if selection.chapter == self.chapter {
+                let color = highlight_color(th, self.active_color.min(2));
+                for segment in selection_segments(selection, &self.blocks) {
+                    highlights.entry(segment.block).or_default().push((
+                        segment.start,
+                        segment.end,
+                        color,
+                    ));
+                }
+            }
+        }
         if let Some((chapter, block, start, end)) = self.search_highlight {
             if chapter == self.chapter {
                 highlights
@@ -5485,6 +5776,8 @@ impl Lector {
                 chapter_anchors.clear();
                 block_positions.clear();
                 *reader_focus = None;
+                let mut extend_to: Option<Anchor> = None;
+                let mut geoms: Vec<BlockGeom> = Vec::new();
 
                 let so = ScrollArea::vertical()
                     .id_salt("reader")
@@ -5518,9 +5811,12 @@ impl Lector {
                                         th,
                                         textures,
                                         book,
+                                        blocks.as_slice(),
                                         current_chapter,
                                         &mut link_target,
                                         selection,
+                                        &mut extend_to,
+                                        &mut geoms,
                                         reader_focus,
                                         ctx,
                                     );
@@ -5539,6 +5835,59 @@ impl Lector {
                 }
                 for y in chapter_anchors.values_mut() {
                     *y += shift;
+                }
+
+                // Extiende la selección cuando el puntero sale del bloque ancla.
+                // Mayúsculas + clic ya dejó su destino en `extend_to`.
+                let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
+                let primary_down = ctx.input(|i| i.pointer.primary_down());
+                if let Some(current) = selection.clone() {
+                    if current.chapter == current_chapter {
+                        if let (Some(start), Some(end)) = (
+                            anchor_screen_rect(&geoms, current.anchor),
+                            anchor_screen_rect(&geoms, current.focus),
+                        ) {
+                            if let Some(selection) = selection.as_mut() {
+                                selection.rect = start.union(end);
+                            }
+                        }
+                        let target = extend_to.take().or_else(|| {
+                            if !primary_down {
+                                return None;
+                            }
+                            let pos = pointer_pos?;
+                            let anchor_rect = geoms
+                                .iter()
+                                .find(|geom| geom.block == current.anchor.block)
+                                .map(|geom| geom.rect)?;
+                            if pos.y >= anchor_rect.top() - 2.0
+                                && pos.y <= anchor_rect.bottom() + 2.0
+                            {
+                                return None;
+                            }
+                            pointer_anchor(&geoms, pos, pos.y < anchor_rect.top())
+                        });
+                        if let Some(target) = target {
+                            let rect = match (
+                                anchor_screen_rect(&geoms, current.anchor),
+                                anchor_screen_rect(&geoms, target),
+                            ) {
+                                (Some(start), Some(end)) => start.union(end),
+                                _ => current.rect,
+                            };
+                            if let Some(new) = selection_from_anchors(
+                                current_chapter,
+                                blocks.as_slice(),
+                                current.anchor,
+                                target,
+                                rect,
+                                current.edit_id,
+                            ) {
+                                *selection = Some(new);
+                                ctx.request_repaint();
+                            }
+                        }
+                    }
                 }
 
                 if (so.state.offset.y - *scroll).abs() > 0.5 {
@@ -5595,7 +5944,7 @@ impl Lector {
                 }
             });
 
-        if (self.scroll - offset).abs() > 0.5 {
+        if (self.scroll - offset).abs() > 0.5 && !self.dev.selection {
             self.selection = None;
             self.reader_focus = None;
         }
@@ -5709,20 +6058,124 @@ fn char_slice_eq(text: &str, start: usize, end: usize, quote: &str) -> bool {
 }
 
 /// Ubica una anotación en el capítulo: primero respeta los offsets guardados;
-/// si el bloque o el texto cambiaron, busca la cita. Devuelve (bloque, inicio, fin).
-fn resolve_annotation(annotation: &Annotation, blocks: &[Block]) -> Option<(usize, usize, usize)> {
-    if let Some(block) = blocks.get(annotation.block) {
-        let text = block.text();
-        if char_slice_eq(&text, annotation.start, annotation.end, &annotation.quote) {
-            return Some((annotation.block, annotation.start, annotation.end));
+/// si el bloque o el texto cambiaron, busca las partes de la cita en orden.
+fn resolve_annotation(annotation: &Annotation, blocks: &[Block]) -> Option<Vec<Segment>> {
+    if !annotation.is_multi_block() {
+        if let Some(block) = blocks.get(annotation.block) {
+            let text = block.text();
+            if char_slice_eq(&text, annotation.start, annotation.end, &annotation.quote) {
+                return Some(vec![Segment {
+                    block: annotation.block,
+                    start: annotation.start,
+                    end: annotation.end,
+                }]);
+            }
+            if let Some((start, end)) = find_quote(&text, &annotation.quote) {
+                return Some(vec![Segment {
+                    block: annotation.block,
+                    start,
+                    end,
+                }]);
+            }
         }
-        if let Some((start, end)) = find_quote(&text, &annotation.quote) {
-            return Some((annotation.block, start, end));
-        }
+        return blocks.iter().enumerate().find_map(|(index, block)| {
+            find_quote(&block.text(), &annotation.quote).map(|(start, end)| {
+                vec![Segment {
+                    block: index,
+                    start,
+                    end,
+                }]
+            })
+        });
     }
-    blocks.iter().enumerate().find_map(|(index, block)| {
-        find_quote(&block.text(), &annotation.quote).map(|(start, end)| (index, start, end))
-    })
+
+    let parts: Vec<&str> = if annotation.parts.is_empty() {
+        annotation.quote.split('\n').collect()
+    } else {
+        annotation.parts.iter().map(String::as_str).collect()
+    };
+    let parts: Vec<&str> = parts
+        .into_iter()
+        .filter(|part| !part.trim().is_empty())
+        .collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    if let Some(segments) = exact_segments(annotation, blocks, &parts) {
+        return Some(segments);
+    }
+
+    let mut cursor = annotation.block.min(blocks.len());
+    let mut segments = Vec::with_capacity(parts.len());
+    for part in parts {
+        let mut found = None;
+        for (index, block) in blocks.iter().enumerate().skip(cursor) {
+            if let Some((start, end)) = find_quote(&block.text(), part) {
+                found = Some(Segment {
+                    block: index,
+                    start,
+                    end,
+                });
+                break;
+            }
+        }
+        let segment = found?;
+        cursor = segment.block + 1;
+        segments.push(segment);
+    }
+    (!segments.is_empty()).then_some(segments)
+}
+
+/// Verifica los offsets exactos de un rango multi-bloque contra sus partes.
+fn exact_segments(
+    annotation: &Annotation,
+    blocks: &[Block],
+    parts: &[&str],
+) -> Option<Vec<Segment>> {
+    let start_block = annotation.block;
+    let end_block = annotation.end_block();
+    if start_block > end_block || end_block >= blocks.len() {
+        return None;
+    }
+    let mut parts = parts.iter();
+    let mut segments = Vec::new();
+    for (block, current) in blocks
+        .iter()
+        .enumerate()
+        .take(end_block + 1)
+        .skip(start_block)
+    {
+        let text = current.text();
+        let len = text.chars().count();
+        let from = if block == start_block {
+            annotation.start.min(len)
+        } else {
+            0
+        };
+        let to = if block == end_block {
+            annotation.end.min(len)
+        } else {
+            len
+        };
+        if to <= from {
+            continue;
+        }
+        let expected = parts.next()?;
+        let actual: String = text.chars().skip(from).take(to - from).collect();
+        if actual != *expected {
+            return None;
+        }
+        segments.push(Segment {
+            block,
+            start: from,
+            end: to,
+        });
+    }
+    if parts.next().is_some() {
+        return None;
+    }
+    (!segments.is_empty()).then_some(segments)
 }
 
 fn resolve_highlights(
@@ -5734,12 +6187,13 @@ fn resolve_highlights(
 ) -> HashMap<usize, Vec<(usize, usize, Color32)>> {
     let mut out: HashMap<usize, Vec<(usize, usize, Color32)>> = HashMap::new();
     for annotation in annotations.for_book(book).filter(|a| a.chapter == chapter) {
-        if let Some((block, start, end)) = resolve_annotation(annotation, blocks) {
-            out.entry(block).or_default().push((
-                start,
-                end,
-                highlight_color(theme, annotation.color),
-            ));
+        if let Some(segments) = resolve_annotation(annotation, blocks) {
+            let color = highlight_color(theme, annotation.color);
+            for segment in segments {
+                out.entry(segment.block)
+                    .or_default()
+                    .push((segment.start, segment.end, color));
+            }
         }
     }
     out
@@ -5785,6 +6239,27 @@ fn consulta_window_fill(theme: &Theme) -> Color32 {
 }
 
 fn resolve_history_range(
+    blocks: &[Block],
+    block: usize,
+    quote: &str,
+) -> Option<(usize, usize, usize)> {
+    if let Some(found) = find_history_quote(blocks, block, quote) {
+        return Some(found);
+    }
+    // Una consulta multi-bloque guarda el texto unido con espacios. Si la
+    // cita completa no cabe en un bloque, se prueba el prefijo más largo
+    // formado por palabras completas.
+    let words: Vec<&str> = quote.split_whitespace().collect();
+    for take in (1..words.len()).rev() {
+        let candidate = words[..take].join(" ");
+        if let Some(found) = find_history_quote(blocks, block, &candidate) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_history_quote(
     blocks: &[Block],
     block: usize,
     quote: &str,
@@ -6118,6 +6593,11 @@ fn truncate(s: &str, max_chars: usize) -> String {
     out
 }
 
+/// Cita en una sola línea para el panel: colapsa saltos y espacios repetidos.
+fn quote_inline(quote: &str) -> String {
+    quote.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn collate(s: &str) -> String {
     s.to_lowercase()
         .chars()
@@ -6203,6 +6683,7 @@ struct TextArgs<'a> {
     book: Option<&'a Book>,
 }
 
+#[cfg(test)]
 fn selection_range(
     prefix_len: usize,
     block_text: &str,
@@ -6219,12 +6700,16 @@ fn selection_range(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_selectable_text(
     ui: &mut Ui,
     job: LayoutJob,
     args: &TextArgs<'_>,
+    blocks: &[Block],
     link_target: &mut Option<(usize, Option<String>)>,
     selection: &mut Option<Selection>,
+    extend_to: &mut Option<Anchor>,
+    geoms: &mut Vec<BlockGeom>,
     reader_focus: &mut Option<egui::Id>,
 ) -> egui::Response {
     let desired_width = job.wrap.max_width;
@@ -6255,33 +6740,92 @@ fn add_selectable_text(
         *reader_focus = Some(response.id);
     }
 
-    if let Some(range) = output.cursor_range {
-        let (a, b) = (range.primary.index, range.secondary.index);
-        let (a, b) = (a.min(b), a.max(b));
-        let focused = response.has_focus();
-        if focused && b == a {
-            *selection = None;
-        } else if focused {
-            if let Some((start, end, quote)) =
-                selection_range(args.prefix_len, args.block_text, a, b)
-            {
-                let start_rect = output.galley.pos_from_cursor(egui::text::CCursor::new(a));
-                let end_rect = output.galley.pos_from_cursor(egui::text::CCursor::new(b));
-                let rect = egui::Rect::from_two_pos(
-                    output.galley_pos + start_rect.left_top().to_vec2(),
-                    output.galley_pos + end_rect.right_bottom().to_vec2(),
-                );
-                *selection = Some(Selection {
-                    chapter: args.chapter,
-                    block: args.block_index,
-                    start,
-                    end,
-                    quote,
-                    rect,
-                    edit_id: response.id,
-                });
-            } else {
-                *selection = None;
+    if !args.block_text.is_empty() {
+        geoms.push(BlockGeom {
+            block: args.block_index,
+            rect: egui::Rect::from_min_size(output.galley_pos, output.galley.size()),
+            galley: output.galley.clone(),
+            prefix_len: args.prefix_len,
+            text_len: args.block_text.chars().count(),
+        });
+    }
+
+    // Mayúsculas + clic: extiende desde el ancla actual hasta el bloque
+    // clickeado. Se procesa al soltar y no reemplaza la selección existente.
+    let shift = ui.input(|i| i.modifiers.shift);
+    let shift_extend = response.clicked()
+        && shift
+        && selection.is_some()
+        && ui.input(|i| i.pointer.any_released());
+    if shift_extend {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let offset = output
+                .galley
+                .cursor_from_pos(pos - output.galley_pos)
+                .index
+                .saturating_sub(args.prefix_len)
+                .min(args.block_text.chars().count());
+            *extend_to = Some(Anchor {
+                block: args.block_index,
+                offset,
+            });
+        }
+    }
+
+    let pointer_down = ui.input(|i| i.pointer.primary_down());
+    if !shift_extend {
+        if let Some(range) = output.cursor_range {
+            let primary = range.primary.index;
+            let secondary = range.secondary.index;
+            let focused = response.has_focus();
+            let collapsed = primary == secondary;
+            if focused && collapsed {
+                // No borrar una selección multi-bloque al soltar ni durante el
+                // arrastre; sí al hacer un clic normal o al colapsar una
+                // selección de un solo bloque.
+                if !pointer_down
+                    && !shift
+                    && (response.clicked()
+                        || !selection.as_ref().is_some_and(Selection::is_multi_block))
+                {
+                    *selection = None;
+                }
+            } else if focused {
+                let keep_multi = selection.as_ref().is_some_and(Selection::is_multi_block)
+                    && !pointer_down
+                    && !response.clicked();
+                if !keep_multi {
+                    let anchor = Anchor {
+                        block: args.block_index,
+                        offset: secondary.saturating_sub(args.prefix_len),
+                    };
+                    let focus = Anchor {
+                        block: args.block_index,
+                        offset: primary.saturating_sub(args.prefix_len),
+                    };
+                    let start_rect = output
+                        .galley
+                        .pos_from_cursor(egui::text::CCursor::new(primary.min(secondary)));
+                    let end_rect = output
+                        .galley
+                        .pos_from_cursor(egui::text::CCursor::new(primary.max(secondary)));
+                    let rect = egui::Rect::from_two_pos(
+                        output.galley_pos + start_rect.left_top().to_vec2(),
+                        output.galley_pos + end_rect.right_bottom().to_vec2(),
+                    );
+                    if let Some(new) = selection_from_anchors(
+                        args.chapter,
+                        blocks,
+                        anchor,
+                        focus,
+                        rect,
+                        response.id,
+                    ) {
+                        *selection = Some(new);
+                    } else if !pointer_down {
+                        *selection = None;
+                    }
+                }
             }
         }
     }
@@ -6294,7 +6838,7 @@ fn add_selectable_text(
         *reader_focus = None;
     }
 
-    if !args.links.is_empty() && response.clicked() {
+    if !shift_extend && !args.links.is_empty() && response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
             let index = output.galley.cursor_from_pos(pos - output.galley_pos).index;
             if let Some((_, href)) = args.links.iter().find(|(range, _)| range.contains(&index)) {
@@ -6573,9 +7117,12 @@ fn draw_block(
     th: &Theme,
     textures: &mut HashMap<String, egui::TextureHandle>,
     book: &mut Option<Book>,
+    blocks: &[Block],
     chapter: usize,
     link_target: &mut Option<(usize, Option<String>)>,
     selection: &mut Option<Selection>,
+    extend_to: &mut Option<Anchor>,
+    geoms: &mut Vec<BlockGeom>,
     reader_focus: &mut Option<egui::Id>,
     ctx: &egui::Context,
 ) {
@@ -6746,7 +7293,17 @@ fn draw_block(
                     chapter,
                     book: book.as_ref(),
                 };
-                let resp = add_selectable_text(ui, j2, &args, link_target, selection, reader_focus);
+                let resp = add_selectable_text(
+                    ui,
+                    j2,
+                    &args,
+                    blocks,
+                    link_target,
+                    selection,
+                    extend_to,
+                    geoms,
+                    reader_focus,
+                );
                 ui.painter().vline(
                     x + 3.0,
                     resp.rect.y_range(),
@@ -6764,7 +7321,17 @@ fn draw_block(
                 chapter,
                 book: book.as_ref(),
             };
-            add_selectable_text(ui, job, &args, link_target, selection, reader_focus);
+            add_selectable_text(
+                ui,
+                job,
+                &args,
+                blocks,
+                link_target,
+                selection,
+                extend_to,
+                geoms,
+                reader_focus,
+            );
         }
     }
 
@@ -6924,19 +7491,166 @@ mod tests {
         }
     }
 
+    fn seg(block: usize, start: usize, end: usize) -> Segment {
+        Segment { block, start, end }
+    }
+
     #[test]
     fn destacado_respeta_offsets_y_reancla_por_cita() {
         let blocks = vec![paragraph("Hola mundo"), paragraph("Otra frase distinta")];
         let exacto = annotation(0, 5, 10, "mundo");
-        assert_eq!(resolve_annotation(&exacto, &blocks), Some((0, 5, 10)));
+        assert_eq!(
+            resolve_annotation(&exacto, &blocks),
+            Some(vec![seg(0, 5, 10)])
+        );
 
         // El bloque guardado cambió, pero la cita sigue en el capítulo.
         let movido = annotation(1, 0, 5, "mundo");
-        assert_eq!(resolve_annotation(&movido, &blocks), Some((0, 5, 10)));
+        assert_eq!(
+            resolve_annotation(&movido, &blocks),
+            Some(vec![seg(0, 5, 10)])
+        );
 
         // Offsets viejos dentro del bloque correcto: se reancla por cita.
         let corrido = annotation(0, 0, 9, "frase distinta");
-        assert_eq!(resolve_annotation(&corrido, &blocks), Some((1, 5, 19)));
+        assert_eq!(
+            resolve_annotation(&corrido, &blocks),
+            Some(vec![seg(1, 5, 19)])
+        );
+    }
+
+    #[test]
+    fn destacado_multi_bloque_respeta_offsets() {
+        let blocks = vec![
+            paragraph("Hola mundo"),
+            paragraph("Segunda frase"),
+            paragraph("Tercera parte"),
+        ];
+        let mut a = annotation(0, 5, 7, "");
+        a.end_block = Some(2);
+        a.parts = vec!["mundo".into(), "Segunda frase".into(), "Tercera".into()];
+        a.quote = "mundo\nSegunda frase\nTercera".into();
+        assert_eq!(
+            resolve_annotation(&a, &blocks),
+            Some(vec![seg(0, 5, 10), seg(1, 0, 13), seg(2, 0, 7)])
+        );
+    }
+
+    #[test]
+    fn destacado_multi_bloque_se_reancla_por_partes() {
+        let blocks = vec![
+            paragraph("Prólogo: Hola mundo"),
+            paragraph("Otra vez Segunda frase"),
+            paragraph("Tercera parte final"),
+        ];
+        let mut a = annotation(0, 5, 5, "");
+        a.end_block = Some(2);
+        a.parts = vec!["mundo".into(), "Segunda frase".into(), "Tercera".into()];
+        a.quote = "mundo\nSegunda frase\nTercera".into();
+        assert_eq!(
+            resolve_annotation(&a, &blocks),
+            Some(vec![seg(0, 14, 19), seg(1, 9, 22), seg(2, 0, 7)])
+        );
+    }
+
+    #[test]
+    fn destacado_multi_bloque_con_coincidencia_parcial_no_se_dibuja() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("Texto distinto")];
+        let mut a = annotation(0, 5, 5, "");
+        a.end_block = Some(1);
+        a.parts = vec!["mundo".into(), "Segunda frase".into()];
+        a.quote = "mundo\nSegunda frase".into();
+        assert_eq!(resolve_annotation(&a, &blocks), None);
+    }
+
+    #[test]
+    fn seleccion_multi_bloque_arma_partes_y_omite_bloques_vacios() {
+        let blocks = vec![
+            paragraph("Hola mundo"),
+            paragraph(""),
+            paragraph("Segunda frase"),
+        ];
+        let selection = selection_from_anchors(
+            2,
+            &blocks,
+            Anchor {
+                block: 0,
+                offset: 5,
+            },
+            Anchor {
+                block: 2,
+                offset: 7,
+            },
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(10.0, 10.0)),
+            egui::Id::new("test"),
+        )
+        .expect("selección válida");
+        assert_eq!(selection.quote, "mundo\nSegunda");
+        assert_eq!(selection.parts, vec!["mundo", "Segunda"]);
+        assert!(selection.is_multi_block());
+        assert_eq!(selection.start_block(), 0);
+        assert_eq!(selection.end_block(), 2);
+        assert_eq!(
+            selection_segments(&selection, &blocks),
+            vec![seg(0, 5, 10), seg(2, 0, 7)]
+        );
+    }
+
+    #[test]
+    fn seleccion_multi_bloque_se_convierte_en_anotacion() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("Segunda frase")];
+        let selection = selection_from_anchors(
+            0,
+            &blocks,
+            Anchor {
+                block: 0,
+                offset: 5,
+            },
+            Anchor {
+                block: 1,
+                offset: 7,
+            },
+            egui::Rect::NOTHING,
+            egui::Id::new("test"),
+        )
+        .expect("selección válida");
+        let a = annotation_from_selection(&selection, "/x.epub".into(), "nota".into(), 2);
+        assert_eq!(a.book, "/x.epub");
+        assert_eq!(a.chapter, 0);
+        assert_eq!(a.block, 0);
+        assert_eq!(a.start, 5);
+        assert_eq!(a.end, 7);
+        assert_eq!(a.end_block(), 1);
+        assert!(a.is_multi_block());
+        assert_eq!(a.parts, vec!["mundo", "Segunda"]);
+        assert_eq!(a.quote, "mundo\nSegunda");
+        assert_eq!(a.note, "nota");
+        assert_eq!(a.color, 2);
+    }
+
+    #[test]
+    fn seleccion_solo_espacios_no_es_valida() {
+        let blocks = vec![paragraph("   "), paragraph("")];
+        assert!(selection_from_anchors(
+            0,
+            &blocks,
+            Anchor {
+                block: 0,
+                offset: 0,
+            },
+            Anchor {
+                block: 1,
+                offset: 0,
+            },
+            egui::Rect::NOTHING,
+            egui::Id::new("test"),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn quote_inline_colapsa_espacios_y_saltos() {
+        assert_eq!(quote_inline("uno\n  dos\t tres"), "uno dos tres");
     }
 
     #[test]
@@ -6994,6 +7708,16 @@ mod tests {
         );
         assert_eq!(resolve_history_range(&blocks, 0, "mundo"), Some((0, 5, 10)));
         assert_eq!(resolve_history_range(&blocks, 0, "zzz"), None);
+    }
+
+    #[test]
+    fn historial_multi_bloque_cae_al_prefijo_de_palabras() {
+        let blocks = vec![paragraph("Hola mundo"), paragraph("Otra frase distinta")];
+        assert_eq!(
+            resolve_history_range(&blocks, 0, "Hola mundo Otra frase distinta"),
+            Some((0, 0, 10))
+        );
+        assert_eq!(resolve_history_range(&blocks, 0, "zzz yyy"), None);
     }
 
     #[test]

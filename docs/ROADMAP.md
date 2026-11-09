@@ -1,13 +1,13 @@
 ---
 id: roadmap
 status: vigente
-version: 1.10.0
+version: 1.11.0
 updated: 2026-11-09
 ---
 
 # Roadmap
 
-Ocho milestones. Cada uno tiene criterio de salida **verificable**, no una
+Nueve milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -21,6 +21,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M6 | Consultas externas | **Hecho** | [60](specs/60-diccionario-traduccion-ia.md), [65](specs/65-centro-configuracion.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
 | M7 | IA configurable | **Hecho** | [ai-providers](../openspec/specs/ai-providers/spec.md), [ai-credentials](../openspec/specs/ai-credentials/spec.md) | Elegir entre nueve proveedores y guardar la API key en el llavero sin escribirla en `config.json` |
 | M8 | Editar EPUB | **Hecho** | [epub-editing](../openspec/specs/epub-editing/spec.md) | Corregir título/autor/idioma y agregar portada con backup y validación |
+| M9 | Lectura de estudio | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Seleccionar y anotar entre párrafos del mismo capítulo, con migración v2 y reanclaje por partes |
 
 ## M1 — Lector (terminado)
 
@@ -159,7 +160,7 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
 - Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
-- Verificación: **105 unit (1 live ignorado) + 9 integración**, clippy limpio,
+- Verificación: **116 unit (1 live ignorado) + 9 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
@@ -177,8 +178,8 @@ Cerrado el 2026-11-08:
 - Selector, campo de clave, Guardar/Borrar con confirmación y estado en
   Configuración; el valor nunca se muestra ni se persiste en JSON/logs/URLs.
 - ADR-0012, tests de protocolos y captura de Configuración sin llavero.
-- Verificación: **105 unit (1 live ignorado) + 9 integración**; `dist`
-  **7.234.320 B**.
+- Verificación: **116 unit (1 live ignorado) + 9 integración**; `dist`
+  **7.250.944 B**.
 
 ## M8 — Editar EPUB (terminado)
 
@@ -191,8 +192,25 @@ Cerrado el 2026-11-09:
 - Actualización de biblioteca preservando progreso, ajustes, fechas y
   anotaciones.
 - ADR-0013, tests con `mini.epub` y `edge.epub`, captura del editor.
-- Verificación: **105 unit (104 + 1 live ignorado) + 9 integración**; `dist`
-  **7.234.320 B**.
+- Verificación: **116 unit (115 + 1 live ignorado) + 9 integración**; `dist`
+  **7.250.944 B**.
+
+## M9 — Lectura de estudio (terminado)
+
+Cerrado el 2026-11-09:
+
+- Selección de texto a través de párrafos del mismo capítulo: arrastre fuera
+  del bloque o **Mayúsculas + clic**.
+- Resaltado completo del rango y vista previa con el color activo.
+- `annotations.json` v2: `end_block` + `parts` por bloque, con migración
+  transparente de v1.
+- Reanclaje por offsets exactos y, si el texto cambió, por partes de cita;
+  coincidencia parcial se informa como “no encontrada”.
+- Panel con vista previa de una línea, cantidad de párrafos y salto al inicio.
+- Consulta y nota sobre el texto completo; `rekey` conserva los rangos.
+- ADR-0014, tests de migración/rangos/reanclaje y captura de selección.
+- Verificación: **116 unit (115 + 1 live ignorado) + 9 integración**; `dist`
+  **7.250.944 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 
@@ -209,8 +227,8 @@ comportamiento funcional de M1–M6:
   destructivas.
 - Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
   en Papel 19 px.
-- Verificación: **105 unit (1 live ignorado) + 9 integración**, clippy limpio,
-  `scripts/check.sh` verde y `dist` **7.234.320 B**.
+- Verificación: **116 unit (1 live ignorado) + 9 integración**, clippy limpio,
+  `scripts/check.sh` verde y `dist` **7.250.944 B**.
 
 ## Orden de ataque recomendado
 

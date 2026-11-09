@@ -15,7 +15,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 105 unit (1 live ignorado) + 9 integración
+cargo test                                  # 116 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
@@ -49,7 +49,8 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Nada de `unwrap()` en rutas de datos de usuario (EPUB roto, archivo faltante).
 - Los destacados y notas se guardan como **offsets de caracteres + cita** en
   `annotations.json`; no los conviertas a píxeles ni los mezcles con
-  `library.json`.
+  `library.json`. El formato v2 admite rangos entre párrafos (`end_block` +
+  `parts`); mantené la lectura de archivos v1 (ADR-0014).
 - Las consultas online están **apagadas por defecto** (`online_enabled=false`) y
   nunca salen sin una acción explícita. Las peticiones van en un hilo; no
   bloquees la UI.

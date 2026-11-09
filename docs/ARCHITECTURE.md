@@ -41,7 +41,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s y portada declarada | no decide estilos ni layout |
 | `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
-| `annotations.rs` | destacados/notas por libro: offsets de texto, cita y nota; `annotations.json` atómico | no conoce píxeles ni la UI |
+| `annotations.rs` | destacados/notas por libro: rangos multi-bloque, offsets, partes de cita y nota; `annotations.json` atómico v2 | no conoce píxeles ni la UI |
 | `search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
 | `consulta.rs` | diccionario/traducción/IA, HTTP ureq, parsers e historial local | no conoce egui |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
@@ -115,11 +115,18 @@ invisible para no perder el destino (ADR-0010).
 
 Los destacados viven en `annotations.json`, separados de la biblioteca. Una
 `Annotation` guarda `book` (ruta canónica), `chapter`, `block`, `start`/`end` en
-**caracteres** dentro de `Block::text()`, `quote`, `note`, `color` y `created`.
-El render resuelve cada anotación del capítulo con `resolve_annotation`: si los
-offsets guardados siguen conteniendo la cita se usan tal cual; si no, se busca la
-cita primero en ese bloque y después en todo el capítulo. Las que no aparecen no
-se dibujan.
+**caracteres** dentro de `Block::text()`, `end_block` opcional, las `parts` de
+cita por bloque, `quote`, `note`, `color` y `created`. Un rango de un solo bloque
+usa `end_block = None` y conserva el formato v1; uno multi-bloque guarda el
+bloque final y el texto de cada bloque cubierto. La migración v2 completa las
+partes desde la cita al cargar y no reescribe el archivo hasta la próxima
+mutación.
+
+El render resuelve cada anotación del capítulo con `resolve_annotation`, que
+devuelve uno o varios segmentos. Primero prueba los offsets guardados; si no
+coinciden, busca las partes en orden desde el bloque inicial. Si solo coincide
+una parte, la anotación se considera no encontrada y no se dibuja. El panel y el
+salto usan la primera parte; los bloques intermedios se resaltan completos.
 
 Cada bloque de texto se dibuja con un `TextEdit` multilínea inmutable (`&mut
 &str`) con `.frame(false)`, margen cero y un `layouter` que reutiliza el

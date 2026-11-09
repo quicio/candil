@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::library::now;
 use crate::store;
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -22,18 +22,68 @@ pub struct Annotation {
     pub book: String,
     /// Índice del spine.
     pub chapter: usize,
-    /// Índice en `Vec<Block>`.
+    /// Índice en `Vec<Block>` del bloque inicial.
     pub block: usize,
-    /// Offset en caracteres dentro de `Block::text()`.
+    /// Offset en caracteres dentro de `Block::text()` del bloque inicial.
     pub start: usize,
+    /// Offset final dentro del bloque final.
     pub end: usize,
-    /// Texto seleccionado, para mostrar y reanclar.
+    /// Bloque final cuando el rango cruza párrafos. `None` = mismo bloque
+    /// (compatible con el formato v1).
+    pub end_block: Option<usize>,
+    /// Texto seleccionado en cada bloque cubierto, en orden. Permite reanclar
+    /// aunque los offsets hayan cambiado.
+    pub parts: Vec<String>,
+    /// Texto seleccionado completo, para mostrar y exportar. Las partes se unen
+    /// con `\n`; la fuente de verdad para reanclar es `parts`.
     pub quote: String,
     /// Vacío = solo destacado.
     pub note: String,
     /// Reservado para varios colores; 0 en el MVP.
     pub color: u8,
     pub created: i64,
+}
+
+impl Annotation {
+    /// Bloque final efectivo.
+    pub fn end_block(&self) -> usize {
+        self.end_block.unwrap_or(self.block)
+    }
+
+    /// `true` si el rango empieza y termina en bloques distintos.
+    pub fn is_multi_block(&self) -> bool {
+        self.end_block() > self.block
+    }
+
+    /// Cantidad de párrafos con texto que cubre el rango.
+    pub fn paragraph_count(&self) -> usize {
+        self.parts
+            .iter()
+            .filter(|part| !part.trim().is_empty())
+            .count()
+            .max(1)
+    }
+
+    /// Primera parte de la cita, para saltar al inicio del rango.
+    pub fn first_part(&self) -> String {
+        self.parts
+            .iter()
+            .find(|part| !part.is_empty())
+            .cloned()
+            .or_else(|| self.quote.split('\n').next().map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    /// Normaliza un rango recién cargado o creado: completa `parts` desde la
+    /// cita y descarta un `end_block` redundante.
+    pub fn normalize(&mut self) {
+        if self.parts.is_empty() && !self.quote.is_empty() {
+            self.parts = vec![self.quote.clone()];
+        }
+        if self.end_block == Some(self.block) {
+            self.end_block = None;
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,7 +112,9 @@ impl Annotations {
     }
 
     pub fn load_from(path: &Path) -> (Self, Option<String>) {
-        store::load_json_with_report(path, "annotations.json")
+        let (mut loaded, warning) = store::load_json_with_report::<Self>(path, "annotations.json");
+        loaded.migrate();
+        (loaded, warning)
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -89,11 +141,25 @@ impl Annotations {
     pub fn add(&mut self, mut annotation: Annotation) -> u64 {
         let id = self.items.iter().map(|a| a.id).max().unwrap_or(0) + 1;
         annotation.id = id;
+        annotation.normalize();
         if annotation.created == 0 {
             annotation.created = now();
         }
         self.items.push(annotation);
         id
+    }
+
+    /// Migra en memoria un archivo de una versión anterior. No escribe nada:
+    /// el archivo se reescribe recién en la próxima mutación.
+    pub fn migrate(&mut self) {
+        // Normalizar es idempotente y también cubre archivos sin
+        // `schema_version` o escritos por versiones intermedias.
+        for annotation in &mut self.items {
+            annotation.normalize();
+        }
+        if self.schema_version < SCHEMA_VERSION {
+            self.schema_version = SCHEMA_VERSION;
+        }
     }
 
     pub fn remove(&mut self, id: u64) -> bool {
@@ -222,13 +288,22 @@ mod tests {
     fn rekey_mueve_anotaciones_al_nuevo_path() {
         let mut all = Annotations::default();
         all.add(annotation("/old.epub", 1, "uno"));
-        all.add(annotation("/old.epub", 2, "dos"));
+        let mut multi = annotation("/old.epub", 2, "dos");
+        multi.end_block = Some(4);
+        multi.parts = vec!["dos".into(), "tres".into(), "cuatro".into()];
+        all.add(multi);
         all.add(annotation("/otro.epub", 3, "tres"));
 
         assert_eq!(all.rekey("/old.epub", "/new.epub"), 2);
         assert_eq!(all.for_book("/new.epub").count(), 2);
         assert_eq!(all.for_book("/old.epub").count(), 0);
         assert_eq!(all.for_book("/otro.epub").count(), 1);
+        let moved = all
+            .for_book("/new.epub")
+            .find(|a| a.block == 2)
+            .expect("rango multi-bloque");
+        assert_eq!(moved.end_block(), 4);
+        assert_eq!(moved.parts.len(), 3);
     }
 
     #[test]
@@ -286,8 +361,80 @@ mod tests {
         assert_eq!(a.id, 0);
         assert_eq!(a.color, 0);
         assert_eq!(a.note, "");
+        assert!(a.end_block.is_none());
+        assert!(a.parts.is_empty());
         let all: Annotations = serde_json::from_str("{}").unwrap();
         assert_eq!(all.schema_version, SCHEMA_VERSION);
         assert!(all.items.is_empty());
+    }
+
+    #[test]
+    fn migra_v1_a_v2_sin_perder_anotaciones() {
+        let raw = r#"{
+            "schema_version": 1,
+            "items": [
+                {"id": 1, "book": "/a.epub", "chapter": 2, "block": 3,
+                 "start": 4, "end": 9, "quote": "frase", "note": "", "color": 1}
+            ]
+        }"#;
+        let mut all: Annotations = serde_json::from_str(raw).unwrap();
+        all.migrate();
+        assert_eq!(all.schema_version, SCHEMA_VERSION);
+        assert_eq!(all.items.len(), 1);
+        assert_eq!(all.items[0].end_block, None);
+        assert_eq!(all.items[0].parts, vec!["frase"]);
+        assert_eq!(all.items[0].first_part(), "frase");
+        assert_eq!(all.items[0].paragraph_count(), 1);
+
+        // Migrar dos veces no duplica ni cambia nada.
+        all.migrate();
+        assert_eq!(all.items[0].parts, vec!["frase"]);
+    }
+
+    #[test]
+    fn roundtrip_multi_bloque_conserva_partes_y_extremos() {
+        let dir = temp_dir("multi");
+        let path = dir.join("annotations.json");
+        let mut all = Annotations::default();
+        let id = all.add(Annotation {
+            book: "/libro.epub".into(),
+            chapter: 1,
+            block: 2,
+            start: 4,
+            end: 6,
+            end_block: Some(4),
+            parts: vec!["uno".into(), "dos".into(), "tres".into()],
+            quote: "uno\ndos\ntres".into(),
+            ..Annotation::default()
+        });
+        all.save_to(&path).unwrap();
+
+        let (loaded, warning) = Annotations::load_from(&path);
+        assert!(warning.is_none());
+        let a = loaded.get(id).unwrap();
+        assert_eq!(a.block, 2);
+        assert_eq!(a.start, 4);
+        assert_eq!(a.end_block(), 4);
+        assert_eq!(a.end, 6);
+        assert!(a.is_multi_block());
+        assert_eq!(a.paragraph_count(), 3);
+        assert_eq!(a.parts, vec!["uno", "dos", "tres"]);
+        assert_eq!(a.quote, "uno\ndos\ntres");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn normaliza_end_block_redundante_y_completa_partes() {
+        let mut a = Annotation {
+            book: "/x.epub".into(),
+            block: 7,
+            end_block: Some(7),
+            quote: "hola".into(),
+            ..Annotation::default()
+        };
+        a.normalize();
+        assert_eq!(a.end_block, None);
+        assert!(!a.is_multi_block());
+        assert_eq!(a.parts, vec!["hola"]);
     }
 }

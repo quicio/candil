@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.11.0
+version: 1.12.0
 updated: 2026-11-09
 ---
 
@@ -129,13 +129,14 @@ Build en otros sistemas: [`BUILD.md`](BUILD.md) y la matriz de CI
 La entrega es automática (`docs/RELEASING.md`, ADR-0017): push a `main` →
 `build` → `auto-release` decide minor/patch por conventional commits, actualiza
 `Cargo.toml`/`Cargo.lock`, crea el tag y dispara `release.yml`. La release
-publica los tres binarios, `candil-macos-arm64-app.zip` y `SHA256SUMS.txt`. No
-se bumpea la versión ni se crea el tag a mano. Si la publicación falla:
+publica los tres binarios, `candil-macos-arm64-app.zip`,
+`candil-macos-arm64-app.tar.gz` y `SHA256SUMS.txt`. No se bumpea la versión ni
+se crea el tag a mano. Si la publicación falla:
 `gh workflow run release.yml -f tag=vX.Y.Z`.
 
-En macOS el `.app` se firma ad-hoc, no está notarizado: la primera apertura
-requiere clic derecho → Abrir (o quitar la cuarentena). El cask
-`quicio/tap/candil` intenta automatizar ese paso.
+En macOS el `.app` se firma ad-hoc y no está notarizado. El cask
+`quicio/tap/candil` instala, quita la cuarentena y evita el bloqueo inicial; el
+zip manual sigue necesitando clic derecho → Abrir la primera vez.
 
 ## Cómo verificar sin ojos humanos
 

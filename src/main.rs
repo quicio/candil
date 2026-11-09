@@ -74,6 +74,10 @@ fn main() -> eframe::Result<()> {
                 dev.help = true;
                 i += 1;
             }
+            "--edit" => {
+                dev.edit = true;
+                i += 1;
+            }
             "--chapter" => {
                 dev.chapter = args.get(i + 1).and_then(|s| s.parse().ok());
                 i += 2;

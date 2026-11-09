@@ -15,12 +15,12 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 103 unit (1 live ignorado) + 9 integración
+cargo test                                  # 105 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio
-cargo build --profile dist                  # artefacto final: ~6.4 MB
+cargo build --profile dist                  # artefacto final: ~7.2 MB
 cargo run --profile fast                    # biblioteca
 cargo run --profile fast -- --resume        # reabrir el último libro
 cargo run --profile fast -- --scan ~/Libros # índice + portadas sin UI
@@ -56,6 +56,8 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - La clave de IA vive en el llavero del sistema o en `OPENCODE_API_KEY`; nunca
   en `config.json`, `consultas.json`, logs ni URLs. El historial es local y no
   incluye el párrafo de contexto.
+- Editar un EPUB exige backup previo y validación con `Book::open`; si falla, el
+  original no se toca (ADR-0013).
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

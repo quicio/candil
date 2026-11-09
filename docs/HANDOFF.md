@@ -2,7 +2,7 @@
 id: handoff
 status: vigente
 version: 1.10.0
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Handoff — estado del proyecto y cómo seguir
@@ -27,7 +27,8 @@ anclas/saltos y progreso por fracción. M4 incluye destacados/notas y búsqueda
 interna. M5 agrega anotaciones globales, colores, export Markdown y navegación.
 M6 agrega diccionario Wiktionary, traducción MyMemory, IA multi-proveedor,
 historial en `consultas.json` y el centro de configuración. La API key se guarda
-en el llavero del sistema; `OPENCODE_API_KEY` sigue como override.
+en el llavero del sistema; `OPENCODE_API_KEY` sigue como override. M8 agrega
+edición de metadatos y portada dentro del EPUB, con backup y validación.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -43,9 +44,10 @@ origen.
 
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
-`interaction-accessibility`, `ai-providers` y `ai-credentials`) viven en
-`openspec/specs/`; los cambios `consolidar-ux-ui` y `proveedores-ia-clave`
-quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
+`interaction-accessibility`, `ai-providers`, `ai-credentials` y
+`epub-editing`) viven en `openspec/specs/`; los cambios `consolidar-ux-ui`,
+`proveedores-ia-clave` y `editar-metadata-epub` quedaron archivados en
+`openspec/changes/archive/`. `docs/specs/` queda como
 archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -67,12 +69,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
+| capturas | 15 en `docs/img/` (biblioteca ×4, editor de EPUB, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 103 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 105 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 6.818.144 B | `cargo build --profile dist` (2026-11-08) |
+| binario `dist` | 7.234.320 B | `cargo build --profile dist` (2026-11-08) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -102,6 +104,7 @@ src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
 src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
+src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
 src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
@@ -156,6 +159,7 @@ cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
 cargo run --profile fast -- --shot /tmp/p.png --selection libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --confirm-delete libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --help libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --screen library --edit
 
 # test live (no corre en el gate normal)
 cargo test --lib red_real_wiktionary_y_mymemory -- --ignored
@@ -238,6 +242,8 @@ flotante tapando texto) solo aparecieron así.
     sin foco de teclado.
 20. **Sin movimiento de layout**: `animation_time = 0`; egui no expone la
     preferencia de reduced motion del SO, así que no se anima nada decorativo.
+21. **Editar un EPUB no es leerlo**: reescribir el ZIP exige backup, validación
+    y reemplazo seguro. Nunca se modifica el original sin esas tres cosas.
 
 ## Definición de terminado (por tarea)
 

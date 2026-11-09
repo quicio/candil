@@ -1,6 +1,7 @@
 //! Ventana y lectura: barra mínima, columna centrada, scroll continuo.
 
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -18,8 +19,9 @@ use crate::consulta::{
     self, AiPrompt, ConsultaEntry, ConsultaHistory, ConsultaKind, ConsultaRequest, ConsultaResponse,
 };
 use crate::epub::Book;
+use crate::epub_edit::{self, CoverExt, CoverUpload, Edits};
 use crate::fonts;
-use crate::library::{Library, ScanStats};
+use crate::library::{BookEntry, Library, ScanStats};
 use crate::search;
 use crate::secrets;
 use crate::theme::{self, Theme, THEMES};
@@ -89,6 +91,7 @@ enum CardAction {
     Remove,
     Locate,
     Recover,
+    Edit,
 }
 
 /// Selección activa de texto dentro de un bloque, lista para destacar.
@@ -114,6 +117,18 @@ struct NoteEditor {
     draft: String,
     color: u8,
     focus: bool,
+}
+
+struct EpubEditor {
+    index: usize,
+    path: PathBuf,
+    title: String,
+    author: String,
+    lang: String,
+    cover_ext: CoverExt,
+    cover_upload: Option<Vec<u8>>,
+    cover_texture: Option<egui::TextureHandle>,
+    error: Option<String>,
 }
 
 struct AnnRow {
@@ -197,6 +212,7 @@ pub struct Lector {
     annotations: Annotations,
     selection: Option<Selection>,
     note: Option<NoteEditor>,
+    epub_editor: Option<EpubEditor>,
     show_annotations: bool,
     annotations_global: bool,
     confirm_delete_annotation: Option<u64>,
@@ -270,6 +286,8 @@ pub struct DevOpts {
     pub selection: bool,
     /// Abre la ventana de atajos (capturas).
     pub help: bool,
+    /// Abre el editor de metadatos/portada del primer libro (capturas).
+    pub edit: bool,
     pub chapter: Option<usize>,
     pub panel: Option<String>,
     /// Reabre el último libro en vez de arrancar en la biblioteca.
@@ -411,6 +429,7 @@ impl Lector {
             annotations,
             selection: None,
             note: None,
+            epub_editor: None,
             show_annotations: false,
             annotations_global: false,
             active_color: 0,
@@ -479,6 +498,16 @@ impl Lector {
         if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("config") {
             app.show_config = true;
             app.config_tab = ConfigTab::Biblioteca;
+        }
+        if app.screen == Screen::Library && app.dev.edit {
+            if let Some(index) = app
+                .library
+                .books
+                .iter()
+                .position(|book| !book.missing && book.error.is_none())
+            {
+                app.open_epub_editor(index, &cc.egui_ctx);
+            }
         }
         if app.book.is_some() {
             if let Some(anchor) = app.dev.anchor.clone() {
@@ -3248,6 +3277,7 @@ impl Lector {
         let mut remove: Option<usize> = None;
         let mut locate: Option<usize> = None;
         let mut recover: Option<usize> = None;
+        let mut edit: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
@@ -3716,6 +3746,7 @@ impl Lector {
                                         Some(CardAction::Remove) => remove = Some(card.index),
                                         Some(CardAction::Locate) => locate = Some(card.index),
                                         Some(CardAction::Recover) => recover = Some(card.index),
+                                        Some(CardAction::Edit) => edit = Some(card.index),
                                         None => {}
                                     }
                                 }
@@ -3759,6 +3790,9 @@ impl Lector {
         if let Some(index) = recover {
             self.confirm_recover_book = Some(index);
         }
+        if let Some(index) = edit {
+            self.open_epub_editor(index, ctx);
+        }
         if let Some(path) = open_path {
             self.open(path);
         }
@@ -3766,6 +3800,262 @@ impl Lector {
         self.remove_book_window(ctx, th);
         self.remove_folder_window(ctx, th);
         self.recover_book_window(ctx, th);
+        self.epub_editor_window(ctx, th);
+    }
+
+    fn open_epub_editor(&mut self, index: usize, ctx: &egui::Context) {
+        let Some(entry) = self.library.books.get(index) else {
+            return;
+        };
+        if entry.missing || entry.error.is_some() {
+            self.say("No puedo editar un EPUB faltante o con error.");
+            return;
+        }
+        let path = PathBuf::from(&entry.path);
+        match epub_edit::read_info(&path) {
+            Ok(info) => {
+                let cover_ext = info
+                    .cover
+                    .as_ref()
+                    .map(|cover| CoverExt::from_hint(&cover.media_type, &cover.href))
+                    .unwrap_or(CoverExt::Jpg);
+                let cover_texture = info
+                    .cover_bytes
+                    .as_deref()
+                    .and_then(|bytes| texture_from_image(ctx, bytes));
+                let fallback_title = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                self.epub_editor = Some(EpubEditor {
+                    index,
+                    title: if info.title.trim().is_empty() {
+                        fallback_title
+                    } else {
+                        info.title
+                    },
+                    author: info.author,
+                    lang: info.lang,
+                    path,
+                    cover_ext,
+                    cover_upload: None,
+                    cover_texture,
+                    error: None,
+                });
+            }
+            Err(error) => self.say(format!("No pude leer el EPUB: {error}")),
+        }
+    }
+
+    fn epub_editor_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if self.epub_editor.is_none() {
+            return;
+        }
+
+        let mut save_request: Option<(usize, PathBuf, Edits)> = None;
+        let mut cancel = false;
+        {
+            let editor = self.epub_editor.as_mut().expect("editor comprobado");
+            let file_name = editor
+                .path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let mut pick_cover = false;
+            let mut save = false;
+            let mut close = false;
+
+            let _ = egui::Modal::new(egui::Id::new("epub-editor-modal"))
+                .backdrop_color(Color32::from_black_alpha(40))
+                .frame(widgets::panel_frame(th))
+                .show(ctx, |ui| {
+                    ui.set_width(520.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("Editar EPUB")
+                                .size(theme::text::TITLE)
+                                .strong()
+                                .color(th.fg),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                                .on_hover_text("Cancelar")
+                                .clicked()
+                            {
+                                close = true;
+                            }
+                        });
+                    });
+                    ui.separator();
+                    widgets::meta(ui, th, file_name.clone());
+                    ui.add_space(theme::space::SM);
+
+                    widgets::label(ui, th, "Título");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut editor.title)
+                            .desired_width(f32::INFINITY),
+                    );
+                    widgets::label(ui, th, "Autor");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut editor.author)
+                            .desired_width(f32::INFINITY),
+                    );
+                    widgets::label(ui, th, "Idioma");
+                    ui.add(egui::TextEdit::singleline(&mut editor.lang).desired_width(120.0));
+
+                    ui.add_space(theme::space::SM);
+                    ui.horizontal_top(|ui| {
+                        if let Some(texture) = &editor.cover_texture {
+                            let size = texture.size_vec2();
+                            let scale = (160.0 / size.x).min(220.0 / size.y).min(1.0);
+                            ui.add(egui::Image::new((texture.id(), size * scale)));
+                        } else {
+                            ui.add_sized(
+                                [160.0, 120.0],
+                                egui::Label::new(
+                                    RichText::new("Sin portada")
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                ),
+                            );
+                        }
+                        ui.vertical(|ui| {
+                            widgets::label(ui, th, "Portada");
+                            if widgets::button(
+                                ui,
+                                th,
+                                "Elegir imagen…",
+                                widgets::ButtonKind::Secondary,
+                            )
+                            .clicked()
+                            {
+                                pick_cover = true;
+                            }
+                            widgets::meta(ui, th, "JPG, PNG o WebP; se ajusta a 1600×2400");
+                        });
+                    });
+
+                    ui.add_space(theme::space::SM);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(
+                                "Se reescribe el EPUB. Antes se guarda un backup en el directorio de datos.",
+                            )
+                            .size(theme::text::META)
+                            .color(th.dim),
+                        )
+                        .wrap(),
+                    );
+                    if let Some(error) = &editor.error {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(error)
+                                    .size(theme::text::META)
+                                    .color(th.error),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    ui.add_space(theme::space::SM);
+                    ui.horizontal(|ui| {
+                        if widgets::button(
+                            ui,
+                            th,
+                            "Guardar cambios",
+                            widgets::ButtonKind::Primary,
+                        )
+                        .clicked()
+                        {
+                            save = true;
+                        }
+                        if widgets::button(
+                            ui,
+                            th,
+                            "Cancelar",
+                            widgets::ButtonKind::Secondary,
+                        )
+                        .clicked()
+                        {
+                            close = true;
+                        }
+                    });
+                });
+
+            if pick_cover {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Imagen", &["jpg", "jpeg", "png", "webp"])
+                    .pick_file()
+                {
+                    match std::fs::read(&path)
+                        .map_err(|e| format!("No pude leer la imagen: {e}"))
+                        .and_then(|bytes| prepare_cover(&bytes, editor.cover_ext))
+                    {
+                        Ok(bytes) => {
+                            editor.cover_texture = texture_from_image(ctx, &bytes);
+                            editor.cover_upload = Some(bytes);
+                            editor.error = None;
+                        }
+                        Err(error) => editor.error = Some(error),
+                    }
+                }
+            }
+
+            if save {
+                if editor.title.trim().is_empty() {
+                    editor.error = Some("El título no puede quedar vacío.".into());
+                } else {
+                    save_request = Some((
+                        editor.index,
+                        editor.path.clone(),
+                        Edits {
+                            title: editor.title.trim().to_string(),
+                            author: editor.author.trim().to_string(),
+                            lang: editor.lang.trim().to_string(),
+                            cover: editor.cover_upload.clone().map(|bytes| CoverUpload {
+                                bytes,
+                                ext: editor.cover_ext,
+                            }),
+                        },
+                    ));
+                }
+            }
+            if close {
+                cancel = true;
+            }
+        }
+
+        if let Some((index, path, edits)) = save_request {
+            let backup_dir = self.library.data_dir.join("backups");
+            match epub_edit::save(&path, &edits, &backup_dir) {
+                Ok(result) => {
+                    self.epub_editor = None;
+                    self.apply_epub_edit(index, &result.backup);
+                }
+                Err(error) => {
+                    if let Some(editor) = self.epub_editor.as_mut() {
+                        editor.error = Some(error);
+                    }
+                }
+            }
+        } else if cancel {
+            self.epub_editor = None;
+        }
+    }
+
+    fn apply_epub_edit(&mut self, index: usize, backup: &Path) {
+        let Some(old) = self.library.books.get(index).cloned() else {
+            return;
+        };
+        let mut entry =
+            BookEntry::from_path_with_cover(&old.path, Some(&self.library.data_dir.join("covers")));
+        entry.progress = old.progress;
+        entry.settings = old.settings;
+        entry.added = old.added;
+        entry.last_opened = old.last_opened;
+        self.library.books[index] = entry;
+        self.library_textures.clear();
+        self.save_library();
+        self.say(format!("EPUB actualizado. Backup: {}", backup.display()));
     }
 
     fn remove_book_window(&mut self, ctx: &egui::Context, th: &Theme) {
@@ -5750,6 +6040,62 @@ fn export_markdown(entries: &[(String, String, Annotation)]) -> String {
     out
 }
 
+fn texture_from_image(ctx: &egui::Context, bytes: &[u8]) -> Option<egui::TextureHandle> {
+    let image = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let size = [image.width() as usize, image.height() as usize];
+    let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+    Some(ctx.load_texture("epub-editor-cover", color, egui::TextureOptions::LINEAR))
+}
+
+fn prepare_cover(bytes: &[u8], ext: CoverExt) -> Result<Vec<u8>, String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("No pude leer la imagen: {e}"))?;
+    let (width, height) = (img.width(), img.height());
+    if width == 0 || height == 0 {
+        return Err("La imagen no tiene tamaño.".into());
+    }
+    let scale = (1600.0 / width as f32).min(2400.0 / height as f32).min(1.0);
+    let img = if scale < 1.0 {
+        img.resize(
+            (width as f32 * scale).round().max(1.0) as u32,
+            (height as f32 * scale).round().max(1.0) as u32,
+            image::imageops::FilterType::Lanczos3,
+        )
+    } else {
+        img
+    };
+    let mut out = Vec::new();
+    match ext {
+        CoverExt::Png => {
+            img.write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
+                .map_err(|e| format!("No pude convertir la portada: {e}"))?;
+        }
+        CoverExt::Jpg => {
+            let rgb = flatten_white(img);
+            let mut cursor = Cursor::new(&mut out);
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 90);
+            encoder
+                .encode_image(&image::DynamicImage::ImageRgb8(rgb))
+                .map_err(|e| format!("No pude convertir la portada: {e}"))?;
+        }
+    }
+    Ok(out)
+}
+
+fn flatten_white(img: image::DynamicImage) -> image::RgbImage {
+    let rgba = img.to_rgba8();
+    let mut out = image::RgbImage::new(rgba.width(), rgba.height());
+    for (x, y, pixel) in rgba.enumerate_pixels() {
+        let alpha = pixel[3] as u32;
+        let blend = |channel: u8| ((channel as u32 * alpha + 255 * (255 - alpha)) / 255) as u8;
+        out.put_pixel(
+            x,
+            y,
+            image::Rgb([blend(pixel[0]), blend(pixel[1]), blend(pixel[2])]),
+        );
+    }
+    out
+}
+
 fn human_age(created: i64) -> String {
     let secs = crate::library::now().saturating_sub(created).max(0);
     if secs < 60 {
@@ -6198,6 +6544,13 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
         }
         if (card.missing || card.error.is_some()) && ui.button("Ubicar archivo…").clicked() {
             action = Some(CardAction::Locate);
+            ui.close();
+        }
+        if !card.missing
+            && card.error.is_none()
+            && ui.button("Editar metadatos y portada…").clicked()
+        {
+            action = Some(CardAction::Edit);
             ui.close();
         }
         ui.separator();

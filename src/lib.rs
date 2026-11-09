@@ -8,6 +8,7 @@ pub mod config;
 pub mod consulta;
 pub mod covers;
 pub mod epub;
+pub mod epub_edit;
 pub mod fonts;
 pub mod library;
 #[cfg(target_os = "macos")]

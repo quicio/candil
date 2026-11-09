@@ -11,10 +11,10 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
-del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA
-multi-proveedor.
+del libro, salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
+multi-proveedor y edición de metadatos/portada del EPUB.
 
-Binario final (`dist`): **6.4 MiB** (6.818.144 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.234.320 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -132,6 +132,7 @@ src/
   search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
   ai.rs      catálogo de proveedores y protocolos de IA
   secrets.rs API key en el llavero; OPENCODE_API_KEY como override
+  epub_edit.rs edición segura de metadatos y portada, con backup
   consulta.rs diccionario/traducción/IA (HTTP ureq) e historial local
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
@@ -155,7 +156,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 103
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 105
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -221,9 +222,12 @@ avanzado.
 |---|---|---|
 | ![Panel global con anotaciones de dos libros](docs/img/reader-notes-global.jpg) | ![Ventana para ir a un porcentaje o capítulo](docs/img/reader-goto.jpg) | ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
 
-| **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
-|---|---|---|
-| ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
+| **Editar EPUB** | **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
+|---|---|---|---|
+| ![Editar metadatos y portada](docs/img/library-edit.png) | ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
+
+Para editar, hacé clic derecho sobre una tarjeta y elegí **Editar metadatos y
+portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 
 ## Limitaciones conocidas
 
@@ -236,6 +240,8 @@ avanzado.
 - Tablas y `<dl>` se leen como bloques apilados; el SVG vectorial (paths) no se
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher: se refresca a mano.
+- Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
+  borrar una portada existente ni editar series/editorial/fecha.
 - El progreso por fracción y las preferencias por libro están desde M3; el
   filtro “Terminados” del roadmap original quedó fuera de alcance.
 - La búsqueda sigue siendo substring sin regex/stemming; el índice de

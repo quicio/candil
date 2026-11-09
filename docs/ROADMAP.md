@@ -2,12 +2,12 @@
 id: roadmap
 status: vigente
 version: 1.10.0
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Roadmap
 
-Siete milestones. Cada uno tiene criterio de salida **verificable**, no una
+Ocho milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -20,6 +20,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M5 | Segunda etapa | **Hecho** | [50](specs/50-anotaciones-globales.md), [55](specs/55-navegacion.md) | Ver y saltar anotaciones de cualquier libro, elegir color, exportar Markdown y saltar por porcentaje/capítulo |
 | M6 | Consultas externas | **Hecho** | [60](specs/60-diccionario-traduccion-ia.md), [65](specs/65-centro-configuracion.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
 | M7 | IA configurable | **Hecho** | [ai-providers](../openspec/specs/ai-providers/spec.md), [ai-credentials](../openspec/specs/ai-credentials/spec.md) | Elegir entre nueve proveedores y guardar la API key en el llavero sin escribirla en `config.json` |
+| M8 | Editar EPUB | **Hecho** | [epub-editing](../openspec/specs/epub-editing/spec.md) | Corregir título/autor/idioma y agregar portada con backup y validación |
 
 ## M1 — Lector (terminado)
 
@@ -158,7 +159,7 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
 - Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
-- Verificación: **103 unit (1 live ignorado) + 9 integración**, clippy limpio,
+- Verificación: **105 unit (1 live ignorado) + 9 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
@@ -176,8 +177,22 @@ Cerrado el 2026-11-08:
 - Selector, campo de clave, Guardar/Borrar con confirmación y estado en
   Configuración; el valor nunca se muestra ni se persiste en JSON/logs/URLs.
 - ADR-0012, tests de protocolos y captura de Configuración sin llavero.
-- Verificación: **103 unit (1 live ignorado) + 9 integración**; `dist`
-  **6.818.144 B**.
+- Verificación: **105 unit (1 live ignorado) + 9 integración**; `dist`
+  **7.234.320 B**.
+
+## M8 — Editar EPUB (terminado)
+
+Cerrado el 2026-11-09:
+
+- Edición de título, autor e idioma desde el menú contextual de la tarjeta.
+- Agregar o reemplazar portada (JPG/PNG/WebP, máximo 1600×2400).
+- Reescritura del ZIP con `mimetype` primero, backup obligatorio y validación
+  con `Book::open`; el original no se toca si algo falla.
+- Actualización de biblioteca preservando progreso, ajustes, fechas y
+  anotaciones.
+- ADR-0013, tests con `mini.epub` y `edge.epub`, captura del editor.
+- Verificación: **105 unit (104 + 1 live ignorado) + 9 integración**; `dist`
+  **7.234.320 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 
@@ -194,8 +209,8 @@ comportamiento funcional de M1–M6:
   destructivas.
 - Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
   en Papel 19 px.
-- Verificación: **103 unit (1 live ignorado) + 9 integración**, clippy limpio,
-  `scripts/check.sh` verde y `dist` **6.818.144 B**.
+- Verificación: **105 unit (1 live ignorado) + 9 integración**, clippy limpio,
+  `scripts/check.sh` verde y `dist` **7.234.320 B**.
 
 ## Orden de ataque recomendado
 

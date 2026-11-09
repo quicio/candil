@@ -152,6 +152,7 @@ shot() {
 # Biblioteca (tema Papel por defecto)
 shot library-full.png --screen library
 shot library-search.png --screen library --search austen
+shot library-edit.png --screen library --edit
 
 # Lector: Chapter I de Pride and Prejudice (dominio público).
 ANCHOR=pgepubid00022
@@ -208,6 +209,7 @@ png "$SHOTS/library-empty.png" library-empty.png
 png "$SHOTS/library-error.png" library-error.png
 png "$SHOTS/library-full.png" library-full.png
 png "$SHOTS/library-search.png" library-search.png
+png "$SHOTS/library-edit.png" library-edit.png
 png "$SHOTS/reader-settings.png" reader-settings.png
 jpg "$SHOTS/reader-highlight.png" reader-highlight.jpg
 jpg "$SHOTS/reader-notes.png" reader-notes.jpg

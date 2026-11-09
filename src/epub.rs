@@ -388,7 +388,7 @@ fn node_text(n: roxmltree::Node) -> String {
         .join(" ")
 }
 
-fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Option<Vec<u8>> {
     let candidates = [name.to_string(), format!("./{name}"), format!("/{name}")];
     let mut hit = None;
     for cand in &candidates {

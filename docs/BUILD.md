@@ -18,7 +18,7 @@ Perfiles:
 ```bash
 cargo build --profile fast    # iterar, ~3–6 s por cambio
 cargo build --profile release # uso diario, LTO thin
-cargo build --profile dist    # distribuir, LTO fat, ~6.4 MB
+cargo build --profile dist    # distribuir, LTO fat, ~7.2 MB
 ```
 
 El binario queda en `target/<perfil>/candil` (macOS/Linux) o

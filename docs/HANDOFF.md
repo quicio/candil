@@ -33,7 +33,8 @@ agrega selección y anotación entre párrafos, con migración v2 de
 `annotations.json` y reanclaje por partes. M10 agrega vista previa de enlaces
 internos y notas al pie, con “Ir al texto” y un regreso al punto exacto de
 lectura. M11 agrega actualización asistida desde Configuración: consulta manual
-de GitHub, descarga verificada y ningún reemplazo automático.
+de GitHub, descarga verificada y ningún reemplazo automático. M12 automatiza la
+entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -79,7 +80,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 126 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.284.272 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.284.288 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
 
@@ -122,6 +123,19 @@ src/fonts.rs   familias Literata en egui
 Build en otros sistemas: [`BUILD.md`](BUILD.md) y la matriz de CI
 `.github/workflows/build.yml` (macOS/Linux/Windows). En macOS,
 `scripts/make_app.sh` arma `Candil.app` con el icono (`assets/candil.icns`).
+
+## Releases
+
+La entrega es automática (`docs/RELEASING.md`, ADR-0017): push a `main` →
+`build` → `auto-release` decide minor/patch por conventional commits, actualiza
+`Cargo.toml`/`Cargo.lock`, crea el tag y dispara `release.yml`. La release
+publica los tres binarios, `candil-macos-arm64-app.zip` y `SHA256SUMS.txt`. No
+se bumpea la versión ni se crea el tag a mano. Si la publicación falla:
+`gh workflow run release.yml -f tag=vX.Y.Z`.
+
+En macOS el `.app` se firma ad-hoc, no está notarizado: la primera apertura
+requiere clic derecho → Abrir (o quitar la cuarentena). El cask
+`quicio/tap/candil` intenta automatizar ese paso.
 
 ## Cómo verificar sin ojos humanos
 
@@ -262,6 +276,9 @@ flotante tapando texto) solo aparecieron así.
 24. **La actualización es asistida, no automática**: consulta GitHub solo a
     pedido, verifica SHA-256 y guarda en Descargas; nunca reemplaza el binario ni
     el `.app` ni ejecuta el archivo descargado (ADR-0016).
+25. **La entrega es automática**: no bumpees `Cargo.toml` ni crees tags a mano;
+    push a `main` y `auto-release` publica. Si falla, relanzá `release.yml` con
+    el tag existente (ADR-0017).
 
 ## Definición de terminado (por tarea)
 

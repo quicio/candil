@@ -5,9 +5,17 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a publicar (vX.Y.Z)"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -26,14 +34,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Verificar versión del tag
-        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "El tag $GITHUB_REF_NAME no coincide con Cargo.toml ($version)" >&2
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "El tag $RELEASE_TAG no coincide con Cargo.toml ($version)" >&2
             exit 1
           fi
 
@@ -69,6 +78,13 @@ jobs:
             cp target/dist/candil out/
           fi
 
+      - name: Empaquetar Candil.app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          scripts/make_app.sh target/dist/candil out/Candil.app
+          ditto -c -k --sequesterRsrc --keepParent out/Candil.app out/candil-macos-arm64-app.zip
+
       - name: Subir binario
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Descargar binarios
         uses: actions/download-artifact@v4
@@ -96,23 +114,25 @@ jobs:
             name=$(basename "$dir")
             if [ -f "$dir/candil.exe" ]; then
               cp "$dir/candil.exe" "dist/$name.exe"
-            else
+            elif [ -f "$dir/candil" ]; then
               cp "$dir/candil" "dist/$name"
             fi
+            find "$dir" -maxdepth 1 -name '*.zip' -exec cp {} dist/ \;
           done
           chmod +x dist/candil-* 2>/dev/null || true
           cd dist
-          sha256sum * > SHA256SUMS.txt
+          sha256sum -- * > SHA256SUMS.txt
 
       - name: Borrar release existente (re-tags)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false || true
+        run: gh release delete "$RELEASE_TAG" --yes --cleanup-tag=false || true
 
       - name: Crear release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true

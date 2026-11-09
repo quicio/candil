@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # Roadmap
 
-Once milestones. Cada uno tiene criterio de salida **verificable**, no una
+Doce milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -24,6 +24,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M9 | Lectura de estudio | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Seleccionar y anotar entre párrafos del mismo capítulo, con migración v2 y reanclaje por partes |
 | M10 | Lectura de estudio II | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Previsualizar una nota o enlace interno sin salir del texto y volver al punto exacto |
 | M11 | Actualizaciones | **Hecho** | [app-updates](../openspec/specs/app-updates/spec.md) | Comprobar una release a pedido, descargar el binario correcto y verificar SHA-256 sin autoinstalar |
+| M12 | Entrega automática | **Hecho** | [RELEASING](../docs/RELEASING.md), [ADR-0017](../docs/adr/0017-entrega-automatica.md) | Release automático al pasar CI, `.app.zip` ad-hoc y cask de Homebrew |
 
 ## M1 — Lector (terminado)
 
@@ -241,7 +242,24 @@ Cerrado el 2026-11-09:
 - ADR-0016, tests de parseo/versiones/checksum y descarga contra un servidor
   local; captura con `--update-demo`.
 - Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
-  **7.284.272 B**.
+  **7.284.288 B**.
+
+## M12 — Entrega automática (terminado)
+
+Cerrado el 2026-11-09:
+
+- `auto-release` se dispara cuando `build` termina bien en `main`; bump minor
+  por `feat`, major por breaking, patch en el resto; ignora docs-only y commits
+  de release.
+- Actualiza `Cargo.toml`/`Cargo.lock`, commitea `chore(release): vX.Y.Z`, crea el
+  tag y dispara `release.yml` con ese tag.
+- `release.yml` acepta `workflow_dispatch` con tag y publica los binarios,
+  `candil-macos-arm64-app.zip` y `SHA256SUMS.txt`.
+- `Candil.app` se firma ad-hoc; cask `quicio/tap/candil` para instalar en macOS
+  con Homebrew.
+- ADR-0017 y `docs/RELEASING.md`; el flujo manual queda como fallback.
+- Verificación: **126 unit (125 + 1 live ignorado) + 10 integración**; `dist`
+  **7.284.288 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

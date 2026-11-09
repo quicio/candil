@@ -65,6 +65,10 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
   incluye el párrafo de contexto.
 - Editar un EPUB exige backup previo y validación con `Book::open`; si falla, el
   original no se toca (ADR-0013).
+- No bumpees la versión ni crees tags a mano: push a `main` y `auto-release`
+  publica. Si falla, relanzá `gh workflow run release.yml -f tag=vX.Y.Z`
+  (ADR-0017). macOS publica `Candil.app.zip` ad-hoc; no prometas doble clic sin
+  Gatekeeper ni notarización.
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

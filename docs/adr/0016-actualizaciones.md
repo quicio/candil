@@ -67,7 +67,7 @@ Implementar una actualización **asistida**:
   `Candil.app`. La app lo dice explícitamente.
 - GitHub limita a 60 consultas/hora sin autenticar; una consulta manual por clic
   es suficiente. Si se alcanza, se muestra el 403 y se puede abrir el release.
-- El `dist` pasa de **7.250.976 B** a **7.284.272 B** (+33.296 B); sigue por
+- El `dist` pasa de **7.250.976 B** a **7.284.288 B** (+33.312 B); sigue por
   debajo de 8 MB.
 - Sin telemetría ni datos del usuario; el texto de la UI lo explica.
 - Tests: comparación de versiones, parseo del JSON, selección de asset,

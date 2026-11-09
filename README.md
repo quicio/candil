@@ -16,7 +16,7 @@ salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
 multi-proveedor, edición de metadatos/portada del EPUB y actualizaciones
 asistidas desde Configuración.
 
-Binario final (`dist`): **6.9 MiB** (7.284.272 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.284.288 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -25,12 +25,41 @@ webview ni motor HTML.
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | comandos y reglas duras para agentes |
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | estado, invariantes, verificación sin ojos |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones M1–M6 con criterios de salida |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | milestones y criterios de salida |
+| [`docs/RELEASING.md`](docs/RELEASING.md) | releases automáticos, assets e instalación en macOS |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | módulos, modelo `Block`, cómo extenderlo |
 | [`docs/BUILD.md`](docs/BUILD.md) | compilar en macOS, Linux y Windows; cross-compiling y CI |
 | [`docs/specs/`](docs/specs/) | especificaciones por milestone |
 | [`docs/adr/`](docs/adr/) | decisiones con contexto y alternativas |
 | [`openspec/`](openspec/) | specs vigentes y cambios archivados de OpenSpec |
+
+## Instalación
+
+### macOS
+
+```bash
+brew install --cask quicio/tap/candil
+```
+
+O descargar `candil-macos-arm64-app.zip` desde
+[Releases](https://github.com/quicio/candil/releases/latest), descomprimir,
+arrastrar `Candil.app` a `/Applications` y, la primera vez, **clic derecho →
+Abrir**. Si macOS sigue bloqueando:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Candil.app
+```
+
+Candil no está notarizado por Apple: la primera apertura puede mostrar la
+advertencia de Gatekeeper. El cask intenta quitar la cuarentena; para eliminar
+el aviso del todo hace falta Developer ID + notarización.
+
+### Desde el código
+
+```bash
+cargo build --profile dist
+./target/dist/candil
+```
 
 ## Uso
 

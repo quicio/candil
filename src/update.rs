@@ -60,17 +60,24 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// Nombre del asset para esta plataforma. `None` si no hay binario publicado.
-pub fn platform_asset_name() -> Option<&'static str> {
+/// Assets aceptables para esta plataforma, en orden de preferencia.
+pub fn platform_asset_names() -> &'static [&'static str] {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("candil-macos-arm64")
+        &["candil-macos-arm64-app.zip", "candil-macos-arm64"]
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("candil-linux-x86_64")
+        &["candil-linux-x86_64"]
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some("candil-windows-x86_64.exe")
+        &["candil-windows-x86_64.exe"]
     } else {
-        None
+        &[]
     }
+}
+
+/// Primer asset disponible de la plataforma actual.
+pub fn select_platform_asset(assets: &[Asset]) -> Option<Asset> {
+    platform_asset_names()
+        .iter()
+        .find_map(|name| select_asset_for(assets, name))
 }
 
 fn version_parts(version: &str) -> [u64; 3] {
@@ -121,7 +128,7 @@ pub fn parse_release(json: &str, current: &str) -> Result<Option<ReleaseInfo>, S
             size: asset.size,
         })
         .collect();
-    let asset = platform_asset_name().and_then(|name| select_asset_for(&assets, name));
+    let asset = select_platform_asset(&assets);
     let sums_url = assets
         .iter()
         .find(|asset| asset.name == "SHA256SUMS.txt")
@@ -274,7 +281,11 @@ pub fn demo_release() -> ReleaseInfo {
             .into(),
         published_at: "2026-11-10T00:00:00Z".into(),
         asset: Some(Asset {
-            name: platform_asset_name().unwrap_or("candil-macos-arm64").into(),
+            name: platform_asset_names()
+                .first()
+                .copied()
+                .unwrap_or("candil-macos-arm64")
+                .into(),
             url: "https://example.com/candil".into(),
             size: 7_250_976,
         }),
@@ -294,6 +305,7 @@ mod tests {
         "draft": false,
         "prerelease": false,
         "assets": [
+            {"name":"candil-macos-arm64-app.zip","browser_download_url":"https://example.com/mac-app","size":7240000},
             {"name":"candil-macos-arm64","browser_download_url":"https://example.com/mac","size":7234304},
             {"name":"candil-linux-x86_64","browser_download_url":"https://example.com/linux","size":11806608},
             {"name":"candil-windows-x86_64.exe","browser_download_url":"https://example.com/win","size":10061312},
@@ -322,9 +334,12 @@ mod tests {
             release.sums_url.as_deref(),
             Some("https://example.com/sums")
         );
-        if platform_asset_name().is_some() {
-            assert!(release.asset.is_some(), "hay asset para esta plataforma");
-        }
+        let expected = platform_asset_names().first().copied();
+        assert_eq!(
+            release.asset.as_ref().map(|asset| asset.name.as_str()),
+            expected,
+            "se elige el primer asset disponible de la plataforma"
+        );
     }
 
     #[test]

@@ -74,6 +74,10 @@ fn main() -> eframe::Result<()> {
                 dev.link_preview = true;
                 i += 1;
             }
+            "--update-demo" => {
+                dev.update_demo = true;
+                i += 1;
+            }
             "--help" => {
                 dev.help = true;
                 i += 1;

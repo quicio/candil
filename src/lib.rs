@@ -18,4 +18,5 @@ pub mod secrets;
 pub mod store;
 pub mod theme;
 pub mod ui;
+pub mod update;
 pub mod xhtml;

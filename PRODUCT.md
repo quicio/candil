@@ -49,7 +49,8 @@ bloque, enlaces internos e imágenes; destacados y notas con tres colores,
 selección entre párrafos, notas al pie con vista previa y regreso, vista global y
 export Markdown;
 búsqueda dentro del libro; navegación por porcentaje/capítulo; diccionario,
-traducción e IA con historial local; centro de configuración.
+traducción e IA con historial local; centro de configuración y actualización
+asistida desde Configuración.
 
 **Restricciones técnicas:** Rust + egui/eframe; sin WebView ni motor CSS; sin
 dependencias innecesarias; renderizado EPUB existente; atajos, persistencia,

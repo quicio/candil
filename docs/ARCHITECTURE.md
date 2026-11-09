@@ -46,6 +46,7 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 | `consulta.rs` | diccionario/traducción/IA, HTTP ureq, parsers e historial local | no conoce egui |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |
+| `update.rs` | releases de GitHub, asset por plataforma, descarga y SHA-256 | no conoce egui ni reemplaza nada |
 | `app.rs` | ventana, biblioteca, lector, barra, scroll, paneles, teclado, caché de texturas | no parsea HTML |
 | `theme.rs` | paletas (5 presets) y aplicación de `Visuals` | no conoce bloques |
 | `config.rs` | settings globales, `consulta` y `Progress` con ratio/ancla/fracción; compatibilidad con el offset legado | no conoce el contenido |
@@ -170,6 +171,24 @@ misma lógica de `top_block` + `block_fraction` que `persist`) en `back_spot`; e
 botón flotante “← Volver al texto” restaura el `Progress` con `load_chapter` o
 `pending_restore`. Cualquier navegación manual limpia `back_spot` para no ofrecer
 un regreso engañoso. Decisión y alternativas en ADR-0015.
+
+## Actualizaciones
+
+`update.rs` consulta `api.github.com/repos/quicio/candil/releases/latest` con
+`ureq` y `User-Agent: candil/<versión>`, solo cuando el usuario pulsa “Buscar
+actualizaciones” en Configuración → Avanzado. Compara los tres componentes
+numéricos de la versión, elige el asset de la plataforma
+(`candil-macos-arm64`, `candil-linux-x86_64`, `candil-windows-x86_64.exe`) y
+expone versión, fecha, notas y URL del release.
+
+La descarga también corre en un hilo: baja el asset y `SHA256SUMS.txt`, calcula
+el SHA-256 con `sha2` y solo escribe el archivo final si coincide. Usa un
+temporal + rename y permisos `0o755` en Unix; el destino es
+`dirs::download_dir()` con fallbacks. **No** reemplaza el binario ni el `.app`,
+no reinicia y no ejecuta el archivo; solo ofrece mostrarlo o abrir el release. La
+UI maneja un `UpdateState` (`Idle`, `Checking`, `UpToDate`, `Available`,
+`Downloading`, `Downloaded`, `Error`) y un `mpsc` para no bloquear. Decisión y
+alternativas en ADR-0016.
 
 ## Búsqueda
 

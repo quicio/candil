@@ -32,7 +32,8 @@ edición de metadatos y portada dentro del EPUB, con backup y validación. M9
 agrega selección y anotación entre párrafos, con migración v2 de
 `annotations.json` y reanclaje por partes. M10 agrega vista previa de enlaces
 internos y notas al pie, con “Ir al texto” y un regreso al punto exacto de
-lectura.
+lectura. M11 agrega actualización asistida desde Configuración: consulta manual
+de GitHub, descarga verificada y ningún reemplazo automático.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -48,12 +49,11 @@ origen.
 
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
-`interaction-accessibility`, `ai-providers`, `ai-credentials`,
-`epub-editing` y `reading-workspace` (ampliada por M9 y M10) viven en
-`openspec/specs/`; los cambios `consolidar-ux-ui`, `proveedores-ia-clave`,
-`editar-metadata-epub`, `seleccion-entre-parrafos` y `notas-al-pie-y-volver`
-quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
-archivo histórico de M1–M6.
+`interaction-accessibility`, `ai-providers`, `ai-credentials`, `epub-editing` y
+`app-updates`) viven en `openspec/specs/`; los cambios `consolidar-ux-ui`,
+`proveedores-ia-clave`, `editar-metadata-epub`, `seleccion-entre-parrafos`,
+`notas-al-pie-y-volver` y `actualizaciones-desde-la-app` quedaron archivados en
+`openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
@@ -77,9 +77,9 @@ el mismo):
 | capturas | 16 en `docs/img/` (biblioteca ×4, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 119 unit (1 live ignorado) + 10 integración | `cargo test` |
+| tests | 126 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.250.976 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.284.272 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
 
@@ -110,6 +110,7 @@ src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
+src/update.rs  consulta de releases, asset por plataforma, descarga y SHA-256
 src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
@@ -163,6 +164,7 @@ cargo run --profile fast -- --shot /tmp/p.png --screen library --recover
 cargo run --profile fast -- --shot /tmp/p.png --screen library --rescan
 cargo run --profile fast -- --shot /tmp/p.png --selection libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --link-preview libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --screen library --update-demo
 cargo run --profile fast -- --shot /tmp/p.png --confirm-delete libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --help libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --screen library --edit
@@ -257,6 +259,9 @@ flotante tapando texto) solo aparecieron así.
 23. **Un enlace interno no navega solo**: abre una vista previa; “Ir al texto”
     es la acción explícita y guarda un único `Progress` de regreso. Los enlaces
     externos no se abren sin una decisión aparte.
+24. **La actualización es asistida, no automática**: consulta GitHub solo a
+    pedido, verifica SHA-256 y guarda en Descargas; nunca reemplaza el binario ni
+    el `.app` ni ejecuta el archivo descargado (ADR-0016).
 
 ## Definición de terminado (por tarea)
 

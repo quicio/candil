@@ -336,7 +336,7 @@ requiere que el usuario configure `OPENCODE_API_KEY`.
   modelo, timeout, tokens e historial. `online_enabled=false` por defecto.
 - **Medición**: `dist` pasó de 5.599.328 B a **6.664.160 B** (+1.064.832 B por
   ureq/rustls), dentro del presupuesto < 8 MB.
-- **Verificación**: 119 unit (1 live ignorado) + 10 integración. Se probaron en
+- **Verificación**: 126 unit (1 live ignorado) + 10 integración. Se probaron en
   vivo Wiktionary y MyMemory; con `wiktionary` real el panel muestra
   definiciones. OpenCode Go se probó con una clave inválida y mostró el 401 sin
   congelar la UI; falta la prueba de una respuesta exitosa con la clave real del

@@ -13,9 +13,10 @@ sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global y export Markdown—, búsqueda dentro del libro,
 salto por porcentaje/capítulo, diccionario/traducción, análisis con IA
-multi-proveedor y edición de metadatos/portada del EPUB.
+multi-proveedor, edición de metadatos/portada del EPUB y actualizaciones
+asistidas desde Configuración.
 
-Binario final (`dist`): **6.9 MiB** (7.250.976 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.284.272 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -157,7 +158,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 119
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 126
 tests unitarios (1 live ignorado) y 10 de integración sobre fixtures propios versionados
 (`mini.epub`, `edge.epub` y `notes.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -248,6 +249,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - La biblioteca no tiene watcher: se refresca a mano.
 - Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
   borrar una portada existente ni editar series/editorial/fecha.
+- La actualización desde la app consulta GitHub a pedido, descarga el binario
+  correcto y verifica el SHA-256, pero **no lo instala**: el reemplazo sigue
+  siendo manual.
 - El progreso por fracción y las preferencias por libro están desde M3; el
   filtro “Terminados” del roadmap original quedó fuera de alcance.
 - La búsqueda sigue siendo substring sin regex/stemming; el índice de
@@ -295,6 +299,7 @@ cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del le
 cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un ancla
 cargo run --release -- --shot out.png --selection libro.epub    # selección de dos párrafos
 cargo run --release -- --shot out.png --link-preview libro.epub # vista previa de una nota
+cargo run --release -- --shot out.png --screen library --update-demo # UI de actualizaciones
 cargo run --release -- --shot out.png --panel settings libro.epub
 ```
 
@@ -304,6 +309,9 @@ cargo run --release -- --shot out.png --panel settings libro.epub
   historial de consultas viven en tu disco.
 - Las consultas online están **apagadas por defecto** y solo salen con una acción
   explícita.
+- La comprobación de actualizaciones solo ocurre al pulsar “Buscar
+  actualizaciones”; consulta `api.github.com` y no envía datos del libro ni de la
+  biblioteca.
 - La clave de IA se guarda en el llavero del sistema; `OPENCODE_API_KEY` sigue
   como override. Nunca se escribe en `config.json`, `consultas.json`, logs ni
   URLs.

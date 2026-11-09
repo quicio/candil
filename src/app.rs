@@ -26,6 +26,7 @@ use crate::search;
 use crate::secrets;
 use crate::theme::{self, Theme, THEMES};
 use crate::ui as widgets;
+use crate::update;
 use crate::xhtml::{Block, Kind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -401,6 +402,33 @@ enum ConfigTab {
     Avanzado,
 }
 
+/// Estado de la comprobación/descarga de una release.
+#[derive(Clone, Debug)]
+enum UpdateState {
+    Idle,
+    Checking,
+    UpToDate,
+    Available {
+        release: update::ReleaseInfo,
+        error: Option<String>,
+    },
+    Downloading(update::ReleaseInfo),
+    Downloaded {
+        release: update::ReleaseInfo,
+        path: PathBuf,
+    },
+    Error(String),
+}
+
+#[derive(Debug)]
+enum UpdateMsg {
+    Checked(Result<Option<update::ReleaseInfo>, String>),
+    Downloaded {
+        release: update::ReleaseInfo,
+        result: Result<PathBuf, String>,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConsultaTab {
     Diccionario,
@@ -466,6 +494,8 @@ pub struct Lector {
     selection: Option<Selection>,
     link_preview: Option<LinkPreview>,
     back_spot: Option<Progress>,
+    update_state: UpdateState,
+    update_rx: Option<Receiver<UpdateMsg>>,
     note: Option<NoteEditor>,
     epub_editor: Option<EpubEditor>,
     show_annotations: bool,
@@ -541,6 +571,8 @@ pub struct DevOpts {
     pub selection: bool,
     /// Abre una vista previa de enlace interno (capturas).
     pub link_preview: bool,
+    /// Inyecta una release simulada en Configuración (capturas).
+    pub update_demo: bool,
     /// Abre la ventana de atajos (capturas).
     pub help: bool,
     /// Abre el editor de metadatos/portada del primer libro (capturas).
@@ -650,6 +682,14 @@ impl Lector {
         };
         let initial_search = dev.search.clone().unwrap_or_default();
         let initial_book_search = dev.book_search.clone().unwrap_or_default();
+        let update_state = if dev.update_demo {
+            UpdateState::Available {
+                release: update::demo_release(),
+                error: None,
+            }
+        } else {
+            UpdateState::Idle
+        };
         let mut app = Self {
             screen: Screen::Library,
             book: None,
@@ -687,6 +727,8 @@ impl Lector {
             selection: None,
             link_preview: None,
             back_spot: None,
+            update_state,
+            update_rx: None,
             note: None,
             epub_editor: None,
             show_annotations: false,
@@ -757,6 +799,10 @@ impl Lector {
         if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("config") {
             app.show_config = true;
             app.config_tab = ConfigTab::Biblioteca;
+        }
+        if app.dev.update_demo {
+            app.show_config = true;
+            app.config_tab = ConfigTab::Avanzado;
         }
         if app.screen == Screen::Library && app.dev.edit {
             if let Some(index) = app
@@ -1789,11 +1835,15 @@ impl Lector {
         let mut changed = false;
         let mut save_ai_key = false;
         let mut delete_ai_key = false;
+        let mut check_update = false;
+        let mut download_update: Option<update::ReleaseInfo> = None;
+        let mut open_release: Option<String> = None;
+        let mut reveal_download: Option<PathBuf> = None;
 
         let win_w = (ctx.screen_rect().width() - 40.0).clamp(560.0, widgets::PANEL_LG);
         let content_min = (win_w - 220.0).max(420.0);
-        let win_h = (ctx.screen_rect().height() - 80.0).clamp(360.0, 600.0);
-        let scroll_h = (win_h - 100.0).clamp(300.0, 520.0);
+        let win_h = (ctx.screen_rect().height() - 40.0).clamp(360.0, 640.0);
+        let scroll_h = (win_h - 100.0).clamp(300.0, 560.0);
 
         egui::Window::new(
             RichText::new("Configuración")
@@ -2341,7 +2391,212 @@ impl Lector {
                                         .size(theme::text::META)
                                         .color(th.dim),
                                     );
-                                    ui.add_space(6.0);
+                                    ui.add_space(theme::space::SM);
+                                    ui.separator();
+                                    widgets::section_header(ui, th, "Actualizaciones");
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Consulta la API pública de GitHub sólo cuando lo pedís. \
+                                                 No envía datos del libro ni de la biblioteca.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                    let update_busy = self.update_rx.is_some();
+                                    let update_state = self.update_state.clone();
+                                    match &update_state {
+                                        UpdateState::Idle => {}
+                                        UpdateState::Checking => {
+                                            ui.label(
+                                                RichText::new("Buscando actualizaciones…")
+                                                    .size(theme::text::BODY_SMALL)
+                                                    .color(th.dim),
+                                            );
+                                        }
+                                        UpdateState::UpToDate => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Estás al día (v{}).",
+                                                    update::current_version()
+                                                ))
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.fg),
+                                            );
+                                        }
+                                        UpdateState::Available { release, error } => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Nueva versión v{}",
+                                                    release.version
+                                                ))
+                                                .strong()
+                                                .color(th.fg),
+                                            );
+                                            if let Some(date) = release
+                                                .published_at
+                                                .split('T')
+                                                .next()
+                                                .filter(|date| !date.is_empty())
+                                            {
+                                                ui.label(
+                                                    RichText::new(date)
+                                                        .size(theme::text::META)
+                                                        .color(th.dim),
+                                                );
+                                            }
+                                            if !release.notes.is_empty() {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(truncate(
+                                                            &release.notes,
+                                                            400,
+                                                        ))
+                                                        .size(theme::text::BODY_SMALL)
+                                                        .color(th.fg),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                            if let Some(error) = error {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(error)
+                                                            .size(theme::text::META)
+                                                            .color(th.error),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                            ui.horizontal(|ui| {
+                                                if release.asset.is_none() {
+                                                    ui.label(
+                                                        RichText::new(
+                                                            "No hay binario para esta plataforma.",
+                                                        )
+                                                        .size(theme::text::META)
+                                                        .color(th.dim),
+                                                    );
+                                                } else if release.sums_url.is_none() {
+                                                    ui.label(
+                                                        RichText::new(
+                                                            "El release no publica SHA256SUMS.txt; no se puede verificar.",
+                                                        )
+                                                        .size(theme::text::META)
+                                                        .color(th.dim),
+                                                    );
+                                                } else if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Descargar",
+                                                    widgets::ButtonKind::Primary,
+                                                )
+                                                .clicked()
+                                                    && !update_busy
+                                                {
+                                                    download_update = Some(release.clone());
+                                                }
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Abrir release",
+                                                    widgets::ButtonKind::Secondary,
+                                                )
+                                                .clicked()
+                                                {
+                                                    open_release =
+                                                        Some(release.page_url.clone());
+                                                }
+                                            });
+                                        }
+                                        UpdateState::Downloading(release) => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Descargando Candil v{} y verificando el checksum…",
+                                                    release.version
+                                                ))
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.dim),
+                                            );
+                                        }
+                                        UpdateState::Downloaded { release, path } => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Candil v{} descargado y verificado.",
+                                                    release.version
+                                                ))
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.fg),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(truncate(
+                                                        &path.to_string_lossy(),
+                                                        90,
+                                                    ))
+                                                    .size(theme::text::META)
+                                                    .color(th.dim),
+                                                )
+                                                .wrap(),
+                                            );
+                                            ui.horizontal(|ui| {
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Mostrar en Finder/Explorer",
+                                                    widgets::ButtonKind::Secondary,
+                                                )
+                                                .clicked()
+                                                {
+                                                    reveal_download = Some(path.clone());
+                                                }
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Abrir release",
+                                                    widgets::ButtonKind::Ghost,
+                                                )
+                                                .clicked()
+                                                {
+                                                    open_release =
+                                                        Some(release.page_url.clone());
+                                                }
+                                            });
+                                        }
+                                        UpdateState::Error(error) => {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(error)
+                                                        .size(theme::text::META)
+                                                        .color(th.error),
+                                                )
+                                                .wrap(),
+                                            );
+                                        }
+                                    }
+                                    if !update_busy {
+                                        let label = if matches!(
+                                            &update_state,
+                                            UpdateState::Idle | UpdateState::Error(_)
+                                        ) {
+                                            "Buscar actualizaciones"
+                                        } else {
+                                            "Buscar de nuevo"
+                                        };
+                                        if widgets::button(
+                                            ui,
+                                            th,
+                                            label,
+                                            widgets::ButtonKind::Secondary,
+                                        )
+                                        .clicked()
+                                        {
+                                            check_update = true;
+                                        }
+                                    }
+                                    ui.add_space(theme::space::SM);
                                     if self.config_confirm_reset {
                                         ui.horizontal(|ui| {
                                             ui.label("¿Restablecer tipografía y consultas?");
@@ -2482,6 +2737,18 @@ impl Lector {
                 self.say("Historial borrado.");
             }
             self.config_confirm_clear = false;
+        }
+        if check_update {
+            self.check_for_updates();
+        }
+        if let Some(release) = download_update {
+            self.download_update(release);
+        }
+        if let Some(url) = open_release {
+            open_external(&url);
+        }
+        if let Some(path) = reveal_download {
+            reveal_path(&path);
         }
         if reset_config {
             self.cfg.settings = Settings::default();
@@ -3732,6 +3999,73 @@ impl Lector {
     }
 
     // -- pantallas -----------------------------------------------------------
+
+    fn poll_update(&mut self, ctx: &egui::Context) {
+        let received = self.update_rx.as_ref().map(|rx| rx.try_recv());
+        let Some(received) = received else {
+            return;
+        };
+        match received {
+            Ok(UpdateMsg::Checked(result)) => {
+                self.update_rx = None;
+                self.update_state = match result {
+                    Ok(Some(release)) => UpdateState::Available {
+                        release,
+                        error: None,
+                    },
+                    Ok(None) => UpdateState::UpToDate,
+                    Err(error) => UpdateState::Error(error),
+                };
+                ctx.request_repaint();
+            }
+            Ok(UpdateMsg::Downloaded { release, result }) => {
+                self.update_rx = None;
+                self.update_state = match result {
+                    Ok(path) => UpdateState::Downloaded { release, path },
+                    Err(error) => UpdateState::Available {
+                        release,
+                        error: Some(error),
+                    },
+                };
+                ctx.request_repaint();
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(120));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.update_rx = None;
+                self.update_state = UpdateState::Error("La comprobación se interrumpió.".into());
+                ctx.request_repaint();
+            }
+        }
+    }
+
+    fn check_for_updates(&mut self) {
+        if self.update_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.update_rx = Some(rx);
+        self.update_state = UpdateState::Checking;
+        std::thread::spawn(move || {
+            let result = update::check_latest();
+            let _ = tx.send(UpdateMsg::Checked(result));
+        });
+    }
+
+    fn download_update(&mut self, release: update::ReleaseInfo) {
+        if self.update_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.update_rx = Some(rx);
+        self.update_state = UpdateState::Downloading(release.clone());
+        std::thread::spawn(move || {
+            let dir = update::default_download_dir();
+            let result = update::download_release(&release, &dir);
+            let _ = tx.send(UpdateMsg::Downloaded { release, result });
+        });
+    }
 
     fn start_scan(&mut self, folder: Option<PathBuf>, ctx: &egui::Context) {
         if self.scanning {
@@ -6595,6 +6929,7 @@ impl eframe::App for Lector {
         self.handle_input(ctx);
         self.poll_scan(ctx);
         self.poll_consulta();
+        self.poll_update(ctx);
         if self.consulta_busy {
             ctx.request_repaint_after(Duration::from_millis(120));
         }
@@ -7205,6 +7540,45 @@ fn reveal_in_finder(path: &str) {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = path;
+    }
+}
+
+fn reveal_path(path: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let dir = path.parent().unwrap_or(path);
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
+}
+
+fn open_external(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }
 

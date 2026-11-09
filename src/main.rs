@@ -78,6 +78,10 @@ fn main() -> eframe::Result<()> {
                 dev.update_demo = true;
                 i += 1;
             }
+            "--external-link-demo" => {
+                dev.external_link_demo = true;
+                i += 1;
+            }
             "--help" => {
                 dev.help = true;
                 i += 1;

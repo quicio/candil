@@ -156,12 +156,14 @@ shot library-full.png --screen library
 shot library-search.png --screen library --search austen
 shot library-edit.png --screen library --edit
 shot config-data.png --screen library --panel advanced
+shot config-startup.png --screen library --panel config
 
 # Lector: Chapter I de Pride and Prejudice (dominio público).
 ANCHOR=pgepubid00022
 shot reader-settings.png --anchor "$ANCHOR" --panel settings "$PP"
 shot reader-highlight.png --anchor "$ANCHOR" "$PP"
 shot reader-selection.png --anchor "$ANCHOR" --selection "$PP"
+shot reader-external-link.png --anchor "$ANCHOR" --external-link-demo "$PP"
 shot reader-notes.png --anchor "$ANCHOR" --panel notes "$PP"
 shot reader-note.png --anchor "$ANCHOR" --panel note "$PP"
 shot reader-notes-global.png --anchor "$ANCHOR" --panel notes --annotations-all "$PP"
@@ -215,9 +217,11 @@ png "$SHOTS/library-full.png" library-full.png
 png "$SHOTS/library-search.png" library-search.png
 png "$SHOTS/library-edit.png" library-edit.png
 png "$SHOTS/config-data.png" config-data.png
+png "$SHOTS/config-startup.png" config-startup.png
 png "$SHOTS/reader-settings.png" reader-settings.png
 jpg "$SHOTS/reader-highlight.png" reader-highlight.jpg
 jpg "$SHOTS/reader-selection.png" reader-selection.jpg
+jpg "$SHOTS/reader-external-link.png" reader-external-link.jpg
 jpg "$SHOTS/reader-notes.png" reader-notes.jpg
 jpg "$SHOTS/reader-note.png" reader-note.jpg
 jpg "$SHOTS/reader-notes-global.png" reader-notes-global.jpg

@@ -15,7 +15,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 132 unit (1 live ignorado) + 10 integración
+cargo test                                  # 134 unit (1 live ignorado) + 10 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
@@ -75,6 +75,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - La serie sale del OPF (`calibre:series`/`belongs-to-collection`), no del nombre
   de archivo. Si cambia la extracción, subí `META_VERSION`; no reabras toda la
   biblioteca en cada arranque (ADR-0020).
+- Al iniciar manda `StartupMode`: último libro por defecto, biblioteca opcional;
+  si falta el archivo, biblioteca. Los enlaces externos se abren solo con
+  confirmación y esquemas `http`/`https`/`mailto`/`tel` (ADR-0021).
 - El respaldo de datos incluye solo los cuatro JSON de usuario (`config`,
   `library`, `annotations`, `consultas`); nunca EPUB, portadas ni claves. La
   importación valida manifiesto/checksums/JSON y guarda un backup previo

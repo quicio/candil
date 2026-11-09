@@ -153,12 +153,33 @@ impl ConsultaSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupMode {
+    /// Abrir el último libro si sigue existiendo; si no, la biblioteca.
+    #[default]
+    LastBook,
+    /// Abrir siempre la biblioteca.
+    Library,
+}
+
+impl StartupMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LastBook => "Último libro abierto",
+            Self::Library => "Biblioteca",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub settings: Settings,
     pub last_book: Option<String>,
     pub recent: Vec<String>,
+    /// Qué abrir al iniciar la app.
+    pub startup: StartupMode,
     pub consulta: ConsultaSettings,
     /// Compatibilidad: el progreso se migra a `library.json` en M2. No se
     /// vuelve a escribir acá.
@@ -285,8 +306,16 @@ mod tests {
         let cfg = Config::load_from(&path);
         assert!((cfg.settings.font_size - 22.0).abs() < f32::EPSILON);
         assert_eq!(cfg.settings.theme, Settings::default().theme);
+        assert_eq!(cfg.startup, StartupMode::LastBook);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn startup_se_puede_cambiar_a_biblioteca() {
+        let cfg: Config = serde_json::from_str(r#"{"startup":"library"}"#).unwrap();
+        assert_eq!(cfg.startup, StartupMode::Library);
+        assert_eq!(StartupMode::Library.label(), "Biblioteca");
     }
 
     #[test]

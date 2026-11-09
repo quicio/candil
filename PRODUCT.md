@@ -50,7 +50,8 @@ selección entre párrafos, notas al pie con vista previa y regreso, vista globa
 filtro de notas y export Markdown;
 búsqueda dentro del libro; navegación por porcentaje/capítulo; diccionario,
 traducción e IA con historial local; centro de configuración, actualización
-asistida y respaldo/restauración local de datos.
+asistida, respaldo/restauración local de datos, inicio configurable y enlaces
+externos con confirmación.
 
 **Restricciones técnicas:** Rust + egui/eframe; sin WebView ni motor CSS; sin
 dependencias innecesarias; renderizado EPUB existente; atajos, persistencia,

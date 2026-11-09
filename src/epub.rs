@@ -378,6 +378,21 @@ impl Book {
         Some((spine, anchor))
     }
 
+    /// Devuelve la URL si el enlace es externo y usa un esquema permitido.
+    /// `javascript:`, `data:` y `file:` quedan fuera.
+    pub fn external_url(href: &str) -> Option<String> {
+        let href = href.trim();
+        if href.is_empty() {
+            return None;
+        }
+        let lower = href.to_ascii_lowercase();
+        (lower.starts_with("http:")
+            || lower.starts_with("https:")
+            || lower.starts_with("mailto:")
+            || lower.starts_with("tel:"))
+        .then(|| href.to_string())
+    }
+
     /// Primer candidato de portada que decodifica y tiene aspecto de portada.
     ///
     /// Orden: declarada en el OPF; si no hay, la primera imagen de los primeros
@@ -733,5 +748,21 @@ mod tests {
             Some(1)
         );
         assert!(book.link_target("https://example.com", 0).is_none());
+    }
+
+    #[test]
+    fn detecta_solo_enlaces_externos_seguros() {
+        assert_eq!(
+            Book::external_url("https://example.com"),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            Book::external_url("mailto:hola@example.com"),
+            Some("mailto:hola@example.com".to_string())
+        );
+        assert!(Book::external_url("#nota").is_none());
+        assert!(Book::external_url("javascript:alert(1)").is_none());
+        assert!(Book::external_url("data:text/html,x").is_none());
+        assert!(Book::external_url("file:///etc/passwd").is_none());
     }
 }

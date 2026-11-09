@@ -37,7 +37,9 @@ de GitHub, descarga verificada y ningún reemplazo automático. M12 automatiza l
 entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew. M13
 agrega “Continuar leyendo” y refresco incremental de la biblioteca al recuperar
 el foco. M14 agrega respaldo/restauración local de datos y filtro en el panel de
-notas. M15 agrega series/colecciones desde el OPF y orden por serie.
+notas. M15 agrega series/colecciones desde el OPF y orden por serie. M16 agrega
+inicio configurable (último libro por defecto), regreso visible a la biblioteca
+y confirmación de enlaces externos.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -58,9 +60,9 @@ origen.
 `consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
-`respaldo-y-filtro-notas`, `series-desde-opf` y `atajo-traducir-seleccion`
-quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
-archivo histórico de M1–M6.
+`respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion` y
+`inicio-regreso-enlaces` quedaron archivados en
+`openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
@@ -81,12 +83,12 @@ el mismo):
 | imágenes resueltas | 2279/2279 | ídem, incluye `<svg><image>` raster |
 | biblioteca (medición) | 43 libros, 41 portadas (95,3 %) | `--scan ~/Libros` (2026-11-06) |
 | cierre M2 | 50 EPUB (43 reales + 7 copias): 1.65 s; 48/50 portadas | `--scan` en corpus temporal |
-| capturas | 17 en `docs/img/` (biblioteca ×4, respaldo de datos, editor de EPUB, selección entre párrafos, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
+| capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 132 unit (1 live ignorado) + 10 integración | `cargo test` |
+| tests | 134 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.367.664 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.367.696 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
@@ -296,6 +298,12 @@ flotante tapando texto) solo aparecieron así.
 28. **La serie sale del OPF**, no del nombre del archivo. `BookEntry.meta_version`
     fuerza una relectura única cuando cambia la extracción; el escaneo conserva
     progreso, ajustes, portada y fechas (ADR-0020).
+29. **Al iniciar manda `StartupMode`**: último libro por defecto; biblioteca como
+    opción; si el archivo falta, biblioteca. `--resume`/`--screen library` siguen
+    teniendo prioridad en desarrollo (ADR-0021).
+30. **Los enlaces externos se abren solo con confirmación** y solo si el esquema
+    es `http`, `https`, `mailto` o `tel`; `javascript:`, `data:` y `file:` se
+    rechazan (ADR-0021).
 
 ## Definición de terminado (por tarea)
 

@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # Roadmap
 
-Quince milestones. Cada uno tiene criterio de salida **verificable**, no una
+Dieciséis milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -28,6 +28,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M13 | Biblioteca viva I | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Retomar el último libro con un clic y refrescar la biblioteca al recuperar el foco |
 | M14 | Respaldo y notas | **Hecho** | [data-backup](../openspec/specs/data-backup/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Exportar/importar los datos de usuario con validación y filtrar el panel de anotaciones |
 | M15 | Series y colecciones | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Leer serie/posición del OPF, mostrarla en la tarjeta y ordenar por serie |
+| M16 | Inicio y enlaces | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Elegir inicio (último libro/biblioteca), volver con un icono y confirmar enlaces externos |
 
 ## M1 — Lector (terminado)
 
@@ -166,7 +167,7 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
 - Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
-- Verificación: **132 unit (1 live ignorado) + 10 integración**, clippy limpio,
+- Verificación: **134 unit (1 live ignorado) + 10 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
@@ -184,7 +185,7 @@ Cerrado el 2026-11-08:
 - Selector, campo de clave, Guardar/Borrar con confirmación y estado en
   Configuración; el valor nunca se muestra ni se persiste en JSON/logs/URLs.
 - ADR-0012, tests de protocolos y captura de Configuración sin llavero.
-- Verificación: **132 unit (1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M8 — Editar EPUB (terminado)
@@ -198,7 +199,7 @@ Cerrado el 2026-11-09:
 - Actualización de biblioteca preservando progreso, ajustes, fechas y
   anotaciones.
 - ADR-0013, tests con `mini.epub` y `edge.epub`, captura del editor.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M9 — Lectura de estudio (terminado)
@@ -215,7 +216,7 @@ Cerrado el 2026-11-09:
 - Panel con vista previa de una línea, cantidad de párrafos y salto al inicio.
 - Consulta y nota sobre el texto completo; `rekey` conserva los rangos.
 - ADR-0014, tests de migración/rangos/reanclaje y captura de selección.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.944 B**.
 
 ## M10 — Lectura de estudio II (terminado)
@@ -228,7 +229,7 @@ Cerrado el 2026-11-09:
   y fracción de scroll.
 - Cierre por “Volver”, “×”, Escape o desplazamiento, sin navegar.
 - Fixture `notes.epub`, tests de anclas/extracción y ADR-0015.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.250.976 B**.
 
 ## M11 — Actualizaciones (terminado)
@@ -244,7 +245,7 @@ Cerrado el 2026-11-09:
   manual y no se reemplaza el binario ni el `.app`.
 - ADR-0016, tests de parseo/versiones/checksum y descarga contra un servidor
   local; captura con `--update-demo`.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.288 B**.
 
 ## M12 — Entrega automática (terminado)
@@ -261,7 +262,7 @@ Cerrado el 2026-11-09:
 - `Candil.app` se firma ad-hoc; cask `quicio/tap/candil` para instalar en macOS
   con Homebrew.
 - ADR-0017 y `docs/RELEASING.md`; el flujo manual queda como fallback.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.288 B**.
 
 ## M13 — Biblioteca viva I (terminado)
@@ -273,7 +274,7 @@ Cerrado el 2026-11-09:
 - **Refresco al recuperar el foco**: escaneo incremental en un hilo, con debounce
   de 30 s y guardas de escaneo/carpetas/captura.
 - Capturas de biblioteca con un libro abierto y ADR-0018.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.320 B**.
 
 Queda para la siguiente fase de biblioteca: series/colecciones, detección de
@@ -291,7 +292,7 @@ Cerrado el 2026-11-09:
 - **Filtro en Destacados y notas** por cita, nota, libro o capítulo; la
   exportación Markdown respeta el filtro.
 - ADR-0019, tests de respaldo/checksum/lista blanca y captura de Configuración.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.367.584 B**.
 
 ## M15 — Series y colecciones (terminado)
@@ -305,8 +306,22 @@ Cerrado el 2026-11-09:
   progreso, ajustes, portada y fechas.
 - La tarjeta muestra `Serie · N` debajo del autor; nuevo orden **Serie**.
 - Fixtures `mini.epub` (Calibre) y `notes.epub` (EPUB3), ADR-0020.
-- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.367.664 B**.
+
+## M16 — Inicio y enlaces (terminado)
+
+Cerrado el 2026-11-09:
+
+- Botón **←** discreto en la barra del lector para volver a la biblioteca.
+- Configuración → Biblioteca → **Al iniciar**: “Último libro abierto” (default) o
+  “Biblioteca”; si el archivo falta, abre la biblioteca.
+- Enlaces externos `http`/`https`/`mailto`/`tel` con confirmación y apertura en
+  la aplicación del sistema; `javascript:`, `data:` y `file:` se rechazan.
+- ADR-0021, tests de `StartupMode` y del allowlist de enlaces, capturas de inicio
+  y confirmación.
+- Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
+  **7.367.696 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 
@@ -323,7 +338,7 @@ comportamiento funcional de M1–M6:
   destructivas.
 - Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
   en Papel 19 px.
-- Verificación: **132 unit (1 live ignorado) + 10 integración**, clippy limpio,
+- Verificación: **134 unit (1 live ignorado) + 10 integración**, clippy limpio,
   `scripts/check.sh` verde y `dist` **7.250.944 B**.
 
 ## Orden de ataque recomendado

@@ -497,6 +497,7 @@ pub struct Lector {
     annotations: Annotations,
     selection: Option<Selection>,
     link_preview: Option<LinkPreview>,
+    external_link: Option<String>,
     back_spot: Option<Progress>,
     update_state: UpdateState,
     update_rx: Option<Receiver<UpdateMsg>>,
@@ -581,6 +582,8 @@ pub struct DevOpts {
     pub link_preview: bool,
     /// Inyecta una release simulada en Configuración (capturas).
     pub update_demo: bool,
+    /// Abre la confirmación de enlace externo (capturas).
+    pub external_link_demo: bool,
     /// Abre la ventana de atajos (capturas).
     pub help: bool,
     /// Abre el editor de metadatos/portada del primer libro (capturas).
@@ -734,6 +737,7 @@ impl Lector {
             annotations,
             selection: None,
             link_preview: None,
+            external_link: None,
             back_spot: None,
             update_state,
             update_rx: None,
@@ -796,7 +800,7 @@ impl Lector {
             None
         } else {
             path.or_else(|| {
-                if app.dev.resume {
+                if app.dev.resume || app.cfg.startup == config::StartupMode::LastBook {
                     app.cfg.last_book.clone().map(PathBuf::from)
                 } else {
                     None
@@ -819,6 +823,9 @@ impl Lector {
         if app.dev.update_demo {
             app.show_config = true;
             app.config_tab = ConfigTab::Avanzado;
+        }
+        if app.dev.external_link_demo {
+            app.external_link = Some("https://example.com/candil".to_string());
         }
         if app.screen == Screen::Library && app.dev.edit {
             if let Some(index) = app
@@ -1242,6 +1249,71 @@ impl Lector {
             ctx.request_repaint();
         } else if close {
             self.link_preview = None;
+        }
+    }
+
+    fn external_link_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(url) = self.external_link.clone() else {
+            return;
+        };
+        let mut open = false;
+        let mut cancel = false;
+        let _ = egui::Modal::new(egui::Id::new("external-link-modal"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(460.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Abrir enlace externo")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cancelar")
+                            .clicked()
+                        {
+                            cancel = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(truncate(&url, 180))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    )
+                    .wrap(),
+                );
+                ui.add(
+                    egui::Label::new(
+                        RichText::new("Se abrirá con la aplicación del sistema.")
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(theme::space::SM);
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, th, "Abrir enlace", widgets::ButtonKind::Primary)
+                        .clicked()
+                    {
+                        open = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        if open {
+            open_external(&url);
+            self.external_link = None;
+        } else if cancel {
+            self.external_link = None;
         }
     }
 
@@ -2007,6 +2079,35 @@ impl Lector {
                                         .color(th.dim),
                                     );
                                     ui.add_space(4.0);
+                                    ui.horizontal(|ui| {
+                                        widgets::label(ui, th, "Al iniciar");
+                                        let before = self.cfg.startup;
+                                        egui::ComboBox::from_id_salt("startup-mode")
+                                            .selected_text(self.cfg.startup.label())
+                                            .show_ui(ui, |ui| {
+                                                ui.selectable_value(
+                                                    &mut self.cfg.startup,
+                                                    config::StartupMode::LastBook,
+                                                    "Último libro abierto",
+                                                );
+                                                ui.selectable_value(
+                                                    &mut self.cfg.startup,
+                                                    config::StartupMode::Library,
+                                                    "Biblioteca",
+                                                );
+                                            });
+                                        if before != self.cfg.startup {
+                                            changed = true;
+                                        }
+                                    });
+                                    ui.label(
+                                        RichText::new(
+                                            "Por defecto abre el último libro; si falta, abre la biblioteca.",
+                                        )
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                    ui.separator();
                                     for folder in &folders {
                                         ui.horizontal(|ui| {
                                             ui.label(
@@ -3959,7 +4060,9 @@ impl Lector {
         }
 
         if key_esc {
-            if self.link_preview.is_some() {
+            if self.external_link.is_some() {
+                self.external_link = None;
+            } else if self.link_preview.is_some() {
                 self.link_preview = None;
             } else if self.show_help {
                 self.show_help = false;
@@ -5497,6 +5600,7 @@ impl Lector {
             .unwrap_or_default();
         let book_override = self.has_book_override();
         let compact = ctx.screen_rect().width() < 820.0;
+        let mut back = false;
 
         egui::TopBottomPanel::top("bar")
             .show_separator_line(false)
@@ -5508,6 +5612,12 @@ impl Lector {
             )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
+                    if widgets::button(ui, th, "←", widgets::ButtonKind::Ghost)
+                        .on_hover_text("Biblioteca (Esc)")
+                        .clicked()
+                    {
+                        back = true;
+                    }
                     if widgets::button(ui, th, "☰", widgets::ButtonKind::Ghost)
                         .on_hover_text("Índice (T)")
                         .clicked()
@@ -5676,6 +5786,9 @@ impl Lector {
                     });
                 });
             });
+        if back {
+            self.go_library();
+        }
     }
 
     fn toc_window(&mut self, ctx: &egui::Context, th: &Theme) {
@@ -6571,6 +6684,9 @@ impl Lector {
 
     fn reader(&mut self, ctx: &egui::Context, th: &Theme) {
         self.top_bar(ctx, th);
+        if self.screen == Screen::Library {
+            return;
+        }
 
         // Barra de progreso: 2 px al pie.
         egui::TopBottomPanel::bottom("prog")
@@ -6622,6 +6738,7 @@ impl Lector {
         let mut colw = 660.0;
         let s = self.effective_settings();
         let mut link_click: Option<LinkClick> = None;
+        let mut external_link: Option<String> = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(th.bg))
@@ -6692,6 +6809,7 @@ impl Lector {
                                         blocks.as_slice(),
                                         current_chapter,
                                         &mut link_click,
+                                        &mut external_link,
                                         selection,
                                         &mut extend_to,
                                         &mut geoms,
@@ -6836,6 +6954,10 @@ impl Lector {
             self.open_link_preview(click);
             ctx.request_repaint();
         }
+        if let Some(url) = external_link {
+            self.external_link = Some(url);
+            ctx.request_repaint();
+        }
 
         // Evita que el layout de la barra se desplace cuando cambia el ancho.
         let _ = colw;
@@ -6845,6 +6967,7 @@ impl Lector {
         self.goto_window(ctx, th);
         self.selection_bar(ctx, th);
         self.link_preview_window(ctx, th);
+        self.external_link_window(ctx, th);
         self.back_to_text(ctx, th);
         self.annotations_window(ctx, th);
         self.confirm_delete_annotation_window(ctx, th);
@@ -7655,6 +7778,7 @@ fn add_selectable_text(
     args: &TextArgs<'_>,
     blocks: &[Block],
     link_click: &mut Option<LinkClick>,
+    external_link: &mut Option<String>,
     selection: &mut Option<Selection>,
     extend_to: &mut Option<Anchor>,
     geoms: &mut Vec<BlockGeom>,
@@ -7791,7 +7915,9 @@ fn add_selectable_text(
             let index = output.galley.cursor_from_pos(pos - output.galley_pos).index;
             if let Some((range, href)) = args.links.iter().find(|(range, _)| range.contains(&index))
             {
-                if let Some(book) = args.book {
+                if let Some(url) = Book::external_url(href) {
+                    *external_link = Some(url);
+                } else if let Some(book) = args.book {
                     if let Some((spine, anchor)) = book.link_target(href, args.chapter) {
                         let label = args
                             .full_text
@@ -8130,6 +8256,7 @@ fn draw_block(
     blocks: &[Block],
     chapter: usize,
     link_click: &mut Option<LinkClick>,
+    external_link: &mut Option<String>,
     selection: &mut Option<Selection>,
     extend_to: &mut Option<Anchor>,
     geoms: &mut Vec<BlockGeom>,
@@ -8309,6 +8436,7 @@ fn draw_block(
                     &args,
                     blocks,
                     link_click,
+                    external_link,
                     selection,
                     extend_to,
                     geoms,
@@ -8337,6 +8465,7 @@ fn draw_block(
                 &args,
                 blocks,
                 link_click,
+                external_link,
                 selection,
                 extend_to,
                 geoms,

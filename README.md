@@ -15,9 +15,11 @@ previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
 búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción,
 análisis con IA multi-proveedor, edición de metadatos/portada del EPUB,
-actualizaciones asistidas y respaldo/restauración local de datos.
+actualizaciones asistidas, respaldo/restauración local de datos y enlaces
+externos con confirmación. Al iniciar, Candil retoma el último libro por defecto;
+se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **6.9 MiB** (7.367.664 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.367.696 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -189,7 +191,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 132
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 134
 tests unitarios (1 live ignorado) y 10 de integración sobre fixtures propios versionados
 (`mini.epub`, `edge.epub` y `notes.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -248,6 +250,10 @@ avanzado.
 |---|
 | ![Exportar e importar datos desde Configuración → Avanzado](docs/img/config-data.png) |
 
+| **Al iniciar** | **Enlace externo** |
+|---|---|
+| ![Elección de inicio: último libro o biblioteca](docs/img/config-startup.png) | ![Confirmación para abrir un enlace externo](docs/img/reader-external-link.jpg) |
+
 | **Tipografía por libro** |
 |---|
 | ![Panel de tipografía con “Solo para este libro”](docs/img/reader-settings.png) |
@@ -275,7 +281,10 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 
 - CSS del libro ignorado por diseño (los temas mandan).
 - Índice con anclas y enlaces internos: los enlaces internos abren una vista
-  previa con “Ir al texto” y “Volver”; los enlaces externos todavía se ignoran.
+  previa con “Ir al texto” y “Volver”; los externos (http/https/mailto/tel) piden
+  confirmación y se abren con la aplicación del sistema.
+- Al iniciar se abre el último libro por defecto; se puede cambiar a biblioteca
+  en Configuración → Biblioteca. Si el archivo falta, se abre la biblioteca.
 - Sin paginado por columnas ni sinónimos/hyphenation.
 - La búsqueda dentro del libro es substring sin regex/stemming y resalta solo la
   coincidencia activa. La selección de destacados cruza párrafos del mismo

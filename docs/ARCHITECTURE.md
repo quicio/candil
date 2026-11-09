@@ -191,12 +191,25 @@ UI maneja un `UpdateState` (`Idle`, `Checking`, `UpToDate`, `Available`,
 `Downloading`, `Downloaded`, `Error`) y un `mpsc` para no bloquear. Decisión y
 alternativas en ADR-0016.
 
+## Inicio y enlaces externos
+
+`Config.startup` es `StartupMode` (`last_book` por defecto, `library` opcional).
+Al construir la app, un path explícito manda; `--resume` o el modo `last_book`
+abren `cfg.last_book` si existe; `--screen library` fuerza la estantería; si el
+libro falta, se abre la biblioteca. El ajuste se edita en Configuración →
+Biblioteca.
+
+`Book::external_url` acepta solo `http`, `https`, `mailto` y `tel`. El clic en un
+enlace externo guarda la URL en `Lector.external_link` y muestra un modal de
+confirmación; solo “Abrir enlace” llama a `open_external` (`open`/`xdg-open`/
+`cmd /C start`). `javascript:`, `data:` y `file:` se rechazan. Decisión en
+ADR-0021.
+
 ## Respaldo de datos
 
 `backup.rs` empaqueta `config.json`, `library.json`, `annotations.json` y
 `consultas.json` en un ZIP con `candil-backup.json`: formato, versión, fecha y
 checksums SHA-256. No incluye EPUB, `covers/`, `backups/` ni claves.
-
 La importación solo acepta los cuatro nombres conocidos, limita cada archivo a
 64 MB, valida tamaño/checksum y parsea el JSON con su tipo antes de escribir. Si
 ya hay datos, exporta un `pre-import-*.zip`; luego reemplaza cada archivo con

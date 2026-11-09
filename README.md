@@ -38,7 +38,7 @@ webview ni motor HTML.
 ### macOS
 
 ```bash
-brew install --cask --no-quarantine quicio/tap/candil
+brew install --cask quicio/tap/candil
 ```
 
 O descargar `candil-macos-arm64-app.zip` desde

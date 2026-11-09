@@ -63,7 +63,7 @@ instalación sigue siendo manual: no se reemplaza el `.app` en ejecución.
 Se agrega `Casks/candil.rb` y un tap `quicio/homebrew-tap`:
 
 ```bash
-brew install --cask --no-quarantine quicio/tap/candil
+brew install --cask quicio/tap/candil
 ```
 
 El cask usa `version :latest` y `sha256 :no_check` contra

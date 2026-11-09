@@ -12,12 +12,19 @@ cask "candil" do
 
   app "Candil.app"
 
+  # Candil no está notarizado por Apple: el zip se firma ad-hoc. Homebrew
+  # conserva la cuarentena de la descarga, así que la quitamos para que la
+  # primera apertura no quede bloqueada por Gatekeeper.
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "/Applications/Candil.app"],
+        writable_paths: ["/Applications/Candil.app"],
+        must_succeed:   false
+  end
+
   caveats <<~EOS
-    Candil se distribuye sin notarización de Apple. Si macOS bloquea la primera
-    apertura, instalá con:
-
-      brew install --cask --no-quarantine quicio/tap/candil
-
-    o usá clic derecho → Abrir sobre Candil.app.
+    Candil se distribuye sin notarización de Apple. Este cask intenta quitar la
+    cuarentena; si macOS igual bloquea la primera apertura, usá clic derecho →
+    Abrir sobre Candil.app.
   EOS
 end

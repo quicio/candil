@@ -36,7 +36,7 @@ instala**.
 ## Instalación en macOS
 
 ```bash
-brew install --cask --no-quarantine quicio/tap/candil
+brew install --cask quicio/tap/candil
 ```
 
 o descargar `candil-macos-arm64-app.zip`, descomprimir, arrastrar `Candil.app` a

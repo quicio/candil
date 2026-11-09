@@ -13,13 +13,13 @@ sin copiar los libros, series/colecciones, anclas internas, progreso estable por
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
-búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción,
-análisis con IA multi-proveedor, edición de metadatos/portada del EPUB,
-actualizaciones asistidas, respaldo/restauración local de datos y enlaces
-externos con confirmación. Al iniciar, Candil retoma el último libro por defecto;
-se puede cambiar a biblioteca desde Configuración.
+búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción
+(MyMemory o Ollama local), análisis con IA multi-proveedor, edición de
+metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
+local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
+último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **6.9 MiB** (7.367.696 B), arranque instantáneo, sin
+Binario final (`dist`): **7.0 MiB** (7.384.240 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -231,8 +231,12 @@ M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar
 (o `K`) para Wiktionary, MyMemory o un proveedor de IA; `⇧K` abre Traducción y
 lanza la consulta directo. El panel tiene
 Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
-defecto. La API key se guarda en el **llavero del sistema** (Keychain/Secret
-Service/Credential Manager) y `OPENCODE_API_KEY` sigue como override. El historial se guarda
+defecto. La traducción puede usar **MyMemory** o **Ollama local**; el motor
+local no exige activar las consultas online y no manda el texto afuera.
+MyMemory recorta a 500 caracteres en el último espacio antes del límite y avisa
+cuando la traducción es parcial. La API key se guarda en el **llavero del
+sistema** (Keychain/Secret Service/Credential Manager) y `OPENCODE_API_KEY` sigue
+como override. El historial se guarda
 en `consultas.json` (local, con límite y borrado); desde el detalle del historial
 podés **Ir al texto** y volver a la frase. El centro **Configuración**
 (`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
@@ -309,11 +313,14 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   quedar faltantes hasta reindexar.
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
-- Diccionario y traducción usan Wiktionary/MyMemory (online); la IA admite
+- Diccionario y traducción usan Wiktionary/MyMemory (online); la traducción
+  también puede usar Ollama local (sin API key y sin activar online). La IA admite
   OpenCode Go, OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek y
   Ollama. Requiere API key salvo Ollama; la clave se guarda en el llavero del
   sistema o se define en `OPENCODE_API_KEY`. Online está apagado por defecto.
   El uso de la suscripción Go para lectura depende de sus términos y límites.
+- MyMemory admite hasta 500 caracteres por consulta: si la selección es más
+  larga, se traduce el fragmento hasta la última palabra completa y se avisa.
 - La traducción se muestra solo en el panel; no reemplaza el texto del libro.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
@@ -336,6 +343,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M7 — IA configurable (cerrada):** OpenCode Go, OpenAI, Anthropic, Gemini,
   OpenRouter, Groq, Mistral, DeepSeek y Ollama; clave en el llavero y selector
   de proveedor en Configuración.
+- **M17 — Traducción sin fricción (cerrada):** MyMemory recorta a 500 caracteres
+  en palabra y avisa; traducción local opcional con Ollama, sin API key y sin
+  activar consultas online.
 
 ## Modo diagnóstico
 

@@ -2190,6 +2190,13 @@ impl Lector {
                                         .size(theme::text::META)
                                         .color(th.dim),
                                     );
+                                    ui.label(
+                                        RichText::new(
+                                            "La traducción con Ollama local funciona sin activar las consultas online.",
+                                        )
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
                                     ui.add_space(4.0);
                                     ui.label(
                                         RichText::new("Diccionario: Wiktionary")
@@ -2200,14 +2207,15 @@ impl Lector {
                                         ui.label(
                                             RichText::new("Traducción").size(theme::text::LABEL).color(th.dim),
                                         );
+                                        let before = self.cfg.consulta.translation_provider.clone();
                                         egui::ComboBox::from_id_salt("config-translation")
                                             .selected_text(
                                                 if self.cfg.consulta.translation_provider
-                                                    == "mymemory"
+                                                    == "ollama"
                                                 {
-                                                    "MyMemory (gratuita)"
+                                                    "Ollama (local)"
                                                 } else {
-                                                    &self.cfg.consulta.translation_provider
+                                                    "MyMemory (gratuita)"
                                                 },
                                             )
                                             .show_ui(ui, |ui| {
@@ -2221,8 +2229,69 @@ impl Lector {
                                                 {
                                                     changed = true;
                                                 }
+                                                if ui
+                                                    .selectable_value(
+                                                        &mut self.cfg.consulta.translation_provider,
+                                                        "ollama".into(),
+                                                        "Ollama (local)",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    if self
+                                                        .cfg
+                                                        .consulta
+                                                        .translation_model
+                                                        .trim()
+                                                        .is_empty()
+                                                    {
+                                                        self.cfg.consulta.translation_model =
+                                                            ai::provider("ollama")
+                                                                .default_model
+                                                                .into();
+                                                    }
+                                                    changed = true;
+                                                }
                                             });
+                                        if before != self.cfg.consulta.translation_provider {
+                                            changed = true;
+                                        }
                                     });
+                                    if self.cfg.consulta.translation_provider == "ollama" {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new("Modelo local")
+                                                    .size(theme::text::LABEL)
+                                                    .color(th.dim),
+                                            );
+                                            if ui
+                                                .add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut self.cfg.consulta.translation_model,
+                                                    )
+                                                    .hint_text("llama3.2")
+                                                    .desired_width(180.0),
+                                                )
+                                                .changed()
+                                            {
+                                                changed = true;
+                                            }
+                                        });
+                                        ui.label(
+                                            RichText::new(
+                                                "Ollama debe estar abierto. La traducción no sale de tu Mac.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        );
+                                    } else {
+                                        ui.label(
+                                            RichText::new(
+                                                "MyMemory admite hasta 500 caracteres; se recorta en palabra.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        );
+                                    }
                                     ui.horizontal(|ui| {
                                         ui.label(
                                             RichText::new("Idioma destino").size(theme::text::LABEL).color(th.dim),
@@ -2804,10 +2873,20 @@ impl Lector {
             self.dirty = true;
         }
         if !self.cfg.consulta.online_enabled && self.consulta_busy {
-            self.consulta_rx = None;
-            self.consulta_busy = false;
-            self.consulta_pending_request = None;
-            self.consulta_pending_prompt = None;
+            let local = self
+                .consulta_pending_request
+                .as_ref()
+                .is_some_and(|request| match request.kind {
+                    ConsultaKind::Traduccion => self.cfg.consulta.translation_provider == "ollama",
+                    ConsultaKind::Ia => self.cfg.consulta.ai_provider == "ollama",
+                    ConsultaKind::Diccionario => false,
+                });
+            if !local {
+                self.consulta_rx = None;
+                self.consulta_busy = false;
+                self.consulta_pending_request = None;
+                self.consulta_pending_prompt = None;
+            }
         }
         if add_folder {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
@@ -2939,9 +3018,16 @@ impl Lector {
         if self.consulta_busy {
             return;
         }
-        if !self.cfg.consulta.online_enabled {
-            self.consulta_error =
-                Some("Las consultas online están desactivadas. Activalas en este panel o en Configuración.".into());
+        let local = match kind {
+            ConsultaKind::Traduccion => self.cfg.consulta.translation_provider == "ollama",
+            ConsultaKind::Ia => self.cfg.consulta.ai_provider == "ollama",
+            ConsultaKind::Diccionario => false,
+        };
+        if !self.cfg.consulta.online_enabled && !local {
+            self.consulta_error = Some(
+                "Las consultas online están desactivadas. Activalas o usá traducción local con Ollama."
+                    .into(),
+            );
             return;
         }
         let Some(target) = self.consulta_target.clone() else {
@@ -3024,8 +3110,15 @@ impl Lector {
                         if let Some(request) = self.consulta_pending_request.take() {
                             let provider = match request.kind {
                                 ConsultaKind::Diccionario => "Wiktionary",
+                                ConsultaKind::Traduccion
+                                    if self.cfg.consulta.translation_provider == "ollama" =>
+                                {
+                                    "Ollama (local)"
+                                }
                                 ConsultaKind::Traduccion => "MyMemory",
-                                ConsultaKind::Ia => "OpenCode Go",
+                                ConsultaKind::Ia => {
+                                    ai::provider(&self.cfg.consulta.ai_provider).label
+                                }
                             };
                             let mut entry = consulta::entry_from_error(&request, provider, &error);
                             if let Some(target) = &target {
@@ -3066,6 +3159,9 @@ impl Lector {
     fn consulta_provider_label(&self) -> &'static str {
         match self.consulta_tab {
             ConsultaTab::Diccionario => "Wiktionary",
+            ConsultaTab::Traduccion if self.cfg.consulta.translation_provider == "ollama" => {
+                "Ollama local"
+            }
             ConsultaTab::Traduccion => "MyMemory",
             ConsultaTab::Ia => ai::provider(&self.cfg.consulta.ai_provider).label,
             ConsultaTab::Historial => "Historial",
@@ -3079,6 +3175,14 @@ impl Lector {
         let target = self.consulta_target.clone();
         let has_key =
             self.ai_key.key.is_some() || !ai::requires_key(&self.cfg.consulta.ai_provider);
+        let local_translation = self.cfg.consulta.translation_provider == "ollama";
+        let local_ai = self.cfg.consulta.ai_provider == "ollama";
+        let online_needed = match self.consulta_tab {
+            ConsultaTab::Diccionario => true,
+            ConsultaTab::Traduccion => !local_translation,
+            ConsultaTab::Ia => !local_ai,
+            ConsultaTab::Historial => false,
+        };
         let mut open = self.show_consulta;
         let mut run_dictionary = false;
         let mut run_translation = false;
@@ -3135,7 +3239,7 @@ impl Lector {
                 .color(th.dim),
             );
 
-            if !self.cfg.consulta.online_enabled {
+            if !self.cfg.consulta.online_enabled && online_needed {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new("Consultas online desactivadas.")
@@ -3161,6 +3265,15 @@ impl Lector {
                     .size(theme::text::META)
                     .color(th.dim),
                 );
+                if local_translation {
+                    ui.label(
+                        RichText::new(
+                            "La traducción con Ollama local sigue disponible sin activar esto.",
+                        )
+                        .size(theme::text::META)
+                        .color(th.dim),
+                    );
+                }
             }
 
             ui.horizontal(|ui| {
@@ -3242,7 +3355,38 @@ impl Lector {
                     }
                 }
                 ConsultaTab::Traduccion => {
-                    let enabled = self.cfg.consulta.online_enabled && !self.consulta_busy;
+                    let model = if self.cfg.consulta.translation_model.trim().is_empty() {
+                        ai::provider("ollama").default_model
+                    } else {
+                        self.cfg.consulta.translation_model.trim()
+                    };
+                    if local_translation {
+                        ui.label(
+                            RichText::new(format!("Ollama local · {model}"))
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
+                    } else {
+                        ui.label(
+                            RichText::new(format!(
+                                "MyMemory · hasta {} caracteres",
+                                consulta::MYMEMORY_MAX_CHARS
+                            ))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                        );
+                        if target.text.chars().count() > consulta::MYMEMORY_MAX_CHARS {
+                            ui.label(
+                                RichText::new(
+                                    "Se traducirán los primeros 500 caracteres, cortando en palabra.",
+                                )
+                                .size(theme::text::META)
+                                .color(th.dim),
+                            );
+                        }
+                    }
+                    let enabled = (self.cfg.consulta.online_enabled || local_translation)
+                        && !self.consulta_busy;
                     if ui
                         .add_enabled(
                             enabled,
@@ -3296,15 +3440,20 @@ impl Lector {
                         );
                     }
                     ui.label(
-                        RichText::new(format!(
-                            "Se enviará la selección y el párrafo contenedor a {}.",
-                            provider.label
-                        ))
+                        RichText::new(if local_ai {
+                            "Ollama corre en tu Mac; la selección no sale a internet.".to_string()
+                        } else {
+                            format!(
+                                "Se enviará la selección y el párrafo contenedor a {}.",
+                                provider.label
+                            )
+                        })
                         .size(theme::text::META)
                         .color(th.dim),
                     );
-                    let enabled =
-                        self.cfg.consulta.online_enabled && !self.consulta_busy && has_key;
+                    let enabled = (self.cfg.consulta.online_enabled || local_ai)
+                        && !self.consulta_busy
+                        && has_key;
                     if ui
                         .add_enabled(
                             enabled,

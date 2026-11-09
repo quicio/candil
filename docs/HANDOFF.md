@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.12.0
+version: 1.13.0
 updated: 2026-11-09
 ---
 
@@ -39,10 +39,14 @@ agrega “Continuar leyendo” y refresco incremental de la biblioteca al recupe
 el foco. M14 agrega respaldo/restauración local de datos y filtro en el panel de
 notas. M15 agrega series/colecciones desde el OPF y orden por serie. M16 agrega
 inicio configurable (último libro por defecto), regreso visible a la biblioteca
-y confirmación de enlaces externos.
+y confirmación de enlaces externos. M17 agrega el motor de traducción
+configurable: MyMemory recorta a 500 caracteres en palabra y avisa cuando la
+traducción es parcial; Ollama local traduce sin API key y sin activar consultas
+online.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
-Consulta. La API key se guarda en el llavero del sistema o en
+Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
+salir de la Mac. La API key se guarda en el llavero del sistema o en
 `OPENCODE_API_KEY`; si falta y el proveedor la requiere, el botón de IA queda
 deshabilitado. La prueba real con la clave del usuario queda pendiente;
 con una clave inválida se verificó el 401 sin congelar la UI.
@@ -60,8 +64,8 @@ origen.
 `consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
-`respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion` y
-`inicio-regreso-enlaces` quedaron archivados en
+`respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion`,
+`inicio-regreso-enlaces` y `motor-traduccion-local` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -86,9 +90,9 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 134 unit (1 live ignorado) + 10 integración | `cargo test` |
+| tests | 139 unit (138 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.367.696 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.384.240 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
@@ -121,7 +125,7 @@ src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
 src/update.rs  consulta de releases, asset por plataforma, descarga y SHA-256
 src/backup.rs  respaldo ZIP de datos, manifiesto, checksums e importación segura
-src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
+src/consulta.rs diccionario/traducción (MyMemory u Ollama local)/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
@@ -262,7 +266,9 @@ flotante tapando texto) solo aparecieron así.
     2 verde), no una propiedad del tema ni de `library.json`. El modo global del
     panel no cambia el archivo; solo cambia la vista y el alcance del export.
 16. **Online apagado por defecto**: `Config.consulta.online_enabled = false`.
-    Ninguna consulta sale sin click explícito; apagarlo corta toda salida.
+    Ninguna consulta remota sale sin click explícito; apagarlo corta toda salida
+    externa. La traducción y la IA con Ollama local no salen de la máquina y
+    siguen disponibles (ADR-0022).
 17. **Las claves viven en el llavero del sistema o en `OPENCODE_API_KEY`**;
     nunca en `config.json`, `consultas.json`, logs ni URLs. El estado se muestra
     como llavero/entorno/no configurada, nunca el valor.
@@ -304,6 +310,9 @@ flotante tapando texto) solo aparecieron así.
 30. **Los enlaces externos se abren solo con confirmación** y solo si el esquema
     es `http`, `https`, `mailto` o `tel`; `javascript:`, `data:` y `file:` se
     rechazan (ADR-0021).
+31. **La traducción remota se recorta en palabra a 500 caracteres** (MyMemory) y
+    avisa si es parcial; no se hace chunking. La traducción con Ollama local no
+    exige `online_enabled` y nunca lleva API key (ADR-0022).
 
 ## Definición de terminado (por tarea)
 

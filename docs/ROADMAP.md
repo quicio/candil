@@ -29,6 +29,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M14 | Respaldo y notas | **Hecho** | [data-backup](../openspec/specs/data-backup/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Exportar/importar los datos de usuario con validación y filtrar el panel de anotaciones |
 | M15 | Series y colecciones | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Leer serie/posición del OPF, mostrarla en la tarjeta y ordenar por serie |
 | M16 | Inicio y enlaces | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Elegir inicio (último libro/biblioteca), volver con un icono y confirmar enlaces externos |
+| M17 | Traducción sin fricción | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0022](../docs/adr/0022-traduccion-local-y-limite-mymemory.md) | Traducir con MyMemory hasta 500 caracteres sin partir palabras u Ollama local sin activar online |
 
 ## M1 — Lector (terminado)
 
@@ -322,6 +323,28 @@ Cerrado el 2026-11-09:
   y confirmación.
 - Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.367.696 B**.
+
+## M17 — Traducción sin fricción (terminado)
+
+Cerrado el 2026-11-09:
+
+- MyMemory recibe como máximo 500 caracteres: `truncate_at_word` corta en el
+  último espacio y nunca parte una palabra; la respuesta avisa cuando la
+  traducción es parcial.
+- Configuración → Consultas permite elegir **MyMemory (gratuita)** u
+  **Ollama (local)**, con modelo configurable (`llama3.2` por defecto).
+- La traducción local usa el endpoint OpenAI-compatible de Ollama
+  (`localhost:11434/v1`), sin API key, con prompt de solo traducción y al menos
+  1024 tokens de salida.
+- `⇧K` y el botón Traducir usan el motor elegido. La traducción y la IA con
+  Ollama funcionan con `online_enabled=false`; MyMemory/Wiktionary y los
+  proveedores remotos siguen bloqueados.
+- Errores accionables si Ollama no está abierto o falta el modelo
+  (`ollama pull`).
+- ADR-0022, tests de recorte/aviso/routing local y captura actualizada de
+  Configuración → Consultas.
+- Verificación: **139 unit (138 + 1 live ignorado) + 10 integración**; `dist`
+  **7.384.240 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

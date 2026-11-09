@@ -96,6 +96,9 @@ pub struct ConsultaSettings {
     pub online_enabled: bool,
     pub dictionary_provider: String,
     pub translation_provider: String,
+    /// Modelo de Ollama para traducción local; vacío = default del proveedor.
+    #[serde(default)]
+    pub translation_model: String,
     /// `None` = automático (en→es, es→en, resto→es).
     pub target_lang: Option<String>,
     pub ai_provider: String,
@@ -113,6 +116,7 @@ impl Default for ConsultaSettings {
             online_enabled: false,
             dictionary_provider: "wiktionary".into(),
             translation_provider: "mymemory".into(),
+            translation_model: String::new(),
             target_lang: None,
             ai_provider: "opencode".into(),
             ai_base_url: DEFAULT_AI_BASE.into(),
@@ -144,6 +148,12 @@ impl ConsultaSettings {
         }
         if self.translation_provider.trim().is_empty() {
             self.translation_provider = "mymemory".into();
+        }
+        if self.translation_provider != "ollama" && self.translation_provider != "mymemory" {
+            self.translation_provider = "mymemory".into();
+        }
+        if self.translation_provider == "ollama" && self.translation_model.trim().is_empty() {
+            self.translation_model = crate::ai::provider("ollama").default_model.into();
         }
         if let Some(lang) = &self.target_lang {
             if lang.trim().is_empty() {
@@ -414,6 +424,7 @@ mod tests {
             ai_base_url: " ".into(),
             ai_model: String::new(),
             translation_provider: String::new(),
+            translation_model: String::new(),
             ..ConsultaSettings::default()
         };
         c.clamp();
@@ -423,5 +434,17 @@ mod tests {
         assert_eq!(c.ai_base_url, DEFAULT_AI_BASE);
         assert_eq!(c.ai_model, DEFAULT_AI_MODEL);
         assert_eq!(c.translation_provider, "mymemory");
+    }
+
+    #[test]
+    fn traduccion_local_completa_el_modelo() {
+        let mut c = ConsultaSettings {
+            translation_provider: "ollama".into(),
+            translation_model: String::new(),
+            ..ConsultaSettings::default()
+        };
+        c.clamp();
+        assert_eq!(c.translation_provider, "ollama");
+        assert_eq!(c.translation_model, "llama3.2");
     }
 }

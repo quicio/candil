@@ -250,7 +250,10 @@ con el mismo mecanismo de `TextFormat::background` que los destacados.
 `consulta.rs` define `ConsultaKind`, `ConsultaRequest/Response`, `Transport`,
 `HttpTransport` (ureq+rustls, timeout), parsers de Wiktionary/dictionaryapi.dev,
 MyMemory y respuestas OpenAI-compatible, prompts predefinidos e
-`ConsultaHistory`. La red está apagada por defecto; cada consulta es explícita.
+`ConsultaHistory`. La red está apagada por defecto; cada consulta remota es
+explícita. La traducción puede usar MyMemory (recorta a 500 caracteres en
+palabra) u Ollama local, que reutiliza el proveedor OpenAI-compatible sin API
+key.
 
 La UI abre el panel con la acción `Consultar` de la selección o `K`. Diccionario,
 Traducción, IA e Historial comparten ventana. La petición corre en
@@ -261,8 +264,10 @@ o resultado sin bloquearse. OpenCode Go usa
 
 El historial vive en `consultas.json` (atómico, `schema_version`, límite y
 borrado); no guarda el párrafo de contexto ni claves. `Config.consulta` guarda
-solo preferencias no secretas: online, proveedores, idioma destino, base/modelo
-de IA, timeout, tokens e límite de historial.
+solo preferencias no secretas: online, proveedores, motor/modelo de traducción,
+idioma destino, base/modelo de IA, timeout, tokens y límite de historial.
+La traducción y la IA con Ollama corren con online apagado; el resto exige
+`online_enabled`.
 
 El centro de configuración (`⌘,` o Ajustes) reúne Lectura, Biblioteca,
 Anotaciones, Consultas, Privacidad y Avanzado. `Aa` sigue siendo el acceso

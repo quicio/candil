@@ -44,6 +44,8 @@ OPF = """<?xml version="1.0" encoding="utf-8"?>
     <dc:title>Libro de prueba</dc:title>
     <dc:creator>Autora Ficticia</dc:creator>
     <dc:language>es</dc:language>
+    <meta name="calibre:series" content="Serie de prueba"/>
+    <meta name="calibre:series_index" content="2"/>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
@@ -174,6 +176,9 @@ NOTES_OPF = """<?xml version="1.0" encoding="utf-8"?>
     <dc:title>Notas de prueba</dc:title>
     <dc:creator>Autora Ficticia</dc:creator>
     <dc:language>es</dc:language>
+    <meta property="belongs-to-collection" id="serie">Notas de prueba</meta>
+    <meta refines="#serie" property="collection-type">series</meta>
+    <meta refines="#serie" property="group-position">1</meta>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>

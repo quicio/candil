@@ -29,6 +29,8 @@ pub struct Book {
     pub title: String,
     pub author: String,
     pub lang: String,
+    pub series: Option<String>,
+    pub series_index: Option<f32>,
     pub spine: Vec<String>,
     pub toc: Vec<TocEntry>,
     archive: ZipArchive<File>,
@@ -71,6 +73,11 @@ impl Book {
         let mut author = String::new();
         let mut lang = String::new();
         let mut cover_meta: Option<String> = None;
+        let mut series_calibre: Option<String> = None;
+        let mut series_index_calibre: Option<f32> = None;
+        let mut collections: Vec<(String, String)> = Vec::new();
+        let mut series_ids: HashSet<String> = HashSet::new();
+        let mut positions: HashMap<String, f32> = HashMap::new();
         if let Some(md) = doc
             .descendants()
             .find(|n| n.is_element() && n.tag_name().name() == "metadata")
@@ -93,11 +100,60 @@ impl Book {
                                 .map(|s| s.trim().to_string())
                                 .filter(|s| !s.is_empty());
                         }
+                        let parse_position = |value: &str| value.trim().parse::<f32>().ok();
+                        if name.eq_ignore_ascii_case("calibre:series") {
+                            let value = n.attribute("content").unwrap_or("").trim();
+                            if !value.is_empty() {
+                                series_calibre = Some(value.to_string());
+                            }
+                        } else if name.eq_ignore_ascii_case("calibre:series_index") {
+                            series_index_calibre = n.attribute("content").and_then(parse_position);
+                        } else if prop.eq_ignore_ascii_case("belongs-to-collection") {
+                            let value = node_text(n);
+                            if !value.is_empty() {
+                                collections
+                                    .push((n.attribute("id").unwrap_or("").to_string(), value));
+                            }
+                        } else if prop.eq_ignore_ascii_case("collection-type") {
+                            if node_text(n).eq_ignore_ascii_case("series") {
+                                let id =
+                                    n.attribute("refines").unwrap_or("").trim_start_matches('#');
+                                if !id.is_empty() {
+                                    series_ids.insert(id.to_string());
+                                }
+                            }
+                        } else if prop.eq_ignore_ascii_case("group-position") {
+                            let id = n.attribute("refines").unwrap_or("").trim_start_matches('#');
+                            if let Some(position) = n
+                                .attribute("content")
+                                .and_then(parse_position)
+                                .or_else(|| parse_position(&node_text(n)))
+                            {
+                                if !id.is_empty() {
+                                    positions.insert(id.to_string(), position);
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 }
             }
         }
+        let series = series_calibre.or_else(|| {
+            collections
+                .iter()
+                .find(|(id, _)| series_ids.contains(id))
+                .map(|(_, name)| name.clone())
+                .or_else(|| (collections.len() == 1).then(|| collections[0].1.clone()))
+        });
+        let series_index = series_index_calibre.or_else(|| {
+            let id = collections
+                .iter()
+                .find(|(id, _)| series_ids.contains(id))
+                .map(|(id, _)| id.clone())
+                .or_else(|| collections.first().map(|(id, _)| id.clone()))?;
+            positions.get(&id).copied()
+        });
         if title.trim().is_empty() {
             title = path
                 .file_stem()
@@ -221,6 +277,8 @@ impl Book {
             title,
             author,
             lang,
+            series,
+            series_index,
             spine,
             toc: entries,
             archive,

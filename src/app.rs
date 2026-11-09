@@ -41,6 +41,7 @@ enum LibraryOrder {
     Recent,
     Title,
     Author,
+    Series,
     Added,
 }
 
@@ -50,6 +51,7 @@ impl LibraryOrder {
             Self::Recent => "Reciente",
             Self::Title => "Título",
             Self::Author => "Autor",
+            Self::Series => "Serie",
             Self::Added => "Añadido",
         }
     }
@@ -79,6 +81,7 @@ struct CardData {
     path: String,
     title: String,
     author: String,
+    series: Option<String>,
     cover: Option<(egui::TextureId, Vec2)>,
     chapters: usize,
     chapter: usize,
@@ -455,7 +458,7 @@ const CARD_COVER_H: f32 = 240.0;
 const CARD_GAP: f32 = 20.0;
 const PAGE_PAD: f32 = 24.0;
 const CARD_TEXT_H: f32 = 36.0;
-const CARD_AUTHOR_H: f32 = 16.0;
+const CARD_AUTHOR_H: f32 = 34.0;
 const CARD_STATUS_H: f32 = 24.0;
 const CARD_H: f32 = CARD_COVER_H + 8.0 + CARD_TEXT_H + CARD_AUTHOR_H + CARD_STATUS_H;
 
@@ -4653,6 +4656,7 @@ impl Lector {
                                         LibraryOrder::Recent,
                                         LibraryOrder::Title,
                                         LibraryOrder::Author,
+                                        LibraryOrder::Series,
                                         LibraryOrder::Added,
                                     ] {
                                         ui.selectable_value(
@@ -5416,6 +5420,22 @@ impl Lector {
                     .cmp(&collate(&bb.author))
                     .then_with(|| collate(&ba.title).cmp(&collate(&bb.title)))
             }),
+            LibraryOrder::Series => out.sort_by(|&a, &b| {
+                let ba = &self.library.books[a];
+                let bb = &self.library.books[b];
+                let sa = ba.series.as_deref().unwrap_or("");
+                let sb = bb.series.as_deref().unwrap_or("");
+                sa.is_empty()
+                    .cmp(&sb.is_empty())
+                    .then_with(|| collate(sa).cmp(&collate(sb)))
+                    .then_with(|| {
+                        ba.series_index
+                            .unwrap_or(f32::INFINITY)
+                            .partial_cmp(&bb.series_index.unwrap_or(f32::INFINITY))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .then_with(|| collate(&ba.title).cmp(&collate(&bb.title)))
+            }),
             LibraryOrder::Added => out.sort_by(|&a, &b| {
                 self.library.books[b]
                     .added
@@ -5440,6 +5460,13 @@ impl Lector {
                     path: entry.path,
                     title: entry.title,
                     author: entry.author,
+                    series: entry.series.as_ref().map(|name| match entry.series_index {
+                        Some(index) if index.fract().abs() < 0.01 => {
+                            format!("{name} · {}", index.round() as i64)
+                        }
+                        Some(index) => format!("{name} · {index:.1}"),
+                        None => name.clone(),
+                    }),
                     cover,
                     chapters: entry.chapters,
                     chapter: entry.progress.chapter,
@@ -7941,6 +7968,17 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
                                 RichText::new(truncate(&card.author, 30))
                                     .size(theme::text::META)
                                     .color(th.dim),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    if let Some(series) = &card.series {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(truncate(series, 34))
+                                    .size(theme::text::META)
+                                    .italics()
+                                    .color(th.dim.gamma_multiply(0.85)),
                             )
                             .wrap(),
                         );

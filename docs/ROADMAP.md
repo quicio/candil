@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # Roadmap
 
-Catorce milestones. Cada uno tiene criterio de salida **verificable**, no una
+Quince milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -27,6 +27,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M12 | Entrega automática | **Hecho** | [RELEASING](../docs/RELEASING.md), [ADR-0017](../docs/adr/0017-entrega-automatica.md) | Release automático al pasar CI, `.app.zip` ad-hoc y cask de Homebrew |
 | M13 | Biblioteca viva I | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Retomar el último libro con un clic y refrescar la biblioteca al recuperar el foco |
 | M14 | Respaldo y notas | **Hecho** | [data-backup](../openspec/specs/data-backup/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Exportar/importar los datos de usuario con validación y filtrar el panel de anotaciones |
+| M15 | Series y colecciones | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Leer serie/posición del OPF, mostrarla en la tarjeta y ordenar por serie |
 
 ## M1 — Lector (terminado)
 
@@ -292,6 +293,20 @@ Cerrado el 2026-11-09:
 - ADR-0019, tests de respaldo/checksum/lista blanca y captura de Configuración.
 - Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
   **7.367.584 B**.
+
+## M15 — Series y colecciones (terminado)
+
+Cerrado el 2026-11-09:
+
+- Serie y posición desde Calibre (`calibre:series` / `calibre:series_index`) y
+  EPUB3 (`belongs-to-collection` + `collection-type=series` +
+  `group-position`).
+- `BookEntry.meta_version` fuerza una relectura única de metadatos conservando
+  progreso, ajustes, portada y fechas.
+- La tarjeta muestra `Serie · N` debajo del autor; nuevo orden **Serie**.
+- Fixtures `mini.epub` (Calibre) y `notes.epub` (EPUB3), ADR-0020.
+- Verificación: **132 unit (131 + 1 live ignorado) + 10 integración**; `dist`
+  **7.367.664 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

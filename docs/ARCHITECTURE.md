@@ -38,9 +38,9 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 
 | módulo | hace | no hace |
 |---|---|---|
-| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s y portada declarada | no decide estilos ni layout |
+| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s, portada declarada y serie/posición del OPF | no decide estilos ni layout |
 | `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
-| `library.rs` | índice de carpetas, escaneo incremental, metadatos, portadas y faltantes | no dibuja la UI |
+| `library.rs` | índice de carpetas, escaneo incremental, metadatos, series, portadas y faltantes | no dibuja la UI |
 | `annotations.rs` | destacados/notas por libro: rangos multi-bloque, offsets, partes de cita y nota; `annotations.json` atómico v2 | no conoce píxeles ni la UI |
 | `search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
 | `consulta.rs` | diccionario/traducción/IA, HTTP ureq, parsers e historial local | no conoce egui |

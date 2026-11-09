@@ -37,7 +37,7 @@ de GitHub, descarga verificada y ningún reemplazo automático. M12 automatiza l
 entrega: bump/tag/release después de CI, `Candil.app.zip` y cask de Homebrew. M13
 agrega “Continuar leyendo” y refresco incremental de la biblioteca al recuperar
 el foco. M14 agrega respaldo/restauración local de datos y filtro en el panel de
-notas.
+notas. M15 agrega series/colecciones desde el OPF y orden por serie.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La API key se guarda en el llavero del sistema o en
@@ -57,9 +57,9 @@ origen.
 `app-updates` y `data-backup`) viven en `openspec/specs/`; los cambios
 `consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
-`actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo` y
-`respaldo-y-filtro-notas` quedaron archivados en `openspec/changes/archive/`.
-`docs/specs/` queda como archivo histórico de M1–M6.
+`actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
+`respaldo-y-filtro-notas` y `series-desde-opf` quedaron archivados en
+`openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
@@ -85,9 +85,9 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 132 unit (1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.367.584 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.367.664 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
-| fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B; `notes.epub` 2.117 B | `scripts/make_fixture.py` |
+| fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
 La medición de biblioteca se hizo con 43 EPUB. Después `~/Libros` quedó en 40
 (limpieza manual de duplicados); hoy la biblioteca tiene 40 entradas y 40
@@ -292,6 +292,9 @@ flotante tapando texto) solo aparecieron así.
 27. **El respaldo de datos incluye solo los cuatro JSON de usuario**; nunca EPUB,
     portadas ni claves. La importación valida manifiesto, checksums y JSON, y
     guarda un `pre-import-*.zip` antes de escribir (ADR-0019).
+28. **La serie sale del OPF**, no del nombre del archivo. `BookEntry.meta_version`
+    fuerza una relectura única cuando cambia la extracción; el escaneo conserva
+    progreso, ajustes, portada y fechas (ADR-0020).
 
 ## Definición de terminado (por tarea)
 

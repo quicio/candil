@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -17,7 +17,7 @@ búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducci
 análisis con IA multi-proveedor, edición de metadatos/portada del EPUB,
 actualizaciones asistidas y respaldo/restauración local de datos.
 
-Binario final (`dist`): **6.9 MiB** (7.367.584 B), arranque instantáneo, sin
+Binario final (`dist`): **6.9 MiB** (7.367.664 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -282,6 +282,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   renderiza, solo el raster embebido en `<svg><image>`.
 - La biblioteca no tiene watcher en tiempo real: se refresca al recuperar el foco
   (con debounce) o a mano desde “Refrescar”.
+- Las series se muestran y se ordenan, pero no hay filtro por serie ni cabeceras
+  de grupo en la grilla.
 - Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
   borrar una portada existente ni editar series/editorial/fecha.
 - La actualización desde la app consulta GitHub a pedido, descarga el binario

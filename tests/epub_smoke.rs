@@ -22,6 +22,8 @@ fn expone_metadatos_y_estructura() {
     assert_eq!(book.title, "Libro de prueba");
     assert_eq!(book.author, "Autora Ficticia");
     assert_eq!(book.lang, "es");
+    assert_eq!(book.series.as_deref(), Some("Serie de prueba"));
+    assert_eq!(book.series_index, Some(2.0));
     assert_eq!(book.chapter_count(), 3);
     assert_eq!(book.toc.len(), 3);
     assert_eq!(book.toc[0].spine, 0);
@@ -117,6 +119,8 @@ fn portada_declarada_y_fallback_de_imagen() {
 fn notas_resuelven_anclas_y_texto() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/notes.epub");
     let mut book = Book::open(path).expect("notes.epub debe abrir");
+    assert_eq!(book.series.as_deref(), Some("Notas de prueba"));
+    assert_eq!(book.series_index, Some(1.0));
     assert_eq!(book.chapter_count(), 2);
     assert_eq!(
         book.link_target("#fn1", 0),

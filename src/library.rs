@@ -17,6 +17,10 @@ use crate::store;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// Versión de extracción de metadatos. Un libro con una versión anterior se
+/// vuelve a leer en el próximo escaneo aunque el archivo no haya cambiado.
+pub const META_VERSION: u32 = 1;
+
 fn default_schema_version() -> u32 {
     SCHEMA_VERSION
 }
@@ -40,6 +44,15 @@ pub struct BookEntry {
     pub title: String,
     pub author: String,
     pub lang: String,
+    /// Serie/colección declarada en el OPF, si existe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    /// Posición dentro de la serie.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series_index: Option<f32>,
+    /// Versión de metadatos con la que se indexó la entrada.
+    #[serde(default)]
+    pub meta_version: u32,
     /// Ruta relativa al directorio de datos: `covers/<hash>.png`.
     pub cover: Option<String>,
     pub size: u64,
@@ -116,6 +129,7 @@ impl BookEntry {
             size,
             mtime,
             added: now_secs(),
+            meta_version: META_VERSION,
             ..Self::default()
         };
 
@@ -126,6 +140,8 @@ impl BookEntry {
                 }
                 entry.author = book.author.clone();
                 entry.lang = book.lang.clone();
+                entry.series = book.series.clone();
+                entry.series_index = book.series_index;
                 entry.chapters = book.chapter_count();
                 if let Some(dir) = covers_dir {
                     if let Some(bytes) = book.cover_bytes() {
@@ -317,6 +333,7 @@ impl Library {
                         old.settings,
                         old.size == size
                             && old.mtime == mtime
+                            && old.meta_version >= META_VERSION
                             && old.chapters > 0
                             && old.error.is_none()
                             && !old.missing
@@ -444,6 +461,9 @@ mod tests {
         assert_eq!(entry.title, "Libro de prueba");
         assert_eq!(entry.author, "Autora Ficticia");
         assert_eq!(entry.lang, "es");
+        assert_eq!(entry.series.as_deref(), Some("Serie de prueba"));
+        assert_eq!(entry.series_index, Some(2.0));
+        assert_eq!(entry.meta_version, META_VERSION);
         assert!(entry.size > 0);
         assert!(entry.mtime > 0);
         assert_eq!(entry.chapters, 3);

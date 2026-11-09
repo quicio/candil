@@ -72,6 +72,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - La biblioteca se refresca al recuperar el foco (debounce 30 s); no agregues un
   watcher del sistema sin ADR (ADR-0018). “Continuar leyendo” usa `last_opened`,
   no el orden visible de la grilla.
+- La serie sale del OPF (`calibre:series`/`belongs-to-collection`), no del nombre
+  de archivo. Si cambia la extracción, subí `META_VERSION`; no reabras toda la
+  biblioteca en cada arranque (ADR-0020).
 - El respaldo de datos incluye solo los cuatro JSON de usuario (`config`,
   `library`, `annotations`, `consultas`); nunca EPUB, portadas ni claves. La
   importación valida manifiesto/checksums/JSON y guarda un backup previo

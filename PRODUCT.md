@@ -43,7 +43,7 @@ tipografía y composición cuidadas con un binario pequeño y arranque instantá
 
 ## Capabilities and Constraints
 
-**Implementado:** biblioteca con portadas, búsqueda, orden, filtros, carpetas y edición de
+**Implementado:** biblioteca con portadas, búsqueda, orden, filtros, series/colecciones, carpetas y edición de
 metadatos/portada del EPUB; lector con temas, tipografía, anclas, progreso por
 bloque, enlaces internos e imágenes; destacados y notas con tres colores,
 selección entre párrafos, notas al pie con vista previa y regreso, vista global,

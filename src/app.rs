@@ -11,6 +11,7 @@ use eframe::egui::{
     Vec2,
 };
 
+use crate::ai;
 use crate::annotations::{Annotation, Annotations};
 use crate::config::{self, Config, Progress, Settings};
 use crate::consulta::{
@@ -20,6 +21,7 @@ use crate::epub::Book;
 use crate::fonts;
 use crate::library::{Library, ScanStats};
 use crate::search;
+use crate::secrets;
 use crate::theme::{self, Theme, THEMES};
 use crate::ui as widgets;
 use crate::xhtml::{Block, Kind};
@@ -177,6 +179,9 @@ pub struct Lector {
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
     cfg: Config,
+    ai_key: secrets::KeyState,
+    ai_key_input: String,
+    confirm_delete_ai_key: bool,
     scroll: f32,
     max_scroll: f32,
     delta: f32,
@@ -344,6 +349,7 @@ impl Lector {
         crate::macos::set_app_icon();
 
         let theme_idx = cfg.settings.theme;
+        let ai_key = secrets::load();
         let initial_delete = if dev.confirm_delete {
             annotations.sorted_all().first().map(|a| a.id)
         } else {
@@ -387,6 +393,9 @@ impl Lector {
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
             cfg,
+            ai_key,
+            ai_key_input: String::new(),
+            confirm_delete_ai_key: false,
             scroll: 0.0,
             max_scroll: 0.0,
             delta: 0.0,
@@ -1223,7 +1232,6 @@ impl Lector {
         let missing = self.library.books.iter().filter(|b| b.missing).count();
         let annotation_count = self.annotations.items.len();
         let history_count = self.consulta_history.items.len();
-        let has_key = ai_key_present();
         let was_open = self.show_config;
         let mut open = self.show_config;
         let mut add_folder = false;
@@ -1236,6 +1244,8 @@ impl Lector {
         let mut reset_config = false;
         let mut clear_history = false;
         let mut changed = false;
+        let mut save_ai_key = false;
+        let mut delete_ai_key = false;
 
         let win_w = (ctx.screen_rect().width() - 40.0).clamp(560.0, widgets::PANEL_LG);
         let content_min = (win_w - 220.0).max(420.0);
@@ -1532,12 +1542,114 @@ impl Lector {
                                             changed = true;
                                         }
                                     });
-                                    ui.add_space(4.0);
-                                    ui.label(
-                                        RichText::new("IA — OpenCode Go").size(theme::text::LABEL).color(th.dim),
-                                    );
+                                    ui.add_space(theme::space::XS);
+                                    widgets::label(ui, th, "IA · proveedor");
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("base URL").size(theme::text::META).color(th.dim));
+                                        let before_provider = self.cfg.consulta.ai_provider.clone();
+                                        egui::ComboBox::from_id_salt("config-ai-provider")
+                                            .width(220.0)
+                                            .selected_text(
+                                                ai::provider(&self.cfg.consulta.ai_provider).label,
+                                            )
+                                            .show_ui(ui, |ui| {
+                                                for provider in ai::ALL {
+                                                    ui.selectable_value(
+                                                        &mut self.cfg.consulta.ai_provider,
+                                                        provider.id.into(),
+                                                        provider.label,
+                                                    );
+                                                }
+                                            });
+                                        if before_provider != self.cfg.consulta.ai_provider {
+                                            let provider =
+                                                ai::provider(&self.cfg.consulta.ai_provider);
+                                            self.cfg.consulta.ai_base_url =
+                                                provider.base_url.into();
+                                            self.cfg.consulta.ai_model =
+                                                provider.default_model.into();
+                                            changed = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        widgets::label(ui, th, "API key");
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.ai_key_input)
+                                                .password(true)
+                                                .hint_text("sk-…")
+                                                .desired_width(280.0),
+                                        );
+                                        if widgets::button(
+                                            ui,
+                                            th,
+                                            "Guardar",
+                                            widgets::ButtonKind::Secondary,
+                                        )
+                                        .clicked()
+                                        {
+                                            save_ai_key = true;
+                                        }
+                                        if self.ai_key.source == secrets::Source::Keyring
+                                            && widgets::button(
+                                                ui,
+                                                th,
+                                                "Borrar",
+                                                widgets::ButtonKind::Destructive,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.confirm_delete_ai_key = true;
+                                        }
+                                    });
+                                    let key_status = if !ai::requires_key(&self.cfg.consulta.ai_provider)
+                                        && self.ai_key.key.is_none()
+                                    {
+                                        "Ollama local no requiere API key".to_string()
+                                    } else {
+                                        secrets::status(&self.ai_key)
+                                    };
+                                    ui.label(
+                                        RichText::new(key_status)
+                                            .size(theme::text::META)
+                                            .color(if self.ai_key.error.is_some() {
+                                                th.error
+                                            } else {
+                                                th.dim
+                                            }),
+                                    );
+                                    if self.confirm_delete_ai_key
+                                        && self.ai_key.source == secrets::Source::Keyring
+                                    {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new("¿Borrar la clave del llavero?")
+                                                    .size(theme::text::META)
+                                                    .color(th.dim),
+                                            );
+                                            if widgets::button(
+                                                ui,
+                                                th,
+                                                "Confirmar",
+                                                widgets::ButtonKind::Destructive,
+                                            )
+                                            .clicked()
+                                            {
+                                                delete_ai_key = true;
+                                                self.confirm_delete_ai_key = false;
+                                            }
+                                            if widgets::button(
+                                                ui,
+                                                th,
+                                                "Cancelar",
+                                                widgets::ButtonKind::Secondary,
+                                            )
+                                            .clicked()
+                                            {
+                                                self.confirm_delete_ai_key = false;
+                                            }
+                                        });
+                                    }
+                                    ui.horizontal(|ui| {
+                                        widgets::label(ui, th, "base URL");
                                         changed |= ui
                                             .add(
                                                 egui::TextEdit::singleline(
@@ -1548,7 +1660,7 @@ impl Lector {
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("modelo").size(theme::text::META).color(th.dim));
+                                        widgets::label(ui, th, "modelo");
                                         changed |= ui
                                             .add(
                                                 egui::TextEdit::singleline(
@@ -1559,9 +1671,7 @@ impl Lector {
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label(
-                                            RichText::new("timeout (s)").size(theme::text::META).color(th.dim),
-                                        );
+                                        widgets::label(ui, th, "timeout (s)");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(
@@ -1570,9 +1680,7 @@ impl Lector {
                                                 .range(5..=120),
                                             )
                                             .changed();
-                                        ui.label(
-                                            RichText::new("máx. tokens").size(theme::text::META).color(th.dim),
-                                        );
+                                        widgets::label(ui, th, "máx. tokens");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(
@@ -1582,19 +1690,6 @@ impl Lector {
                                             )
                                             .changed();
                                     });
-                                    if has_key {
-                                        ui.label(
-                                            RichText::new("OPENCODE_API_KEY detectada")
-                                                .size(theme::text::META)
-                                                .color(th.dim),
-                                        );
-                                    } else {
-                                        ui.label(
-                                            RichText::new("OPENCODE_API_KEY no configurada")
-                                                .size(theme::text::META)
-                                                .color(th.error),
-                                        );
-                                    }
                                     ui.add_space(4.0);
                                     ui.horizontal(|ui| {
                                         ui.label(
@@ -1810,6 +1905,32 @@ impl Lector {
         if open_data {
             open_path(&Config::data_dir().to_string_lossy());
         }
+        if save_ai_key {
+            match secrets::save(&self.ai_key_input) {
+                Ok(()) => {
+                    self.ai_key = secrets::load();
+                    self.ai_key_input.clear();
+                    self.say("Clave guardada en el llavero.");
+                }
+                Err(error) => {
+                    self.ai_key.error = Some(error.clone());
+                    self.say(error);
+                }
+            }
+        }
+        if delete_ai_key {
+            match secrets::delete() {
+                Ok(()) => {
+                    self.ai_key = secrets::load();
+                    self.ai_key_input.clear();
+                    self.say("Clave borrada del llavero.");
+                }
+                Err(error) => {
+                    self.ai_key.error = Some(error.clone());
+                    self.say(error);
+                }
+            }
+        }
         if clear_history {
             self.consulta_history.clear();
             if let Err(e) = self.consulta_history.save() {
@@ -1868,7 +1989,7 @@ impl Lector {
         let settings = self.cfg.consulta.clone();
         let prompt = self.consulta_prompt;
         let session = self.consulta_session.clone();
-        let key = std::env::var("OPENCODE_API_KEY").ok();
+        let key = self.ai_key.key.clone();
         let (tx, rx) = mpsc::channel();
         self.consulta_rx = Some(rx);
         self.consulta_busy = true;
@@ -1967,7 +2088,7 @@ impl Lector {
         match self.consulta_tab {
             ConsultaTab::Diccionario => "Wiktionary",
             ConsultaTab::Traduccion => "MyMemory",
-            ConsultaTab::Ia => "OpenCode Go",
+            ConsultaTab::Ia => ai::provider(&self.cfg.consulta.ai_provider).label,
             ConsultaTab::Historial => "Historial",
         }
     }
@@ -1977,7 +2098,8 @@ impl Lector {
             return;
         }
         let target = self.consulta_target.clone();
-        let has_key = ai_key_present();
+        let has_key =
+            self.ai_key.key.is_some() || !ai::requires_key(&self.cfg.consulta.ai_provider);
         let mut open = self.show_consulta;
         let mut run_dictionary = false;
         let mut run_translation = false;
@@ -2173,23 +2295,32 @@ impl Lector {
                                 }
                             });
                     });
-                    if has_key {
+                    let provider = ai::provider(&self.cfg.consulta.ai_provider);
+                    if !provider.needs_key && self.ai_key.key.is_none() {
+                        widgets::meta(ui, th, "Ollama local no requiere API key");
+                    } else if let Some(error) = &self.ai_key.error {
+                        ui.label(RichText::new(error).size(theme::text::META).color(th.error));
+                    } else if has_key {
                         ui.label(
-                            RichText::new("OPENCODE_API_KEY detectada")
+                            RichText::new(secrets::status(&self.ai_key))
                                 .size(theme::text::META)
                                 .color(th.dim),
                         );
                     } else {
                         ui.label(
-                            RichText::new("Falta OPENCODE_API_KEY en el entorno")
-                                .size(theme::text::META)
-                                .color(th.error),
+                            RichText::new(format!(
+                                "Falta la API key de {}: guardala en Configuración.",
+                                provider.label
+                            ))
+                            .size(theme::text::META)
+                            .color(th.error),
                         );
                     }
                     ui.label(
-                        RichText::new(
-                            "Se enviará la selección y el párrafo contenedor a OpenCode Go.",
-                        )
+                        RichText::new(format!(
+                            "Se enviará la selección y el párrafo contenedor a {}.",
+                            provider.label
+                        ))
                         .size(theme::text::META)
                         .color(th.dim),
                     );
@@ -5617,12 +5748,6 @@ fn export_markdown(entries: &[(String, String, Annotation)]) -> String {
         }
     }
     out
-}
-
-fn ai_key_present() -> bool {
-    std::env::var("OPENCODE_API_KEY")
-        .map(|key| !key.trim().is_empty())
-        .unwrap_or(false)
 }
 
 fn human_age(created: i64) -> String {

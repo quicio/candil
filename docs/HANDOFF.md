@@ -21,15 +21,18 @@ si el rename falla, sigue usando `lector` para no arrancar con la biblioteca
 vacía.
 
 **M1 (lector), M1.1 (endurecimiento), M2 (biblioteca), M3 (lectura fina),
-M4 (extras), M5 (segunda etapa) y M6 (consultas) están cerrados.** M3 incluye
+M4 (extras), M5 (segunda etapa), M6 (consultas) y M7 (IA configurable) están
+cerrados.** M3 incluye
 anclas/saltos y progreso por fracción. M4 incluye destacados/notas y búsqueda
 interna. M5 agrega anotaciones globales, colores, export Markdown y navegación.
-M6 agrega diccionario Wiktionary, traducción MyMemory, IA con OpenCode Go,
-historial en `consultas.json` y el centro de configuración.
+M6 agrega diccionario Wiktionary, traducción MyMemory, IA multi-proveedor,
+historial en `consultas.json` y el centro de configuración. La API key se guarda
+en el llavero del sistema; `OPENCODE_API_KEY` sigue como override.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
-Consulta. La clave de IA vive solo en `OPENCODE_API_KEY`; si falta, el botón de
-IA queda deshabilitado. La prueba real con la clave del usuario queda pendiente;
+Consulta. La API key se guarda en el llavero del sistema o en
+`OPENCODE_API_KEY`; si falta y el proveedor la requiere, el botón de IA queda
+deshabilitado. La prueba real con la clave del usuario queda pendiente;
 con una clave inválida se verificó el 401 sin congelar la UI.
 
 Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
@@ -38,11 +41,12 @@ origen.
 
 ## OpenSpec
 
-`openspec/` es la fuente de verdad para cambios nuevos. Las specs de la
-consolidación (`design-system`, `library-experience`, `reading-workspace` y
-`interaction-accessibility`) viven en `openspec/specs/`; el cambio
-`consolidar-ux-ui` quedó archivado en `openspec/changes/archive/`.
-`docs/specs/` queda como archivo histórico de M1–M6.
+`openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
+(`design-system`, `library-experience`, `reading-workspace`,
+`interaction-accessibility`, `ai-providers` y `ai-credentials`) viven en
+`openspec/specs/`; los cambios `consolidar-ux-ui` y `proveedores-ia-clave`
+quedaron archivados en `openspec/changes/archive/`. `docs/specs/` queda como
+archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
 en segundo plano), 3 (lector y paneles: barra, selección, anotaciones, búsqueda,
@@ -66,9 +70,9 @@ el mismo):
 | capturas | 14 en `docs/img/` (biblioteca ×4, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 98 unit (1 live ignorado) + 9 integración | `cargo test` |
+| tests | 103 unit (1 live ignorado) + 9 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 6.763.856 B | `cargo build --profile dist` (2026-11-08) |
+| binario `dist` | 6.818.144 B | `cargo build --profile dist` (2026-11-08) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.477 B; `edge.epub` 1.854 B | `scripts/make_fixture.py` |
 
@@ -96,6 +100,8 @@ src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: offsets de texto + cita, JSON atómico
 src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
+src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
+src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
 src/consulta.rs diccionario/traducción/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
@@ -174,6 +180,7 @@ HOME=$(mktemp -d) ./target/fast/candil --shot /tmp/p.png libro.epub
 Yellow Wallpaper), arma un `HOME` falso, siembra destacados/historial de ejemplo
 y regenera `docs/img/`. Nunca lee `~/Libros` ni `~/Library/Application Support`.
 Para reutilizar un sandbox: `CANDIL_CAPTURE_SANDBOX=/ruta scripts/captures.sh`.
+El script exporta `CANDIL_NO_KEYRING=1` porque el HOME falso no tiene llavero de login.
 
 Para leer una captura: sí, hay que mirarla (herramienta de visión). No alcanza
 con que el build pase: dos bugs reales (entidades `&quot;` en el OPF, aviso
@@ -220,9 +227,9 @@ flotante tapando texto) solo aparecieron así.
     panel no cambia el archivo; solo cambia la vista y el alcance del export.
 16. **Online apagado por defecto**: `Config.consulta.online_enabled = false`.
     Ninguna consulta sale sin click explícito; apagarlo corta toda salida.
-17. **Las claves viven solo en `OPENCODE_API_KEY`**; nunca en `config.json`,
-    `consultas.json`, logs ni URLs. El estado se muestra como detectada/no
-    configurada, nunca el valor.
+17. **Las claves viven en el llavero del sistema o en `OPENCODE_API_KEY`**;
+    nunca en `config.json`, `consultas.json`, logs ni URLs. El estado se muestra
+    como llavero/entorno/no configurada, nunca el valor.
 18. **El historial es local** (`consultas.json`), con límite y borrado; no guarda
     el párrafo de contexto, claves ni se envía a proveedores. Las peticiones
     corren en un hilo y la UI no se bloquea.

@@ -7,7 +7,7 @@ updated: 2026-11-08
 
 # Roadmap
 
-Seis milestones. Cada uno tiene criterio de salida **verificable**, no una
+Siete milestones. Cada uno tiene criterio de salida **verificable**, no una
 lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
@@ -19,6 +19,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M4 | Extras | **Hecho** | [40](specs/40-busqueda.md), [45](specs/45-citas-y-marcadores.md) | Buscar una frase en el libro y saltar al resultado en < 300 ms |
 | M5 | Segunda etapa | **Hecho** | [50](specs/50-anotaciones-globales.md), [55](specs/55-navegacion.md) | Ver y saltar anotaciones de cualquier libro, elegir color, exportar Markdown y saltar por porcentaje/capítulo |
 | M6 | Consultas externas | **Hecho** | [60](specs/60-diccionario-traduccion-ia.md), [65](specs/65-centro-configuracion.md) | Seleccionar una palabra y obtener diccionario/traducción; seleccionar una frase y analizarla con IA sin bloquear la UI |
+| M7 | IA configurable | **Hecho** | [ai-providers](../openspec/specs/ai-providers/spec.md), [ai-credentials](../openspec/specs/ai-credentials/spec.md) | Elegir entre nueve proveedores y guardar la API key en el llavero sin escribirla en `config.json` |
 
 ## M1 — Lector (terminado)
 
@@ -37,7 +38,7 @@ Latin-1/griegas/matemáticas, `<pre>` con indentación, tablas/`<dl>` sin pegar
 celdas, `<svg><image>` raster y escritura atómica de `config.json`.
 
 Verificación: 43 EPUB, 0 fallos, **0 capítulos vacíos**, 2279/2279 imágenes;
-25 unit + 7 integración al cerrar M1.1 (hoy 98 + 9 (1 live ignorado) con M2–M6); clippy sin
+25 unit + 7 integración al cerrar M1.1 (hoy 103 + 9 (1 live ignorado) con M2–M7); clippy sin
 warnings. Capturas de `flores-del-mal`
 (título) y `Elantris`/`El camino de los reyes` (mapas SVG) revisadas.
 
@@ -67,7 +68,7 @@ Cierre (T11): corpus de **50 EPUB** (43 reales + 7 copias) escaneado en
 **1.65 s** la primera vez y **0.01 s** con caché; **48/50 portadas (96 %)** y
 **5,4 MB** en `covers/` (incluye 7 copias de una portada pesada; el corpus real
 dio 98 KB/libro). `--inspect` sobre los 43 reales: 0 fallos, 0 capítulos vacíos,
-2279/2279 imágenes. `cargo test`: 98 + 9 (1 live ignorado).
+2279/2279 imágenes. `cargo test`: 103 + 9 (1 live ignorado).
 
 Objetivo original: dejar de abrir un archivo por vez. Una estantería que indexa
 carpetas del disco, muestra portadas y permite abrir, ordenar, filtrar y buscar.
@@ -148,20 +149,35 @@ Cerrado el 2026-11-06 con specs 60 y 65:
 
 - **Diccionario/traducción (spec 60):** Wiktionary y MyMemory en vivo,
   normalización de idioma, panel con contexto, resultados y enlaces de fuente.
-- **IA (spec 60):** OpenCode Go (`inference/go/openai/v1`), clave
-  `OPENCODE_API_KEY`, `x-opencode-session`, prompts predefinidos, petición en
-  hilo de trabajo y errores claros. Probado con 401 real; falta la prueba de una
-  respuesta exitosa con la clave del usuario.
+- **IA (spec 60):** OpenCode Go (`inference/go/openai/v1`), prompts predefinidos,
+  petición en hilo de trabajo y errores claros. La clave se guarda en el llavero
+  del sistema; `OPENCODE_API_KEY` sigue como override. Probado con 401 real;
+  falta la prueba de una respuesta exitosa con la clave del usuario.
 - **Historial:** `consultas.json` atómico, local, con límite y borrado; guarda
   consultas y errores, no claves ni el párrafo completo.
 - **Configuración (spec 65):** centro con Lectura, Biblioteca, Anotaciones,
   Consultas, Privacidad y Avanzado; `⌘,`/Ajustes. Online apagado por defecto.
 - Medición: `dist` **6.664.160 B** (ureq+rustls sumó 1.064.832 B; < 8 MB).
-- Verificación: **98 unit (1 live ignorado) + 9 integración**, clippy limpio,
+- Verificación: **103 unit (1 live ignorado) + 9 integración**, clippy limpio,
   capturas de consulta, configuración e historial.
 
 Fuera de alcance: regex/stemming, sincronización, export a PDF/DOCX, búsqueda
 dentro de las notas y override manual del idioma de origen.
+
+## M7 — IA configurable (terminado)
+
+Cerrado el 2026-11-08:
+
+- Nueve proveedores: OpenCode Go, OpenAI, Anthropic, Google Gemini, OpenRouter,
+  Groq, Mistral, DeepSeek y Ollama local.
+- Tres protocolos: OpenAI-compatible, Anthropic y Gemini (clave en header).
+- API key en el llavero del sistema (Keychain/Secret Service/Credential Manager);
+  `OPENCODE_API_KEY` mantiene prioridad.
+- Selector, campo de clave, Guardar/Borrar con confirmación y estado en
+  Configuración; el valor nunca se muestra ni se persiste en JSON/logs/URLs.
+- ADR-0012, tests de protocolos y captura de Configuración sin llavero.
+- Verificación: **103 unit (1 live ignorado) + 9 integración**; `dist`
+  **6.818.144 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 
@@ -178,8 +194,8 @@ comportamiento funcional de M1–M6:
   destructivas.
 - Ayuda de atajos (`F1`/`?`), feedback de guardado/copiado y capturas públicas
   en Papel 19 px.
-- Verificación: **98 unit (1 live ignorado) + 9 integración**, clippy limpio,
-  `scripts/check.sh` verde y `dist` **6.763.856 B**.
+- Verificación: **103 unit (1 live ignorado) + 9 integración**, clippy limpio,
+  `scripts/check.sh` verde y `dist` **6.818.144 B**.
 
 ## Orden de ataque recomendado
 

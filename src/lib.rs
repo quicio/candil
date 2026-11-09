@@ -1,6 +1,7 @@
 //! API pública del lector. `main.rs` es solo un cascarón: toda la lógica vive
 //! acá para que los tests de integración puedan ejercitarla sin abrir ventana.
 
+pub mod ai;
 pub mod annotations;
 pub mod app;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod library;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod search;
+pub mod secrets;
 pub mod store;
 pub mod theme;
 pub mod ui;

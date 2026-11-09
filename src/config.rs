@@ -98,6 +98,7 @@ pub struct ConsultaSettings {
     pub translation_provider: String,
     /// `None` = automático (en→es, es→en, resto→es).
     pub target_lang: Option<String>,
+    pub ai_provider: String,
     pub ai_base_url: String,
     pub ai_model: String,
     pub ai_timeout_secs: u64,
@@ -113,6 +114,7 @@ impl Default for ConsultaSettings {
             dictionary_provider: "wiktionary".into(),
             translation_provider: "mymemory".into(),
             target_lang: None,
+            ai_provider: "opencode".into(),
             ai_base_url: DEFAULT_AI_BASE.into(),
             ai_model: DEFAULT_AI_MODEL.into(),
             ai_timeout_secs: AI_TIMEOUT_DEFAULT,
@@ -127,11 +129,15 @@ impl ConsultaSettings {
         self.ai_timeout_secs = self.ai_timeout_secs.clamp(5, 120);
         self.ai_max_tokens = self.ai_max_tokens.clamp(64, 4096);
         self.history_limit = self.history_limit.min(2000);
+        if !crate::ai::is_valid(&self.ai_provider) {
+            self.ai_provider = "opencode".into();
+        }
+        let provider = crate::ai::provider(&self.ai_provider);
         if self.ai_base_url.trim().is_empty() {
-            self.ai_base_url = DEFAULT_AI_BASE.into();
+            self.ai_base_url = provider.base_url.into();
         }
         if self.ai_model.trim().is_empty() {
-            self.ai_model = DEFAULT_AI_MODEL.into();
+            self.ai_model = provider.default_model.into();
         }
         if self.dictionary_provider.trim().is_empty() {
             self.dictionary_provider = "wiktionary".into();
@@ -337,6 +343,8 @@ mod tests {
         cfg.consulta.target_lang = Some("es".into());
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(!json.contains("OPENCODE_API_KEY"), "{json}");
+        assert!(!json.contains("api_key"), "{json}");
+        assert!(!json.contains("ai_key"), "{json}");
         let back: Config = serde_json::from_str(&json).unwrap();
         assert!(back.consulta.online_enabled);
         assert_eq!(back.consulta.target_lang.as_deref(), Some("es"));
@@ -352,6 +360,20 @@ mod tests {
         assert!(!cfg.consulta.online_enabled);
         assert_eq!(cfg.consulta.ai_model, DEFAULT_AI_MODEL);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn proveedor_invalido_cae_en_opencode() {
+        let mut c = ConsultaSettings {
+            ai_provider: "no-existe".into(),
+            ai_base_url: String::new(),
+            ai_model: String::new(),
+            ..ConsultaSettings::default()
+        };
+        c.clamp();
+        assert_eq!(c.ai_provider, "opencode");
+        assert_eq!(c.ai_base_url, DEFAULT_AI_BASE);
+        assert_eq!(c.ai_model, DEFAULT_AI_MODEL);
     }
 
     #[test]

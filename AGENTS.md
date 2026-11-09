@@ -8,14 +8,14 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 4. **`docs/CONVENTIONS.md`** — estilo, tests, commits.
 5. La spec del milestone activo en `docs/specs/` (archivo histórico M1–M6).
 6. Los ADR que toquen el área: `docs/adr/`.
-7. **`openspec/`** — fuente de verdad para cambios nuevos. Las specs de la
-   consolidación viven en `openspec/specs/`; el cambio histórico, en
+7. **`openspec/`** — fuente de verdad para cambios nuevos. Las specs vigentes
+   viven en `openspec/specs/`; los cambios históricos, en
    `openspec/changes/archive/`.
 
 ## Comandos
 
 ```bash
-cargo test                                  # 98 unit (1 live ignorado) + 9 integración
+cargo test                                  # 103 unit (1 live ignorado) + 9 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
@@ -53,9 +53,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Las consultas online están **apagadas por defecto** (`online_enabled=false`) y
   nunca salen sin una acción explícita. Las peticiones van en un hilo; no
   bloquees la UI.
-- La clave de IA vive solo en `OPENCODE_API_KEY`; nunca en `config.json`,
-  `consultas.json`, logs ni URLs. El historial es local y no incluye el párrafo
-  de contexto.
+- La clave de IA vive en el llavero del sistema o en `OPENCODE_API_KEY`; nunca
+  en `config.json`, `consultas.json`, logs ni URLs. El historial es local y no
+  incluye el párrafo de contexto.
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

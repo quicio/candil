@@ -55,7 +55,7 @@ posición de lectura, anotaciones y rendimiento deben preservarse; multiplatafor
 El binario `dist` debe seguir por debajo de 8 MB.
 
 **Privacidad:** sin telemetría; online apagado por defecto (`online_enabled=false`);
-la clave de IA vive solo en `OPENCODE_API_KEY`; el historial es local y no guarda
+la clave de IA vive en el llavero del sistema o en `OPENCODE_API_KEY`; el historial es local y no guarda
 el párrafo de contexto.
 
 **Fuera de alcance por ahora:** sincronización entre dispositivos, export

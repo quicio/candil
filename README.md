@@ -11,9 +11,10 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, índice global y export Markdown—, búsqueda dentro
-del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA.
+del libro, salto por porcentaje/capítulo, diccionario/traducción y análisis con IA
+multi-proveedor.
 
-Binario final (`dist`): **6.4 MiB** (6.763.856 B), arranque instantáneo, sin
+Binario final (`dist`): **6.4 MiB** (6.818.144 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -129,6 +130,8 @@ src/
   library.rs índice de carpetas, escaneo incremental y BookEntry
   annotations.rs destacados/notas por libro (offsets de texto + cita)
   search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
+  ai.rs      catálogo de proveedores y protocolos de IA
+  secrets.rs API key en el llavero; OPENCODE_API_KEY como override
   consulta.rs diccionario/traducción/IA (HTTP ureq) e historial local
   covers.rs  miniaturas de portada, hash FNV y caché
   store.rs   JSON atómico y backup de archivos corruptos
@@ -152,7 +155,7 @@ mapeo de `<svg><image>` a `Kind::Image`.
 Probado contra 43 EPUB reales de distintas procedencias (Calibre, Sigil, OCR;
 2026-11-06):
 todos abren, **0 capítulos vacíos** y **2279/2279 imágenes resueltas**, incluidas
-las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 98
+las portadas/mapas que vienen envueltos en `<svg><image>`. `cargo test` corre 103
 tests unitarios (1 live ignorado) y 9 de integración sobre fixtures propios versionados
 (`mini.epub` y `edge.epub`, regenerables con `python3 scripts/make_fixture.py`),
 sin depender de libros externos.
@@ -184,10 +187,15 @@ una anotación de otro libro, y la exportación a Markdown desde el mismo panel.
 También suma `G` / click en el porcentaje para abrir “Ir a…”, con salto por
 porcentaje del libro o número de capítulo.
 
+M7 (IA configurable) está cerrado: elegí entre nueve proveedores y guardá la API
+key en el llavero del sistema desde Configuración; `OPENCODE_API_KEY` sigue como
+override.
+
 M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar**
-(o `K`) para Wiktionary, MyMemory o **OpenCode Go**. El panel tiene
+(o `K`) para Wiktionary, MyMemory o un proveedor de IA. El panel tiene
 Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
-defecto y la clave de IA vive solo en `OPENCODE_API_KEY`. El historial se guarda
+defecto. La API key se guarda en el **llavero del sistema** (Keychain/Secret
+Service/Credential Manager) y `OPENCODE_API_KEY` sigue como override. El historial se guarda
 en `consultas.json` (local, con límite y borrado); desde el detalle del historial
 podés **Ir al texto** y volver a la frase. El centro **Configuración**
 (`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
@@ -234,8 +242,10 @@ avanzado.
   anotaciones global es una lista plana (sin búsqueda dentro de las notas).
 - Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
   dispositivos.
-- Diccionario y traducción usan Wiktionary/MyMemory (online); la IA usa
-  **OpenCode Go** y requiere `OPENCODE_API_KEY`. Online está apagado por defecto.
+- Diccionario y traducción usan Wiktionary/MyMemory (online); la IA admite
+  OpenCode Go, OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek y
+  Ollama. Requiere API key salvo Ollama; la clave se guarda en el llavero del
+  sistema o se define en `OPENCODE_API_KEY`. Online está apagado por defecto.
   El uso de la suscripción Go para lectura depende de sus términos y límites.
 - La traducción se muestra solo en el panel; no reemplaza el texto del libro.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
@@ -253,9 +263,12 @@ avanzado.
 - **M5 — Segunda etapa (cerrada):** anotaciones globales, tres colores, export
   Markdown (spec 50) y navegación por porcentaje/capítulo (spec 55).
 - **M6 — Consultas y configuración (cerrado):** diccionario Wiktionary,
-  traducción MyMemory, análisis con **OpenCode Go**, historial local (spec 60) y
-  centro de configuración (spec 65). Online apagado por defecto; clave en
-  `OPENCODE_API_KEY`.
+  traducción MyMemory, análisis con IA multi-proveedor, llavero del sistema,
+  historial local (spec 60) y centro de configuración (spec 65). Online apagado
+  por defecto; la clave vive en el llavero o en `OPENCODE_API_KEY`.
+- **M7 — IA configurable (cerrada):** OpenCode Go, OpenAI, Anthropic, Gemini,
+  OpenRouter, Groq, Mistral, DeepSeek y Ollama; clave en el llavero y selector
+  de proveedor en Configuración.
 
 ## Modo diagnóstico
 
@@ -277,8 +290,9 @@ cargo run --release -- --shot out.png --panel settings libro.epub
   historial de consultas viven en tu disco.
 - Las consultas online están **apagadas por defecto** y solo salen con una acción
   explícita.
-- La clave de IA se lee de `OPENCODE_API_KEY`; nunca se escribe en
-  `config.json`, `consultas.json`, logs ni URLs.
+- La clave de IA se guarda en el llavero del sistema; `OPENCODE_API_KEY` sigue
+  como override. Nunca se escribe en `config.json`, `consultas.json`, logs ni
+  URLs.
 - El historial guarda la consulta y la respuesta, no el párrafo de contexto.
 
 ## Licencia

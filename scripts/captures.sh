@@ -6,6 +6,9 @@
 # Uso: scripts/captures.sh
 set -euo pipefail
 
+# Las capturas usan un HOME falso sin llavero de login.
+export CANDIL_NO_KEYRING=1
+
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 SANDBOX="${CANDIL_CAPTURE_SANDBOX:-$ROOT/target/captures-sandbox}"

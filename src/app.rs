@@ -134,6 +134,74 @@ fn matches_filter(
     }
 }
 
+const GRID_VIRTUALIZE_AFTER: usize = 240;
+const GRID_TOP_PAD: f32 = 18.0;
+const GRID_BOTTOM_PAD: f32 = 28.0;
+const GRID_ROW_GAP: f32 = 22.0;
+const GRID_HEADER_H: f32 = 34.0;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GridItem {
+    Header { label: String, count: usize },
+    Row { start: usize, end: usize },
+}
+
+impl GridItem {
+    fn height(&self) -> f32 {
+        match self {
+            Self::Header { .. } => GRID_HEADER_H,
+            Self::Row { .. } => CARD_H + GRID_ROW_GAP,
+        }
+    }
+}
+
+fn build_grid_items(
+    series: &[Option<String>],
+    cols: usize,
+    group_by_series: bool,
+) -> Vec<GridItem> {
+    let cols = cols.max(1);
+    let mut items = Vec::new();
+    if !group_by_series {
+        for start in (0..series.len()).step_by(cols) {
+            items.push(GridItem::Row {
+                start,
+                end: (start + cols).min(series.len()),
+            });
+        }
+        return items;
+    }
+
+    let mut position = 0;
+    while position < series.len() {
+        let name = series[position].clone();
+        let mut end = position + 1;
+        while end < series.len() {
+            let same = match (name.as_deref(), series[end].as_deref()) {
+                (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+                (None, None) => true,
+                _ => false,
+            };
+            if !same {
+                break;
+            }
+            end += 1;
+        }
+        items.push(GridItem::Header {
+            label: name.unwrap_or_else(|| "Sin serie".into()),
+            count: end - position,
+        });
+        for start in (position..end).step_by(cols) {
+            items.push(GridItem::Row {
+                start,
+                end: (start + cols).min(end),
+            });
+        }
+        position = end;
+    }
+    items
+}
+
 struct CardData {
     index: usize,
     path: String,
@@ -686,6 +754,8 @@ pub struct DevOpts {
     pub library_series: Option<String>,
     /// Abre el panel de marcadores al iniciar el lector (capturas).
     pub bookmarks: bool,
+    /// Desplaza la grilla de biblioteca a este offset (capturas de virtualización).
+    pub library_scroll: Option<f32>,
 }
 
 impl Lector {
@@ -5178,7 +5248,6 @@ impl Lector {
         }
 
         let indices = self.visible_books();
-        let cards = self.cards(&indices, ctx);
         let empty = self.library.books.is_empty();
         let has_folders = !folders.is_empty();
         let (empty_title, empty_subtitle) = if has_folders {
@@ -5285,11 +5354,130 @@ impl Lector {
                     return;
                 }
 
-                egui::ScrollArea::vertical()
+                let virtualize = indices.len() >= GRID_VIRTUALIZE_AFTER;
+                let series_by_pos: Vec<Option<String>> = if virtualize {
+                    indices
+                        .iter()
+                        .map(|&index| {
+                            self.library
+                                .books
+                                .get(index)
+                                .and_then(|book| book.series.as_deref())
+                                .map(str::trim)
+                                .filter(|name| !name.is_empty())
+                                .map(str::to_string)
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let grouped = virtualize
+                    && self.library_order == LibraryOrder::Series
+                    && series_by_pos.iter().any(Option::is_some);
+                let scroll = egui::ScrollArea::vertical()
                     .id_salt("library-grid")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.add_space(18.0);
+                    .auto_shrink([false, false]);
+                let scroll = if let Some(offset) = self.dev.library_scroll {
+                    scroll.vertical_scroll_offset(offset)
+                } else {
+                    scroll
+                };
+
+                if virtualize {
+                    scroll.show_viewport(ui, |ui, viewport| {
+                        let avail = ui.available_width();
+                        let cols = ((avail - PAGE_PAD * 2.0 + CARD_GAP) / (CARD_W + CARD_GAP))
+                            .floor()
+                            .max(1.0) as usize;
+                        let row_w = cols as f32 * CARD_W + cols.saturating_sub(1) as f32 * CARD_GAP;
+                        let left = ((avail - row_w) * 0.5).max(PAGE_PAD);
+                        let items = build_grid_items(&series_by_pos, cols, grouped);
+                        let total_h = GRID_TOP_PAD
+                            + items.iter().map(GridItem::height).sum::<f32>()
+                            + GRID_BOTTOM_PAD;
+                        ui.set_height(total_h);
+                        let top = ui.max_rect().top();
+                        let mut y = GRID_TOP_PAD;
+
+                        for item in &items {
+                            let height = item.height();
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(ui.max_rect().left(), top + y),
+                                Vec2::new(ui.max_rect().width(), height),
+                            );
+                            let visible = y + height >= viewport.min.y - GRID_ROW_GAP
+                                && y <= viewport.max.y + GRID_ROW_GAP;
+                            if visible {
+                                match item {
+                                    GridItem::Header { label, count } => {
+                                        ui.scope_builder(
+                                            egui::UiBuilder::new().max_rect(rect),
+                                            |ui| {
+                                                ui.add_space(6.0);
+                                                ui.horizontal(|ui| {
+                                                    ui.add_space(left);
+                                                    ui.label(
+                                                        RichText::new(truncate(label, 60))
+                                                            .size(theme::text::LABEL)
+                                                            .strong()
+                                                            .color(th.fg),
+                                                    );
+                                                    ui.label(
+                                                        RichText::new(format!(
+                                                            "· {} libro{}",
+                                                            count,
+                                                            if *count == 1 { "" } else { "s" }
+                                                        ))
+                                                        .size(theme::text::META)
+                                                        .color(th.dim),
+                                                    );
+                                                });
+                                            },
+                                        );
+                                    }
+                                    GridItem::Row { start, end } => {
+                                        let cards = self.cards(&indices[*start..*end], ctx);
+                                        ui.scope_builder(
+                                            egui::UiBuilder::new().max_rect(rect),
+                                            |ui| {
+                                                ui.horizontal_top(|ui| {
+                                                    ui.add_space(left);
+                                                    for card in &cards {
+                                                        let focus =
+                                                            self.dev.focus_card && *start == 0;
+                                                        match library_card(ui, card, th, focus) {
+                                                            Some(CardAction::Open) => {
+                                                                open_path =
+                                                                    Some(PathBuf::from(&card.path));
+                                                            }
+                                                            Some(CardAction::Remove) => {
+                                                                remove = Some(card.index)
+                                                            }
+                                                            Some(CardAction::Locate) => {
+                                                                locate = Some(card.index)
+                                                            }
+                                                            Some(CardAction::Recover) => {
+                                                                recover = Some(card.index)
+                                                            }
+                                                            Some(CardAction::Edit) => {
+                                                                edit = Some(card.index)
+                                                            }
+                                                            None => {}
+                                                        }
+                                                    }
+                                                });
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                            y += height;
+                        }
+                    });
+                } else {
+                    let cards = self.cards(&indices, ctx);
+                    scroll.show(ui, |ui| {
+                        ui.add_space(GRID_TOP_PAD);
                         let avail = ui.available_width();
                         let cols = ((avail - PAGE_PAD * 2.0 + CARD_GAP) / (CARD_W + CARD_GAP))
                             .floor()
@@ -5361,11 +5549,12 @@ impl Lector {
                                         }
                                     }
                                 });
-                                ui.add_space(22.0);
+                                ui.add_space(GRID_ROW_GAP);
                             }
                         }
-                        ui.add_space(28.0);
+                        ui.add_space(GRID_BOTTOM_PAD);
                     });
+                }
             });
 
         if add_folder {
@@ -9656,6 +9845,46 @@ mod tests {
             &book,
             &duplicates
         ));
+    }
+
+    #[test]
+    fn grilla_arma_filas_y_grupos_por_serie() {
+        let no_series = vec![None, None, None];
+        assert_eq!(
+            build_grid_items(&no_series, 2, false),
+            vec![
+                GridItem::Row { start: 0, end: 2 },
+                GridItem::Row { start: 2, end: 3 },
+            ]
+        );
+
+        let series = vec![
+            Some("Saga".into()),
+            Some("saga".into()),
+            Some("Otra".into()),
+            None,
+            None,
+        ];
+        assert_eq!(
+            build_grid_items(&series, 2, true),
+            vec![
+                GridItem::Header {
+                    label: "Saga".into(),
+                    count: 2
+                },
+                GridItem::Row { start: 0, end: 2 },
+                GridItem::Header {
+                    label: "Otra".into(),
+                    count: 1
+                },
+                GridItem::Row { start: 2, end: 3 },
+                GridItem::Header {
+                    label: "Sin serie".into(),
+                    count: 2
+                },
+                GridItem::Row { start: 3, end: 5 },
+            ]
+        );
     }
 
     #[test]

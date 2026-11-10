@@ -36,6 +36,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M21 | Respuestas completas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Default de 1536 tokens, migración del 512 viejo y aviso cuando el proveedor corta la respuesta |
 | M22 | Contenido de IA variable | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Aceptar `content` string/array/objeto y explicar límite de tokens, razonamiento o `finish_reason` |
 | M23 | Marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Guardar posiciones con B, listarlas con Mayús+B, saltar y borrar desde el panel |
+| M24 | Grilla virtualizada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Desde 240 libros visibles, construir y dibujar solo las filas cercanas al viewport, conservando series |
 
 ## M1 — Lector (terminado)
 
@@ -284,8 +285,7 @@ Cerrado el 2026-11-09:
 - Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.320 B**.
 
-Queda para la siguiente fase de biblioteca: virtualización de la grilla y
-búsqueda full-text de la biblioteca.
+Queda para la siguiente fase de biblioteca: búsqueda full-text de la biblioteca.
 
 ## M14 — Respaldo y notas (terminado)
 
@@ -443,6 +443,21 @@ Cerrado el 2026-11-10:
 - Tests de alta, orden, borrado y comparación de posiciones.
 - Verificación: **151 unit (150 + 1 live ignorado) + 10 integración**; `dist`
   **7.417.504 B**.
+
+## M24 — Grilla virtualizada (terminado)
+
+Cerrado el 2026-11-10:
+
+- A partir de **240 libros visibles**, la grilla usa `ScrollArea::show_viewport` y
+  solo llama a `cards()` para las filas que intersectan el viewport (más margen).
+- El layout se arma como encabezados y filas; el orden **Serie** conserva sus
+  encabezados y la cantidad de libros.
+- Por debajo del umbral se mantiene el render completo, con todas las tarjetas
+  focusables.
+- Verificado con una biblioteca sintética de 300 libros en orden normal y Serie.
+- Tests de filas, agrupación y alturas.
+- Verificación: **152 unit (151 + 1 live ignorado) + 10 integración**; `dist`
+  **7.417.536 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

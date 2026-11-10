@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.417.504 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.417.536 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -343,6 +343,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   muestra un error accionable en vez de inventar una respuesta.
 - Los marcadores guardan una posición, no una cita, y todavía no tienen etiqueta
   editable; se muestran con el título del capítulo y el porcentaje.
+- En bibliotecas de más de 240 libros la grilla virtualiza filas: el foco de
+  teclado recorre las tarjetas renderizadas y las demás se crean al scrollear.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -382,6 +384,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   `finish_reason`.
 - **M23 — Marcadores (cerrada):** `B` guarda la posición actual, `Mayús+B` abre la
   lista y el panel permite saltar o eliminar; se guardan en `library.json`.
+- **M24 — Grilla virtualizada (cerrada):** desde 240 libros visibles solo se
+  construyen las filas cercanas al viewport; los encabezados de serie se
+  conservan.
 
 ## Modo diagnóstico
 

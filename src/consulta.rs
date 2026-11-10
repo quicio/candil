@@ -668,19 +668,84 @@ pub fn parse_mymemory(
     })
 }
 
+/// Texto de un `content` OpenAI-compatible: string, array de partes u objeto
+/// con `text`. Algunos modelos devuelven partes aunque el resto del protocolo
+/// sea idéntico.
+fn openai_content_text(content: &Value) -> Option<String> {
+    let text = match content {
+        Value::String(text) => text.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|part| match part {
+                Value::String(text) => Some(text.as_str()),
+                Value::Object(_) => part.get("text").and_then(Value::as_str),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Value::Object(_) => content.get("text").and_then(Value::as_str)?.to_string(),
+        _ => return None,
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_string())
+    }
+}
+
 pub fn parse_openai(body: &str, label: &str) -> Result<String, String> {
     let value: Value = serde_json::from_str(body)
         .map_err(|e| format!("{label} devolvió un JSON inválido: {e}"))?;
     if let Some(error) = json_error(body) {
         return Err(format!("{label}: {error}"));
     }
-    value
-        .pointer("/choices/0/message/content")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| format!("{label} no devolvió texto."))
+
+    let message = value.pointer("/choices/0/message");
+    let content = message
+        .and_then(|message| message.get("content"))
+        .and_then(openai_content_text)
+        .or_else(|| {
+            value
+                .pointer("/choices/0/text")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string)
+        });
+    if let Some(content) = content {
+        return Ok(content);
+    }
+
+    let finish = value
+        .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str);
+    if finish == Some("length") {
+        return Err(format!(
+            "{label} alcanzó el límite de tokens antes de devolver texto. Subí «máx. tokens» en Configuración y volvé a consultar."
+        ));
+    }
+    let has_reasoning = message.is_some_and(|message| {
+        ["reasoning_content", "reasoning", "thinking"]
+            .iter()
+            .any(|field| {
+                message
+                    .get(*field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| !text.trim().is_empty())
+            })
+    });
+    if has_reasoning {
+        return Err(format!(
+            "{label} devolvió solo razonamiento interno, sin respuesta final. Probá de nuevo o subí «máx. tokens»."
+        ));
+    }
+    match finish {
+        Some(reason) => Err(format!(
+            "{label} no devolvió texto (finish_reason: {reason})."
+        )),
+        None => Err(format!("{label} no devolvió texto.")),
+    }
 }
 
 pub fn parse_anthropic(body: &str, label: &str) -> Result<String, String> {
@@ -1258,10 +1323,32 @@ mod tests {
             parse_openai(body, "OpenCode Go").unwrap(),
             "Una explicación."
         );
+        let parts = r#"{"choices":[{"message":{"content":[{"type":"text","text":"Parte uno."},{"type":"text","text":"Parte dos."}]},"finish_reason":"stop"}]}"#;
+        assert_eq!(
+            parse_openai(parts, "OpenCode Go").unwrap(),
+            "Parte uno.\nParte dos."
+        );
+        let legacy = r#"{"choices":[{"text":"  Texto legado.  "}]}"#;
+        assert_eq!(
+            parse_openai(legacy, "OpenCode Go").unwrap(),
+            "Texto legado."
+        );
         let error = r#"{"error":{"message":"invalid key"}}"#;
         assert!(parse_openai(error, "OpenCode Go")
             .unwrap_err()
             .contains("invalid key"));
+    }
+
+    #[test]
+    fn openai_explica_por_que_no_hay_texto() {
+        let cut = r#"{"choices":[{"message":{"content":null},"finish_reason":"length"}]}"#;
+        let error = parse_openai(cut, "OpenCode Go").unwrap_err();
+        assert!(error.contains("límite de tokens"), "{error}");
+        assert!(error.contains("máx. tokens"), "{error}");
+
+        let reasoning = r#"{"choices":[{"message":{"content":"","reasoning_content":"pienso..."},"finish_reason":"stop"}]}"#;
+        let error = parse_openai(reasoning, "OpenCode Go").unwrap_err();
+        assert!(error.contains("razonamiento"), "{error}");
     }
 
     #[test]

@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.400.832 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.400.848 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -329,6 +329,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - Las respuestas de IA usan **1536 tokens** por defecto. Si igual llegan al
   límite, Candil muestra un aviso y sugiere subir **máx. tokens**; no corta la
   respuesta en silencio.
+- Si el proveedor devuelve solo razonamiento interno o un `content` vacío, Candil
+  muestra un error accionable en vez de inventar una respuesta.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -363,6 +365,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   se migra sin duplicarse.
 - **M21 — Respuestas completas de IA (cerrada):** default de 1536 tokens, aviso
   cuando el proveedor corta por límite y migración del default viejo de 512.
+- **M22 — Contenido de IA variable (cerrada):** parser tolerante a `content`
+  string/array/objeto y errores que explican límite, razonamiento o
+  `finish_reason`.
 
 ## Modo diagnóstico
 

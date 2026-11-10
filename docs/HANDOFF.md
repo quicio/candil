@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.20.0
+version: 1.21.0
 updated: 2026-11-09
 ---
 
@@ -52,6 +52,8 @@ las variantes de `content` y explica por qué una respuesta llegó sin texto. M2
 agrega marcadores de posición guardados en `library.json`, con atajo `B`,
 panel `Mayús+B`, salto y borrado. M24 virtualiza la grilla de biblioteca a partir
 de 240 libros visibles: solo construye y dibuja las filas cercanas al viewport.
+M25 agrega búsqueda full-text bajo demanda en la biblioteca, en un hilo, con
+progreso, cancelación y salto al pasaje, sin persistir índices.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -76,8 +78,8 @@ origen.
 `respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion`,
 `inicio-regreso-enlaces`, `motor-traduccion-local`, `filtrar-y-agrupar-series`,
 `detectar-duplicados`, `claves-ia-por-proveedor`, `respuestas-ia-completas` y
-`contenido-ia-variantes`, `marcadores-lector` y `virtualizar-grilla` quedaron
-archivados en
+`contenido-ia-variantes`, `marcadores-lector`, `virtualizar-grilla` y
+`busqueda-full-text-biblioteca` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -104,7 +106,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 152 unit (151 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.417.536 B arm64; 8.408.568 B Intel | `cargo build --profile dist` (2026-11-10) |
+| binario `dist` | 7.434.160 B arm64; 8.433.248 B Intel | `cargo build --profile dist` (2026-11-10) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
@@ -134,7 +136,7 @@ src/epub.rs    zip → container.xml → OPF → spine + índice + portada decla
 src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes, JSON atómico v2
-src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
+src/search.rs  índice efímero por libro; búsqueda interna y full-text de biblioteca
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key por proveedor en el llavero; `OPENCODE_API_KEY` solo para OpenCode Go
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
@@ -355,6 +357,10 @@ flotante tapando texto) solo aparecieron así.
     serie. Por debajo del umbral se renderiza todo y el foco de teclado sigue
     siendo completo; en bibliotecas grandes, el foco llega a las filas
     renderizadas.
+39. **La búsqueda full-text es bajo demanda y efímera**: recorre los EPUB en un
+    hilo, un índice por libro, con topes de 100 resultados, 20 por libro y 120
+    libros. No se persiste texto ni índice; el resultado salta al pasaje con el
+    mismo resaltado de la búsqueda interna.
 
 ## Definición de terminado (por tarea)
 

@@ -172,6 +172,10 @@ fn main() -> eframe::Result<()> {
                 dev.library_scroll = args.get(i + 1).and_then(|s| s.parse().ok());
                 i += 2;
             }
+            "--library-content-query" => {
+                dev.library_content_query = args.get(i + 1).cloned();
+                i += 2;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

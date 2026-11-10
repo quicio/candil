@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use eframe::egui::text::{LayoutJob, TextFormat};
@@ -200,6 +202,52 @@ fn build_grid_items(
         position = end;
     }
     items
+}
+
+const CONTENT_SEARCH_MIN: usize = 3;
+const CONTENT_SEARCH_MAX_HITS: usize = 100;
+const CONTENT_SEARCH_PER_BOOK: usize = 20;
+const CONTENT_SEARCH_MAX_BOOKS: usize = 120;
+
+#[derive(Debug, Clone)]
+struct LibraryContentHit {
+    path: PathBuf,
+    book_title: String,
+    chapter: usize,
+    chapter_title: String,
+    block: usize,
+    start: usize,
+    end: usize,
+    before: String,
+    matched: String,
+    after: String,
+}
+
+enum LibraryContentMsg {
+    Progress {
+        scanned: usize,
+        total: usize,
+        failed: usize,
+    },
+    Hits(Vec<LibraryContentHit>),
+    Done {
+        scanned: usize,
+        total: usize,
+        failed: usize,
+        truncated: bool,
+    },
+}
+
+struct LibraryContentSearch {
+    query: String,
+    rx: Receiver<LibraryContentMsg>,
+    cancel: Arc<AtomicBool>,
+    hits: Vec<LibraryContentHit>,
+    scanned: usize,
+    total: usize,
+    failed: usize,
+    busy: bool,
+    truncated: bool,
 }
 
 struct CardData {
@@ -607,6 +655,7 @@ pub struct Lector {
     library_search: String,
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
+    library_content: Option<LibraryContentSearch>,
     cfg: Config,
     ai_key: secrets::KeyState,
     ai_key_input: String,
@@ -756,6 +805,8 @@ pub struct DevOpts {
     pub bookmarks: bool,
     /// Desplaza la grilla de biblioteca a este offset (capturas de virtualización).
     pub library_scroll: Option<f32>,
+    /// Ejecuta una búsqueda full-text en la biblioteca al iniciar (capturas).
+    pub library_content_query: Option<String>,
 }
 
 impl Lector {
@@ -858,6 +909,7 @@ impl Lector {
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
+            library_content: None,
             cfg,
             ai_key,
             ai_key_input: String::new(),
@@ -1022,6 +1074,12 @@ impl Lector {
             app.show_annotations = false;
             app.show_search = false;
             app.show_goto = false;
+        }
+        if let Some(query) = app.dev.library_content_query.clone() {
+            if app.screen == Screen::Library {
+                app.library_search = query;
+                app.start_library_content_search(&cc.egui_ctx);
+            }
         }
         app
     }
@@ -4857,6 +4915,331 @@ impl Lector {
         }
     }
 
+    fn start_library_content_search(&mut self, ctx: &egui::Context) {
+        if let Some(previous) = self.library_content.take() {
+            previous.cancel.store(true, Ordering::Relaxed);
+        }
+        let query = self.library_search.trim().to_string();
+        if query.chars().count() < CONTENT_SEARCH_MIN {
+            self.say(format!(
+                "Escribí al menos {CONTENT_SEARCH_MIN} caracteres para buscar en el contenido."
+            ));
+            return;
+        }
+        let available = self
+            .library
+            .books
+            .iter()
+            .filter(|book| !book.missing && book.error.is_none())
+            .count();
+        let books: Vec<(PathBuf, String)> = self
+            .library
+            .books
+            .iter()
+            .filter(|book| !book.missing && book.error.is_none())
+            .take(CONTENT_SEARCH_MAX_BOOKS)
+            .map(|book| (PathBuf::from(&book.path), book.title.clone()))
+            .collect();
+        if books.is_empty() {
+            self.say("No hay libros disponibles para buscar en el contenido.");
+            return;
+        }
+
+        let total = books.len();
+        let truncated_books = available > CONTENT_SEARCH_MAX_BOOKS;
+        let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_thread = cancel.clone();
+        let repaint = ctx.clone();
+        let query_thread = query.clone();
+        std::thread::spawn(move || {
+            let mut scanned = 0usize;
+            let mut failed = 0usize;
+            let mut hits = 0usize;
+            let mut truncated = truncated_books;
+            for (path, title) in books {
+                if cancel_thread.load(Ordering::Relaxed) {
+                    break;
+                }
+                scanned += 1;
+                match Book::open(&path) {
+                    Ok(mut book) => {
+                        let index = search::build(&mut book);
+                        let remaining = CONTENT_SEARCH_MAX_HITS.saturating_sub(hits);
+                        if remaining == 0 {
+                            truncated = true;
+                            break;
+                        }
+                        let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
+                        let (found, more) = search::search(&index, &query_thread, per_book);
+                        if more {
+                            truncated = true;
+                        }
+                        if !found.is_empty() {
+                            let batch: Vec<LibraryContentHit> = found
+                                .into_iter()
+                                .map(|hit| {
+                                    let chapter_title = index
+                                        .chapters
+                                        .get(hit.chapter)
+                                        .map(|chapter| chapter.title.clone())
+                                        .unwrap_or_default();
+                                    LibraryContentHit {
+                                        path: path.clone(),
+                                        book_title: title.clone(),
+                                        chapter: hit.chapter,
+                                        chapter_title,
+                                        block: hit.block,
+                                        start: hit.start,
+                                        end: hit.end,
+                                        before: hit.before,
+                                        matched: hit.matched,
+                                        after: hit.after,
+                                    }
+                                })
+                                .collect();
+                            hits += batch.len();
+                            let _ = tx.send(LibraryContentMsg::Hits(batch));
+                        }
+                        if hits >= CONTENT_SEARCH_MAX_HITS {
+                            truncated = true;
+                            let _ = tx.send(LibraryContentMsg::Progress {
+                                scanned,
+                                total,
+                                failed,
+                            });
+                            break;
+                        }
+                    }
+                    Err(_) => failed += 1,
+                }
+                let _ = tx.send(LibraryContentMsg::Progress {
+                    scanned,
+                    total,
+                    failed,
+                });
+                repaint.request_repaint();
+            }
+            let _ = tx.send(LibraryContentMsg::Done {
+                scanned,
+                total,
+                failed,
+                truncated,
+            });
+            repaint.request_repaint();
+        });
+
+        self.library_content = Some(LibraryContentSearch {
+            query,
+            rx,
+            cancel,
+            hits: Vec::new(),
+            scanned: 0,
+            total,
+            failed: 0,
+            busy: true,
+            truncated: truncated_books,
+        });
+        self.say(format!("Buscando en el contenido de {total} libros…"));
+    }
+
+    fn poll_library_content(&mut self, ctx: &egui::Context) {
+        let Some(state) = &mut self.library_content else {
+            return;
+        };
+        let mut done = false;
+        loop {
+            match state.rx.try_recv() {
+                Ok(LibraryContentMsg::Progress {
+                    scanned,
+                    total,
+                    failed,
+                }) => {
+                    state.scanned = scanned;
+                    state.total = total;
+                    state.failed = failed;
+                }
+                Ok(LibraryContentMsg::Hits(batch)) => state.hits.extend(batch),
+                Ok(LibraryContentMsg::Done {
+                    scanned,
+                    total,
+                    failed,
+                    truncated,
+                }) => {
+                    state.scanned = scanned;
+                    state.total = total;
+                    state.failed = failed;
+                    state.truncated = truncated;
+                    state.busy = false;
+                    done = true;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.busy = false;
+                    break;
+                }
+            }
+        }
+        if state.busy {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        } else if done {
+            ctx.request_repaint();
+        }
+    }
+
+    fn open_library_content_hit(&mut self, hit: LibraryContentHit, ctx: &egui::Context) {
+        self.library_content = None;
+        self.open(hit.path);
+        if self.screen != Screen::Reader {
+            return;
+        }
+        if hit.chapter != self.chapter {
+            self.load_chapter(hit.chapter, None);
+        }
+        self.pending_restore = None;
+        self.pending_anchor = None;
+        self.pending_block_jump = Some((hit.block, hit.matched.clone()));
+        self.pending_search_jump = Some((hit.block, hit.start));
+        self.search_highlight = Some((hit.chapter, hit.block, hit.start, hit.end));
+        self.selection = None;
+        self.note = None;
+        self.reader_focus = None;
+        self.back_spot = None;
+        self.say("Resultado de la búsqueda en el contenido.");
+        ctx.request_repaint();
+    }
+
+    fn library_content_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(state) = &self.library_content else {
+            return;
+        };
+        let query = state.query.clone();
+        let hits = state.hits.clone();
+        let scanned = state.scanned;
+        let total = state.total;
+        let failed = state.failed;
+        let busy = state.busy;
+        let truncated = state.truncated;
+        let progress = if busy {
+            Some(state.cancel.clone())
+        } else {
+            None
+        };
+
+        let mut open = true;
+        let mut cancel = false;
+        let mut jump: Option<LibraryContentHit> = None;
+        egui::Window::new(
+            RichText::new("Resultados en el contenido")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .max_width(widgets::PANEL_LG)
+        .max_height(560.0)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.label(
+                RichText::new(format!("«{query}» · {} resultados", hits.len()))
+                    .size(theme::text::BODY_SMALL)
+                    .color(th.fg),
+            );
+            if busy {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(
+                        RichText::new(format!("Buscando en {scanned} de {total} libros…"))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    );
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked() {
+                        cancel = true;
+                    }
+                });
+            } else if hits.is_empty() {
+                ui.label(
+                    RichText::new("No se encontró el texto en los libros disponibles.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+            }
+            if failed > 0 {
+                ui.label(
+                    RichText::new(format!("{failed} libros no se pudieron abrir."))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+            }
+            if truncated {
+                ui.label(
+                    RichText::new(format!(
+                        "Se muestran hasta {CONTENT_SEARCH_MAX_HITS} resultados (máx. {CONTENT_SEARCH_PER_BOOK} por libro) de los primeros {CONTENT_SEARCH_MAX_BOOKS} libros."
+                    ))
+                    .size(theme::text::META)
+                    .color(th.dim),
+                );
+            }
+            ui.separator();
+            ScrollArea::vertical().max_height(440.0).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                for (index, hit) in hits.iter().enumerate() {
+                    ui.push_id(("content-hit", index), |ui| {
+                        let title = format!(
+                            "{} · Cap. {} · {}",
+                            truncate(&hit.book_title, 40),
+                            hit.chapter + 1,
+                            truncate(&hit.chapter_title, 40)
+                        );
+                        let snippet = format!(
+                            "{} {} {}",
+                            hit.before.trim_end(),
+                            hit.matched,
+                            hit.after.trim_start()
+                        );
+                        let response = ui.add(
+                            egui::Button::new(
+                                RichText::new(format!("{title}\n{}", truncate(&snippet, 180)))
+                                    .size(theme::text::BODY_SMALL)
+                                    .color(th.fg),
+                            )
+                            .frame(false)
+                            .wrap()
+                            .min_size(Vec2::new(ui.available_width(), 0.0)),
+                        );
+                        if response.clicked() {
+                            jump = Some(hit.clone());
+                        }
+                    });
+                    ui.add_space(theme::space::XS);
+                }
+            });
+        });
+
+        if cancel {
+            if let Some(cancel) = progress {
+                cancel.store(true, Ordering::Relaxed);
+            }
+            if let Some(state) = &mut self.library_content {
+                state.busy = false;
+            }
+        }
+        if !open {
+            if let Some(state) = &self.library_content {
+                if state.busy {
+                    state.cancel.store(true, Ordering::Relaxed);
+                }
+            }
+            self.library_content = None;
+        }
+        if let Some(hit) = jump {
+            self.open_library_content_hit(hit, ctx);
+        }
+    }
+
     fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
         let mut add_folder = false;
         let mut rescan = false;
@@ -4867,6 +5250,7 @@ impl Lector {
         let mut recover: Option<usize> = None;
         let mut edit: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
+        let mut content_search = false;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
         let book_count = self.library.books.len() - missing_count;
@@ -4981,7 +5365,7 @@ impl Lector {
                             ui.set_min_height(32.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.library_search)
-                                    .hint_text("Buscar título, autor…")
+                                    .hint_text("Buscar título o autor… · Enter: texto")
                                     .desired_width((search_w - 20.0).max(120.0))
                                     .frame(false),
                             )
@@ -4993,12 +5377,23 @@ impl Lector {
                             Stroke::new(2.0, th.accent),
                             egui::StrokeKind::Inside,
                         );
+                        if ctx.input(|i| i.key_pressed(Key::Enter)) {
+                            content_search = true;
+                        }
+                    }
+                    if search.inner.changed() {
+                        if let Some(previous) = self.library_content.take() {
+                            previous.cancel.store(true, Ordering::Relaxed);
+                        }
                     }
                     if ctx.input(|i| {
                         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
                     }) {
                         search.inner.request_focus();
                     }
+                    let _ = search
+                        .response
+                        .on_hover_text("Enter: buscar también dentro del contenido de los libros.");
 
                     if let Some((path, title, author)) = &recent {
                         if show_continue {
@@ -5117,6 +5512,10 @@ impl Lector {
                     });
                 });
             });
+
+        if content_search {
+            self.start_library_content_search(ctx);
+        }
 
         if show_second_row {
             egui::TopBottomPanel::top("library-filters")
@@ -5348,6 +5747,26 @@ impl Lector {
                                 self.library_filter = LibraryFilter::All;
                             } else {
                                 self.library_search.clear();
+                            }
+                        }
+                        if self.library_search.trim().chars().count() >= CONTENT_SEARCH_MIN {
+                            ui.add_space(10.0);
+                            ui.label(
+                                RichText::new(
+                                    "También podés buscar dentro del texto de los libros.",
+                                )
+                                .size(theme::text::META)
+                                .color(th.dim),
+                            );
+                            if widgets::button(
+                                ui,
+                                th,
+                                "Buscar en el contenido",
+                                widgets::ButtonKind::Ghost,
+                            )
+                            .clicked()
+                            {
+                                self.start_library_content_search(ctx);
                             }
                         }
                     });
@@ -7771,7 +8190,11 @@ impl Lector {
         }
         self.shot_frames += 1;
 
-        if self.shot_frames >= 12 && !self.consulta_busy && !self.shot_requested {
+        let content_busy = self
+            .library_content
+            .as_ref()
+            .is_some_and(|state| state.busy);
+        if self.shot_frames >= 12 && !self.consulta_busy && !content_busy && !self.shot_requested {
             self.shot_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -8138,6 +8561,7 @@ impl eframe::App for Lector {
         }
         self.was_focused = focused;
         self.poll_scan(ctx);
+        self.poll_library_content(ctx);
         self.poll_consulta();
         self.poll_update(ctx);
         if self.consulta_busy {
@@ -8150,6 +8574,7 @@ impl eframe::App for Lector {
         }
 
         self.config_window(ctx, &th);
+        self.library_content_window(ctx, &th);
         self.data_notice_window(ctx, &th);
         self.help_window(ctx, &th);
         self.status_toast(ctx, &th);

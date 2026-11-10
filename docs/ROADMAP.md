@@ -37,6 +37,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M22 | Contenido de IA variable | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Aceptar `content` string/array/objeto y explicar límite de tokens, razonamiento o `finish_reason` |
 | M23 | Marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Guardar posiciones con B, listarlas con Mayús+B, saltar y borrar desde el panel |
 | M24 | Grilla virtualizada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Desde 240 libros visibles, construir y dibujar solo las filas cercanas al viewport, conservando series |
+| M25 | Búsqueda full-text | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Buscar dentro del texto de la biblioteca en un hilo, con progreso, cancelación y salto al pasaje |
 
 ## M1 — Lector (terminado)
 
@@ -285,7 +286,7 @@ Cerrado el 2026-11-09:
 - Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.320 B**.
 
-Queda para la siguiente fase de biblioteca: búsqueda full-text de la biblioteca.
+
 
 ## M14 — Respaldo y notas (terminado)
 
@@ -458,6 +459,22 @@ Cerrado el 2026-11-10:
 - Tests de filas, agrupación y alturas.
 - Verificación: **152 unit (151 + 1 live ignorado) + 10 integración**; `dist`
   **7.417.536 B**.
+
+## M25 — Búsqueda full-text (terminado)
+
+Cerrado el 2026-11-10:
+
+- **Enter** en el buscador de la biblioteca inicia una búsqueda dentro del texto;
+  si no hay coincidencias de metadatos, el estado vacío también lo ofrece.
+- La búsqueda corre en un hilo, un libro a la vez, y muestra `n de total` con
+  opción de cancelar.
+- Resultados con libro, capítulo y fragmento; al elegir uno se abre el libro y se
+  resalta la coincidencia.
+- Topes: 100 resultados, 20 por libro y 120 libros; se avisa si la lista es
+  parcial.
+- Sin índice persistente ni cambios en `library.json`.
+- Verificación: **152 unit (151 + 1 live ignorado) + 10 integración**; `dist`
+  **7.434.160 B** arm64; **8.433.248 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

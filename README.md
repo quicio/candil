@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición, búsqueda dentro del contenido de la biblioteca, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.417.536 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.434.160 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -142,6 +142,7 @@ En macOS, `scripts/make_app.sh` arma un `Candil.app` con el icono y el
 | `N` | nota sobre la selección |
 | `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
 | `⌘F` | buscar en la biblioteca / en el libro abierto |
+| `Enter` (biblioteca) | buscar también dentro del contenido de los libros |
 | `Enter` (búsqueda) | ir al resultado |
 | `n` / `N` (búsqueda) | siguiente / anterior resultado |
 | `⌘O` | abrir archivo |
@@ -170,7 +171,7 @@ src/
   xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre, tablas, SVG, anclas)
   library.rs índice de carpetas, escaneo incremental y BookEntry
   annotations.rs destacados/notas por libro (offsets de texto + cita)
-  search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
+  search.rs  índice efímero de búsqueda interna y full-text de biblioteca
   ai.rs      catálogo de proveedores y protocolos de IA
   secrets.rs API key por proveedor en el llavero; OPENCODE_API_KEY solo para OpenCode Go
   epub_edit.rs edición segura de metadatos y portada, con backup
@@ -280,9 +281,9 @@ avanzado.
 |---|---|---|
 | ![Panel global con anotaciones de dos libros](docs/img/reader-notes-global.jpg) | ![Ventana para ir a un porcentaje o capítulo](docs/img/reader-goto.jpg) | ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
 
-| **Marcadores** |
-|---|
-| ![Panel de marcadores con salto y borrado](docs/img/reader-bookmarks.jpg) |
+| **Marcadores** | **Búsqueda en el contenido** |
+|---|---|
+| ![Panel de marcadores con salto y borrado](docs/img/reader-bookmarks.jpg) | ![Resultados de búsqueda dentro de los libros](docs/img/library-content.jpg) |
 
 | **Editar EPUB** | **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
 |---|---|---|---|
@@ -345,6 +346,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   editable; se muestran con el título del capítulo y el porcentaje.
 - En bibliotecas de más de 240 libros la grilla virtualiza filas: el foco de
   teclado recorre las tarjetas renderizadas y las demás se crean al scrollear.
+- La búsqueda full-text es bajo demanda: recorre hasta 120 libros y devuelve
+  hasta 100 resultados (20 por libro). No se indexa en disco y puede tardar en
+  bibliotecas grandes; se puede cancelar.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -387,6 +391,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M24 — Grilla virtualizada (cerrada):** desde 240 libros visibles solo se
   construyen las filas cercanas al viewport; los encabezados de serie se
   conservan.
+- **M25 — Búsqueda full-text (cerrada):** Enter en el buscador recorre el
+  contenido de los libros en un hilo, muestra resultados y abre el pasaje; no
+  persiste índices.
 
 ## Modo diagnóstico
 

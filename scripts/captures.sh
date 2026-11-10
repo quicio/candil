@@ -145,6 +145,21 @@ data = {
 json.dump(data, open(f'{lib.rsplit("/", 1)[0]}/consultas.json', 'w'), ensure_ascii=False, indent=2)
 PY
 
+# Marcadores públicos para la captura del panel.
+python3 - "$DATA_DIR/library.json" "$PP" <<'PY2'
+import json, sys, time
+path, pp = sys.argv[1], sys.argv[2]
+now = int(time.time())
+data = json.load(open(path))
+for book in data['books']:
+    if book['path'] == pp:
+        book['bookmarks'] = [
+            {'id': 1, 'progress': {'chapter': 0, 'ratio': 0.12, 'anchor': 0, 'anchor_ratio': 0.0}, 'label': '', 'created': now - 900},
+            {'id': 2, 'progress': {'chapter': 1, 'ratio': 0.42, 'anchor': 5, 'anchor_ratio': 0.3}, 'label': 'La carta de Darcy', 'created': now - 600},
+        ]
+json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
+PY2
+
 shot() {
   local out="$1"
   shift
@@ -165,6 +180,7 @@ shot reader-highlight.png --anchor "$ANCHOR" "$PP"
 shot reader-selection.png --anchor "$ANCHOR" --selection "$PP"
 shot reader-external-link.png --anchor "$ANCHOR" --external-link-demo "$PP"
 shot reader-notes.png --anchor "$ANCHOR" --panel notes "$PP"
+shot reader-bookmarks.png --anchor "$ANCHOR" --bookmarks "$PP"
 shot reader-note.png --anchor "$ANCHOR" --panel note "$PP"
 shot reader-notes-global.png --anchor "$ANCHOR" --panel notes --annotations-all "$PP"
 shot reader-search.png --anchor "$ANCHOR" --panel search --book-search truth --search-jump "$PP"
@@ -223,6 +239,7 @@ jpg "$SHOTS/reader-highlight.png" reader-highlight.jpg
 jpg "$SHOTS/reader-selection.png" reader-selection.jpg
 jpg "$SHOTS/reader-external-link.png" reader-external-link.jpg
 jpg "$SHOTS/reader-notes.png" reader-notes.jpg
+jpg "$SHOTS/reader-bookmarks.png" reader-bookmarks.jpg
 jpg "$SHOTS/reader-note.png" reader-note.jpg
 jpg "$SHOTS/reader-notes-global.png" reader-notes-global.jpg
 jpg "$SHOTS/reader-search.png" reader-search.jpg

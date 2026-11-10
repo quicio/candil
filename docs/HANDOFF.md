@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.18.0
+version: 1.19.0
 updated: 2026-11-09
 ---
 
@@ -48,7 +48,9 @@ título y autor, con filtro e insignia, sin borrar archivos. M20 separa las clav
 de IA por proveedor en el llavero y limita `OPENCODE_API_KEY` a OpenCode Go. M21
 sube el default de tokens de IA a 1536, migra el 512 viejo y avisa cuando el
 proveedor corta una respuesta por límite. M22 hace tolerante el parser de IA a
-las variantes de `content` y explica por qué una respuesta llegó sin texto.
+las variantes de `content` y explica por qué una respuesta llegó sin texto. M23
+agrega marcadores de posición guardados en `library.json`, con atajo `B`,
+panel `Mayús+B`, salto y borrado.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -73,7 +75,7 @@ origen.
 `respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion`,
 `inicio-regreso-enlaces`, `motor-traduccion-local`, `filtrar-y-agrupar-series`,
 `detectar-duplicados`, `claves-ia-por-proveedor`, `respuestas-ia-completas` y
-`contenido-ia-variantes` quedaron archivados en
+`contenido-ia-variantes` y `marcadores-lector` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -98,9 +100,9 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 149 unit (148 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 151 unit (150 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.400.848 B | `cargo build --profile dist` (2026-11-10) |
+| binario `dist` | 7.417.504 B | `cargo build --profile dist` (2026-11-10) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
@@ -339,6 +341,10 @@ flotante tapando texto) solo aparecieron así.
     del `choices[0].text` legado. Si no hay texto, el error dice si fue límite de
     tokens, razonamiento interno u otro `finish_reason`; nunca se inventa una
     respuesta ni se muestra el razonamiento como texto final.
+37. **Los marcadores son posiciones, no anotaciones**: viven en
+    `BookEntry.bookmarks` dentro de `library.json`, reutilizan `Progress` y se
+    conservan al escanear o reasociar. `B` guarda, `Mayús+B` abre el panel; el
+    EPUB nunca se modifica (ADR-0024).
 
 ## Definición de terminado (por tarea)
 

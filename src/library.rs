@@ -38,6 +38,16 @@ pub(crate) fn now() -> i64 {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
+pub struct Bookmark {
+    pub id: u64,
+    pub progress: Progress,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+    pub created: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BookEntry {
     /// Ruta absoluta canónica; también es la clave de identidad.
     pub path: String,
@@ -63,6 +73,9 @@ pub struct BookEntry {
     /// Overrides de tipografía/tema solo para este libro.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<Settings>,
+    /// Marcadores de posición guardados por el usuario.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bookmarks: Vec<Bookmark>,
     pub added: i64,
     pub last_opened: Option<i64>,
     pub missing: bool,
@@ -169,6 +182,40 @@ impl BookEntry {
         settings.clamp();
         settings
     }
+
+    pub fn next_bookmark_id(&self) -> u64 {
+        self.bookmarks
+            .iter()
+            .map(|bookmark| bookmark.id)
+            .max()
+            .unwrap_or(0)
+            + 1
+    }
+
+    pub fn add_bookmark(&mut self, progress: Progress, label: String) -> u64 {
+        let id = self.next_bookmark_id();
+        self.bookmarks.push(Bookmark {
+            id,
+            progress,
+            label,
+            created: now_secs(),
+        });
+        self.bookmarks.sort_by(|a, b| {
+            a.progress.chapter.cmp(&b.progress.chapter).then_with(|| {
+                a.progress
+                    .ratio
+                    .partial_cmp(&b.progress.ratio)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        });
+        id
+    }
+
+    pub fn remove_bookmark(&mut self, id: u64) -> bool {
+        let before = self.bookmarks.len();
+        self.bookmarks.retain(|bookmark| bookmark.id != id);
+        self.bookmarks.len() != before
+    }
 }
 
 impl Library {
@@ -261,6 +308,7 @@ impl Library {
         }
         entry.progress = old.progress;
         entry.settings = old.settings;
+        entry.bookmarks = old.bookmarks;
         entry.added = old.added;
         entry.last_opened = old.last_opened;
         let new_path = entry.path.clone();
@@ -333,7 +381,15 @@ impl Library {
             let (size, mtime) = file_stamp(&canonical);
 
             if let Some(index) = self.books.iter().position(|b| b.path == key) {
-                let (progress, added, last_opened, old_cover, old_settings, unchanged) = {
+                let (
+                    progress,
+                    added,
+                    last_opened,
+                    old_cover,
+                    old_settings,
+                    old_bookmarks,
+                    unchanged,
+                ) = {
                     let old = &self.books[index];
                     let cover_ok = old
                         .cover
@@ -346,6 +402,7 @@ impl Library {
                         old.last_opened,
                         old.cover.clone(),
                         old.settings,
+                        old.bookmarks.clone(),
                         old.size == size
                             && old.mtime == mtime
                             && old.meta_version >= META_VERSION
@@ -367,6 +424,7 @@ impl Library {
                 entry.added = added;
                 entry.last_opened = last_opened;
                 entry.settings = old_settings;
+                entry.bookmarks = old_bookmarks;
                 if entry.cover.is_none() {
                     entry.cover = old_cover;
                 }
@@ -820,6 +878,31 @@ mod tests {
             entry.effective_settings(global).font_size,
             crate::config::FONT_MAX
         );
+    }
+
+    #[test]
+    fn marcadores_se_ordenan_por_posicion_y_se_borran() {
+        let mut entry = BookEntry::default();
+        let second = Progress {
+            chapter: 2,
+            ratio: 0.5,
+            ..Progress::default()
+        };
+        let first = Progress {
+            chapter: 0,
+            ratio: 0.25,
+            ..Progress::default()
+        };
+        let a = entry.add_bookmark(second, String::new());
+        let b = entry.add_bookmark(first, "Inicio".into());
+        assert_eq!(entry.bookmarks.len(), 2);
+        assert_eq!(entry.bookmarks[0].id, b);
+        assert_eq!(entry.bookmarks[0].label, "Inicio");
+        assert_eq!(entry.bookmarks[1].id, a);
+        assert_eq!(entry.next_bookmark_id(), 3);
+        assert!(entry.remove_bookmark(a));
+        assert!(!entry.remove_bookmark(a));
+        assert_eq!(entry.bookmarks.len(), 1);
     }
 
     #[test]

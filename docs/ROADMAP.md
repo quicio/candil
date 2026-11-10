@@ -35,6 +35,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M20 | Claves por proveedor | **Hecho** | [ai-credentials](../openspec/specs/ai-credentials/spec.md), [ADR-0023](../docs/adr/0023-claves-ia-por-proveedor.md) | Una cuenta de llavero por proveedor, migración de la clave histórica y `OPENCODE_API_KEY` solo para OpenCode Go |
 | M21 | Respuestas completas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Default de 1536 tokens, migración del 512 viejo y aviso cuando el proveedor corta la respuesta |
 | M22 | Contenido de IA variable | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Aceptar `content` string/array/objeto y explicar límite de tokens, razonamiento o `finish_reason` |
+| M23 | Marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Guardar posiciones con B, listarlas con Mayús+B, saltar y borrar desde el panel |
 
 ## M1 — Lector (terminado)
 
@@ -425,6 +426,23 @@ Cerrado el 2026-11-10:
 - Tests de variantes, límite y razonamiento.
 - Verificación: **149 unit (148 + 1 live ignorado) + 10 integración**; `dist`
   **7.400.848 B**.
+
+## M23 — Marcadores (terminado)
+
+Cerrado el 2026-11-10:
+
+- `B` guarda la posición actual; no duplica un marcador a menos de 1 % en el
+  mismo ancla.
+- `Mayús+B` y el botón **Marcador** abren el panel; cada fila salta a su posición
+  exacta y se puede eliminar.
+- Los marcadores viven en `BookEntry.bookmarks` (`library.json`) y reutilizan
+  `Progress`; el escaneo y `relink` los conservan.
+- No se modifica el EPUB ni se agrega un archivo nuevo; el respaldo ya incluye
+  `library.json`.
+- Ayuda actualizada con `B` y `Mayús+B`; script de capturas con `--bookmarks`.
+- Tests de alta, orden, borrado y comparación de posiciones.
+- Verificación: **151 unit (150 + 1 live ignorado) + 10 integración**; `dist`
+  **7.417.504 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

@@ -22,7 +22,7 @@ use crate::consulta::{
 use crate::epub::Book;
 use crate::epub_edit::{self, CoverExt, CoverUpload, Edits};
 use crate::fonts;
-use crate::library::{BookEntry, Library, ScanStats};
+use crate::library::{BookEntry, Bookmark, Library, ScanStats};
 use crate::search;
 use crate::secrets;
 use crate::theme::{self, Theme, THEMES};
@@ -569,6 +569,7 @@ pub struct Lector {
     annotations_global: bool,
     notes_query: String,
     confirm_delete_annotation: Option<u64>,
+    show_bookmarks: bool,
     active_color: u8,
     consulta_history: ConsultaHistory,
     consulta_session: String,
@@ -683,6 +684,8 @@ pub struct DevOpts {
     pub library_filter: Option<String>,
     /// Filtra la biblioteca por nombre de serie (capturas/dev).
     pub library_series: Option<String>,
+    /// Abre el panel de marcadores al iniciar el lector (capturas).
+    pub bookmarks: bool,
 }
 
 impl Lector {
@@ -814,6 +817,7 @@ impl Lector {
             show_annotations: false,
             annotations_global: false,
             notes_query: String::new(),
+            show_bookmarks: false,
             active_color: 0,
             consulta_history,
             consulta_session: new_session_id(),
@@ -940,6 +944,14 @@ impl Lector {
                 "duplicates" => LibraryFilter::Duplicates,
                 _ => LibraryFilter::All,
             };
+        }
+        if app.dev.bookmarks && app.book.is_some() {
+            app.show_bookmarks = true;
+            app.show_toc = false;
+            app.show_settings = false;
+            app.show_annotations = false;
+            app.show_search = false;
+            app.show_goto = false;
         }
         app
     }
@@ -1537,6 +1549,75 @@ impl Lector {
         })
     }
 
+    fn bookmark_matches(a: &Progress, b: &Progress) -> bool {
+        if a.chapter != b.chapter {
+            return false;
+        }
+        match (a.anchor, b.anchor) {
+            (Some(a_anchor), Some(b_anchor)) => {
+                a_anchor == b_anchor
+                    && (a.anchor_ratio.unwrap_or(0.0) - b.anchor_ratio.unwrap_or(0.0)).abs() < 0.01
+            }
+            (None, None) => (a.ratio - b.ratio).abs() < 0.01,
+            _ => false,
+        }
+    }
+
+    fn add_bookmark_here(&mut self) {
+        let Some(progress) = self.current_progress() else {
+            return;
+        };
+        let Some(key) = self.book_key() else {
+            return;
+        };
+        let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) else {
+            return;
+        };
+        if entry
+            .bookmarks
+            .iter()
+            .any(|bookmark| Self::bookmark_matches(&bookmark.progress, &progress))
+        {
+            self.say("Ya hay un marcador en esta posición.");
+            return;
+        }
+        entry.add_bookmark(progress, String::new());
+        self.save_library();
+        self.say("Marcador añadido.");
+    }
+
+    fn remove_bookmark(&mut self, id: u64) {
+        let Some(key) = self.book_key() else {
+            return;
+        };
+        let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) else {
+            return;
+        };
+        if entry.remove_bookmark(id) {
+            self.save_library();
+            self.say("Marcador eliminado.");
+        }
+    }
+
+    fn jump_to_bookmark(&mut self, progress: Progress) {
+        if self.book.is_none() {
+            return;
+        }
+        self.show_bookmarks = false;
+        self.show_annotations = false;
+        self.show_goto = false;
+        self.show_search = false;
+        self.selection = None;
+        self.note = None;
+        self.reader_focus = None;
+        self.pending_anchor = None;
+        self.pending_block_jump = None;
+        self.pending_search_jump = None;
+        self.search_highlight = None;
+        self.load_chapter(progress.chapter, Some(progress));
+        self.dirty = true;
+    }
+
     fn persist(&mut self) {
         let key = self
             .book
@@ -1635,6 +1716,7 @@ impl Lector {
         self.note = None;
         self.show_annotations = false;
         self.annotations_global = false;
+        self.show_bookmarks = false;
         self.show_consulta = false;
         self.show_config = false;
         self.consulta_target = None;
@@ -1875,6 +1957,7 @@ impl Lector {
         self.show_toc = false;
         self.show_settings = false;
         self.show_annotations = false;
+        self.show_bookmarks = false;
         self.show_search = false;
         self.show_goto = false;
         self.show_config = false;
@@ -1890,6 +1973,7 @@ impl Lector {
         self.show_search = false;
         self.show_goto = false;
         self.show_annotations = false;
+        self.show_bookmarks = false;
         self.show_consulta = false;
         self.consulta_rx = None;
         self.consulta_busy = false;
@@ -1953,12 +2037,14 @@ impl Lector {
                         ("N", "Nota sobre la selección"),
                         ("D", "Destacados y notas"),
                         ("K", "Consultar selección"),
-                        ("⇧K", "Traducir selección"),
+                        ("Mayús+K", "Traducir selección"),
                     ],
                 ),
                 (
                     "Paneles",
                     &[
+                        ("B", "Guardar marcador"),
+                        ("Mayús+B", "Marcadores"),
                         ("S", "Tipografía"),
                         ("⌘,", "Configuración"),
                         ("F1 / ?", "Esta ayuda"),
@@ -4221,6 +4307,7 @@ impl Lector {
             key_f,
             key_g,
             key_k,
+            key_b,
             key_comma,
         ) = ctx.input(|i| {
             (
@@ -4247,6 +4334,7 @@ impl Lector {
                 i.key_pressed(Key::F),
                 i.key_pressed(Key::G),
                 i.key_pressed(Key::K),
+                i.key_pressed(Key::B),
                 i.key_pressed(Key::Comma),
             )
         });
@@ -4266,6 +4354,7 @@ impl Lector {
             self.show_toc = false;
             self.show_settings = false;
             self.show_annotations = false;
+            self.show_bookmarks = false;
             self.show_goto = false;
             self.selection = None;
             self.note = None;
@@ -4304,11 +4393,34 @@ impl Lector {
                 self.show_settings = false;
                 self.show_search = false;
                 self.show_annotations = false;
+                self.show_bookmarks = false;
                 self.search_highlight = None;
                 self.pending_search_jump = None;
                 self.selection = None;
             }
             ctx.request_repaint();
+        }
+
+        if key_b
+            && !typing
+            && self.book.is_some()
+            && self.note.is_none()
+            && self.selection.is_none()
+        {
+            if shift {
+                self.show_bookmarks = !self.show_bookmarks;
+                self.show_toc = false;
+                self.show_settings = false;
+                self.show_search = false;
+                self.show_annotations = false;
+                self.show_goto = false;
+                self.search_highlight = None;
+                self.pending_search_jump = None;
+                self.selection = None;
+                ctx.request_repaint();
+            } else {
+                self.add_bookmark_here();
+            }
         }
 
         if !typing
@@ -4339,6 +4451,8 @@ impl Lector {
                 self.show_goto = false;
             } else if self.show_annotations {
                 self.show_annotations = false;
+            } else if self.show_bookmarks {
+                self.show_bookmarks = false;
             } else if self.show_consulta {
                 self.show_consulta = false;
                 self.consulta_rx = None;
@@ -4363,6 +4477,7 @@ impl Lector {
                 self.show_annotations = !self.show_annotations;
                 self.show_toc = false;
                 self.show_settings = false;
+                self.show_bookmarks = false;
                 if self.show_annotations {
                     self.show_goto = false;
                     self.show_search = false;
@@ -4427,6 +4542,7 @@ impl Lector {
         if key_t {
             self.show_toc = !self.show_toc;
             self.show_settings = false;
+            self.show_bookmarks = false;
             if self.show_toc {
                 self.show_goto = false;
                 self.show_search = false;
@@ -4437,6 +4553,7 @@ impl Lector {
         if key_s {
             self.show_settings = !self.show_settings;
             self.show_toc = false;
+            self.show_bookmarks = false;
             if self.show_settings {
                 self.show_goto = false;
                 self.show_search = false;
@@ -5951,6 +6068,7 @@ impl Lector {
                         .clicked()
                     {
                         self.show_toc = !self.show_toc;
+                        self.show_bookmarks = false;
                         if self.show_toc {
                             self.show_goto = false;
                             self.show_search = false;
@@ -5972,6 +6090,7 @@ impl Lector {
                     .clicked()
                     {
                         self.show_settings = !self.show_settings;
+                        self.show_bookmarks = false;
                         if self.show_settings {
                             self.show_goto = false;
                             self.show_search = false;
@@ -5986,6 +6105,7 @@ impl Lector {
                         self.show_annotations = !self.show_annotations;
                         self.show_toc = false;
                         self.show_settings = false;
+                        self.show_bookmarks = false;
                         if self.show_annotations {
                             self.show_goto = false;
                             self.show_search = false;
@@ -6002,9 +6122,29 @@ impl Lector {
                         self.show_toc = false;
                         self.show_settings = false;
                         self.show_annotations = false;
+                        self.show_bookmarks = false;
                         self.show_goto = false;
                         self.selection = None;
                         self.note = None;
+                    }
+                    if widgets::button(
+                        ui,
+                        th,
+                        if compact { "Marca" } else { "Marcador" },
+                        widgets::ButtonKind::Ghost,
+                    )
+                    .on_hover_text("Marcadores (B guarda · Mayús+B abre)")
+                    .clicked()
+                    {
+                        self.show_bookmarks = !self.show_bookmarks;
+                        self.show_toc = false;
+                        self.show_settings = false;
+                        self.show_annotations = false;
+                        self.show_search = false;
+                        self.show_goto = false;
+                        self.search_highlight = None;
+                        self.pending_search_jump = None;
+                        self.selection = None;
                     }
 
                     ui.add_space(theme::space::SM);
@@ -6058,6 +6198,15 @@ impl Lector {
                                             self.open_config(ctx, ConfigTab::Consultas);
                                             ui.close();
                                         }
+                                        if ui.button("Marcadores").clicked() {
+                                            self.show_bookmarks = true;
+                                            self.show_toc = false;
+                                            self.show_settings = false;
+                                            self.show_annotations = false;
+                                            self.show_search = false;
+                                            self.show_goto = false;
+                                            ui.close();
+                                        }
                                         if ui.button("Atajos").clicked() {
                                             self.show_help = true;
                                             ui.close();
@@ -6091,6 +6240,7 @@ impl Lector {
                             self.show_settings = false;
                             self.show_search = false;
                             self.show_annotations = false;
+                            self.show_bookmarks = false;
                             self.search_highlight = None;
                             self.pending_search_jump = None;
                         }
@@ -6213,6 +6363,128 @@ impl Lector {
         if let Some((spine, anchor)) = jump {
             self.jump_to(spine, anchor);
             self.show_toc = false;
+            ctx.request_repaint();
+        }
+    }
+
+    fn bookmarks_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.show_bookmarks {
+            return;
+        }
+        let Some(book) = self.book.as_mut() else {
+            self.show_bookmarks = false;
+            return;
+        };
+        let n = book.chapter_count();
+        let titles: Vec<String> = (0..n).map(|index| book.chapter_title(index)).collect();
+        let Some(key) = self.book_key() else {
+            self.show_bookmarks = false;
+            return;
+        };
+        let bookmarks: Vec<Bookmark> = self
+            .library
+            .books
+            .iter()
+            .find(|entry| entry.path == key)
+            .map(|entry| entry.bookmarks.clone())
+            .unwrap_or_default();
+
+        let mut open = self.show_bookmarks;
+        let mut add_here = false;
+        let mut jump: Option<Progress> = None;
+        let mut remove: Option<u64> = None;
+
+        egui::Window::new(
+            RichText::new("Marcadores")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_SM)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = theme::space::XS;
+            if widgets::button(
+                ui,
+                th,
+                "Añadir marcador aquí",
+                widgets::ButtonKind::Secondary,
+            )
+            .on_hover_text("También podés usar B en el lector")
+            .clicked()
+            {
+                add_here = true;
+            }
+            ui.label(
+                RichText::new("B guarda la posición actual; Mayús+B abre esta lista.")
+                    .size(theme::text::META)
+                    .color(th.dim),
+            );
+            ui.separator();
+            if bookmarks.is_empty() {
+                ui.label(
+                    RichText::new("Todavía no hay marcadores en este libro.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                return;
+            }
+            ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                for bookmark in &bookmarks {
+                    let title = if bookmark.label.trim().is_empty() {
+                        titles
+                            .get(bookmark.progress.chapter)
+                            .filter(|title| !title.trim().is_empty())
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                format!("Capítulo {}", bookmark.progress.chapter + 1)
+                            })
+                    } else {
+                        bookmark.label.clone()
+                    };
+                    let fraction = ((bookmark.progress.chapter as f32 + bookmark.progress.ratio)
+                        / n.max(1) as f32)
+                        .clamp(0.0, 1.0);
+                    ui.horizontal(|ui| {
+                        let percent = (fraction * 100.0).round() as u32;
+                        let label = format!("{} · {percent}%", truncate(&title, 30));
+                        let response = ui.add(
+                            egui::Button::new(
+                                RichText::new(label)
+                                    .size(theme::text::BODY_SMALL)
+                                    .color(th.fg),
+                            )
+                            .frame(false),
+                        );
+                        if response.clicked() {
+                            jump = Some(bookmark.progress);
+                        }
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .small_button(RichText::new("×").size(theme::text::META))
+                                .on_hover_text("Eliminar marcador")
+                                .clicked()
+                            {
+                                remove = Some(bookmark.id);
+                            }
+                        });
+                    });
+                }
+            });
+        });
+        self.show_bookmarks = open;
+        if add_here {
+            self.add_bookmark_here();
+        }
+        if let Some(id) = remove {
+            self.remove_bookmark(id);
+        }
+        if let Some(progress) = jump {
+            self.jump_to_bookmark(progress);
             ctx.request_repaint();
         }
     }
@@ -7298,6 +7570,7 @@ impl Lector {
         self.external_link_window(ctx, th);
         self.back_to_text(ctx, th);
         self.annotations_window(ctx, th);
+        self.bookmarks_window(ctx, th);
         self.confirm_delete_annotation_window(ctx, th);
         self.consulta_ui(ctx, th);
         self.note_window(ctx, th);
@@ -9383,6 +9656,47 @@ mod tests {
             &book,
             &duplicates
         ));
+    }
+
+    #[test]
+    fn marcador_compara_ancla_y_fraccion() {
+        let a = Progress {
+            chapter: 4,
+            ratio: 0.2,
+            anchor: Some(10),
+            anchor_ratio: Some(0.25),
+            legacy_offset: None,
+        };
+        let close = Progress {
+            anchor_ratio: Some(0.255),
+            ..a
+        };
+        let far = Progress {
+            anchor_ratio: Some(0.9),
+            ..a
+        };
+        let other_anchor = Progress {
+            anchor: Some(11),
+            ..a
+        };
+        let other_chapter = Progress { chapter: 5, ..a };
+        assert!(Lector::bookmark_matches(&a, &close));
+        assert!(!Lector::bookmark_matches(&a, &far));
+        assert!(!Lector::bookmark_matches(&a, &other_anchor));
+        assert!(!Lector::bookmark_matches(&a, &other_chapter));
+
+        let no_anchor = Progress {
+            chapter: 1,
+            ratio: 0.4,
+            anchor: None,
+            anchor_ratio: None,
+            legacy_offset: None,
+        };
+        let close_ratio = Progress {
+            ratio: 0.405,
+            ..no_anchor
+        };
+        assert!(Lector::bookmark_matches(&no_anchor, &close_ratio));
     }
 
     #[test]

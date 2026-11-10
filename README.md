@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.400.848 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.417.504 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -131,6 +131,8 @@ En macOS, `scripts/make_app.sh` arma un `Candil.app` con el icono y el
 | `G` | ir a porcentaje/capítulo |
 | `K` | consultar selección (diccionario/traducción/IA) |
 | `⇧K` | traducir la selección directo |
+| `B` | guardar un marcador en la posición actual |
+| `Mayús+B` | abrir o cerrar marcadores |
 | `⌘,` | configuración |
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
@@ -274,6 +276,10 @@ avanzado.
 |---|---|---|
 | ![Panel global con anotaciones de dos libros](docs/img/reader-notes-global.jpg) | ![Ventana para ir a un porcentaje o capítulo](docs/img/reader-goto.jpg) | ![Resultados de búsqueda y coincidencia resaltada](docs/img/reader-search.jpg) |
 
+| **Marcadores** |
+|---|
+| ![Panel de marcadores con salto y borrado](docs/img/reader-bookmarks.jpg) |
+
 | **Editar EPUB** | **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
 |---|---|---|---|
 | ![Editar metadatos y portada](docs/img/library-edit.png) | ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
@@ -331,6 +337,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   respuesta en silencio.
 - Si el proveedor devuelve solo razonamiento interno o un `content` vacío, Candil
   muestra un error accionable en vez de inventar una respuesta.
+- Los marcadores guardan una posición, no una cita, y todavía no tienen etiqueta
+  editable; se muestran con el título del capítulo y el porcentaje.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -368,6 +376,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M22 — Contenido de IA variable (cerrada):** parser tolerante a `content`
   string/array/objeto y errores que explican límite, razonamiento o
   `finish_reason`.
+- **M23 — Marcadores (cerrada):** `B` guarda la posición actual, `Mayús+B` abre la
+  lista y el panel permite saltar o eliminar; se guardan en `library.json`.
 
 ## Modo diagnóstico
 

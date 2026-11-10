@@ -164,6 +164,10 @@ fn main() -> eframe::Result<()> {
                 dev.library_filter = args.get(i + 1).cloned();
                 i += 2;
             }
+            "--bookmarks" => {
+                dev.bookmarks = true;
+                i += 1;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

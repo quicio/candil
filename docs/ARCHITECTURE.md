@@ -314,8 +314,9 @@ avisa en un toast: nunca se bloquea el arranque.
 
 `library.json` vive en el mismo directorio y usa el mismo helper. Guarda
 `schema_version`, carpetas vigiladas y una entrada por libro con ruta canónica,
-metadatos, `size`/`mtime`, progreso, estado `missing` y `settings` opcional
-(tema/tipografía solo para ese libro). Las portadas van a
+metadatos, `size`/`mtime`, progreso, estado `missing`, `settings` opcional
+(tema/tipografía solo para ese libro) y marcadores de posición con el mismo
+`Progress` que la lectura. Las portadas van a
 `covers/<fnv1a>.png` (ADR-0007/0008). El progreso de los libros indexados se
 escribe solo acá; `config.progress` se conserva para leer archivos viejos y se
 vacía a medida que `migrate_progress_from` encuentra sus libros. El arranque

@@ -222,6 +222,21 @@ impl Library {
         }
     }
 
+    /// Series declaradas, sin vacíos ni duplicados, ordenadas para el filtro.
+    pub fn series_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .books
+            .iter()
+            .filter_map(|book| book.series.as_deref())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect();
+        names.sort_by_key(|name| name.to_lowercase());
+        names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        names
+    }
+
     /// Reasocia una entrada con otro archivo conservando progreso, ajustes y
     /// fechas. Devuelve la ruta canónica nueva. No toca anotaciones ni
     /// `config.recent`: el llamador decide si migra esas referencias.
@@ -805,5 +820,24 @@ mod tests {
             entry.effective_settings(global).font_size,
             crate::config::FONT_MAX
         );
+    }
+
+    #[test]
+    fn series_names_ordenan_sin_vacios_ni_duplicados() {
+        let mut lib = Library::default();
+        for (path, series) in [
+            ("/a.epub", Some("Saga B")),
+            ("/b.epub", Some("saga b")),
+            ("/c.epub", Some("Saga A")),
+            ("/d.epub", Some("  ")),
+            ("/e.epub", None),
+        ] {
+            lib.upsert(BookEntry {
+                path: path.into(),
+                series: series.map(str::to_string),
+                ..BookEntry::default()
+            });
+        }
+        assert_eq!(lib.series_names(), vec!["Saga A", "Saga B"]);
     }
 }

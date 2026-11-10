@@ -152,6 +152,14 @@ fn main() -> eframe::Result<()> {
                     .map(|a| a.trim_start_matches('#').to_string());
                 i += 2;
             }
+            "--order" => {
+                dev.library_order = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--series" => {
+                dev.library_series = args.get(i + 1).cloned();
+                i += 2;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

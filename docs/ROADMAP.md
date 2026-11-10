@@ -30,6 +30,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M15 | Series y colecciones | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Leer serie/posición del OPF, mostrarla en la tarjeta y ordenar por serie |
 | M16 | Inicio y enlaces | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Elegir inicio (último libro/biblioteca), volver con un icono y confirmar enlaces externos |
 | M17 | Traducción sin fricción | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0022](../docs/adr/0022-traduccion-local-y-limite-mymemory.md) | Traducir con MyMemory hasta 500 caracteres sin partir palabras u Ollama local sin activar online |
+| M18 | Series en la estantería | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Filtrar por serie o **Sin serie** y agrupar la grilla con encabezados en el orden por serie |
 
 ## M1 — Lector (terminado)
 
@@ -345,6 +346,20 @@ Cerrado el 2026-11-09:
   Configuración → Consultas.
 - Verificación: **139 unit (138 + 1 live ignorado) + 10 integración**; `dist`
   **7.384.240 B**.
+
+## M18 — Series en la estantería (terminado)
+
+Cerrado el 2026-11-09:
+
+- El filtro de la biblioteca lista las series del OPF y la opción **Sin serie**,
+  sin duplicados ni nombres vacíos.
+- Filtrar por serie conserva búsqueda, orden y el resto de los filtros.
+- Con orden **Serie**, cada grupo empieza con un encabezado y la cantidad de
+  libros; los libros sin serie quedan al final bajo **Sin serie**.
+- Banderas `--order series` y `--series "Nombre"` para capturas y verificación.
+- Tests de nombres de serie, filtro y etiqueta truncada.
+- Verificación: **142 unit (141 + 1 live ignorado) + 10 integración**; `dist`
+  **7.400.800 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

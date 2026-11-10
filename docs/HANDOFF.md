@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.13.0
+version: 1.14.0
 updated: 2026-11-09
 ---
 
@@ -42,7 +42,8 @@ inicio configurable (último libro por defecto), regreso visible a la biblioteca
 y confirmación de enlaces externos. M17 agrega el motor de traducción
 configurable: MyMemory recorta a 500 caracteres en palabra y avisa cuando la
 traducción es parcial; Ollama local traduce sin API key y sin activar consultas
-online.
+online. M18 agrega filtro por serie o **Sin serie** y encabezados de grupo en el
+orden por serie.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -65,7 +66,8 @@ origen.
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
 `respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion`,
-`inicio-regreso-enlaces` y `motor-traduccion-local` quedaron archivados en
+`inicio-regreso-enlaces`, `motor-traduccion-local` y `filtrar-y-agrupar-series`
+quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -90,9 +92,9 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 139 unit (138 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 142 unit (141 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.384.240 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.400.800 B | `cargo build --profile dist` (2026-11-09) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
@@ -313,6 +315,9 @@ flotante tapando texto) solo aparecieron así.
 31. **La traducción remota se recorta en palabra a 500 caracteres** (MyMemory) y
     avisa si es parcial; no se hace chunking. La traducción con Ollama local no
     exige `online_enabled` y nunca lleva API key (ADR-0022).
+32. **La serie se puede filtrar y agrupar**: el filtro por serie o **Sin serie**
+    es estado de UI y no se persiste; el nombre sale de `library.json` y el orden
+    Serie dibuja encabezados por grupo. No se edita la serie desde la biblioteca.
 
 ## Definición de terminado (por tarea)
 

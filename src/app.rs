@@ -57,22 +57,50 @@ impl LibraryOrder {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum LibraryFilter {
     All,
     Reading,
     Unread,
     Missing,
+    Series(String),
+    NoSeries,
 }
 
 impl LibraryFilter {
-    fn label(self) -> &'static str {
+    fn label(&self) -> String {
         match self {
-            Self::All => "Todos",
-            Self::Reading => "Leyendo",
-            Self::Unread => "Sin empezar",
-            Self::Missing => "Faltantes",
+            Self::All => "Todos".into(),
+            Self::Reading => "Leyendo".into(),
+            Self::Unread => "Sin empezar".into(),
+            Self::Missing => "Faltantes".into(),
+            Self::Series(name) => {
+                let short: String = name.chars().take(22).collect();
+                if short.chars().count() < name.chars().count() {
+                    format!("Serie · {short}…")
+                } else {
+                    format!("Serie · {short}")
+                }
+            }
+            Self::NoSeries => "Sin serie".into(),
         }
+    }
+}
+
+fn matches_filter(filter: &LibraryFilter, book: &BookEntry) -> bool {
+    match filter {
+        LibraryFilter::All => true,
+        LibraryFilter::Reading => book.progress.has_started(),
+        LibraryFilter::Unread => !book.progress.has_started(),
+        LibraryFilter::Missing => book.missing,
+        LibraryFilter::Series(name) => book
+            .series
+            .as_deref()
+            .is_some_and(|series| series.trim().eq_ignore_ascii_case(name.trim())),
+        LibraryFilter::NoSeries => book
+            .series
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty()),
     }
 }
 
@@ -82,6 +110,7 @@ struct CardData {
     title: String,
     author: String,
     series: Option<String>,
+    series_name: Option<String>,
     cover: Option<(egui::TextureId, Vec2)>,
     chapters: usize,
     chapter: usize,
@@ -616,6 +645,10 @@ pub struct DevOpts {
     pub export_md: Option<PathBuf>,
     /// Salta a un ancla del libro al abrir (capturas/dev).
     pub anchor: Option<String>,
+    /// `recent`, `title`, `author`, `series` o `added` (capturas/dev).
+    pub library_order: Option<String>,
+    /// Filtra la biblioteca por nombre de serie (capturas/dev).
+    pub library_series: Option<String>,
 }
 
 impl Lector {
@@ -853,6 +886,18 @@ impl Lector {
             if app.dev.link_preview {
                 app.seed_dev_link_preview();
             }
+        }
+        if let Some(order) = app.dev.library_order.as_deref() {
+            app.library_order = match order {
+                "title" => LibraryOrder::Title,
+                "author" => LibraryOrder::Author,
+                "series" => LibraryOrder::Series,
+                "added" => LibraryOrder::Added,
+                _ => LibraryOrder::Recent,
+            };
+        }
+        if let Some(series) = app.dev.library_series.clone() {
+            app.library_filter = LibraryFilter::Series(series);
         }
         app
     }
@@ -4596,6 +4641,12 @@ impl Lector {
             .map(|book| (book.path.clone(), book.title.clone(), book.author.clone()));
         let show_second_row = has_books || !folders.is_empty();
         let wide = ctx.screen_rect().width() >= 820.0;
+        let series_names = self.library.series_names();
+        let has_no_series = self.library.books.iter().any(|book| {
+            book.series
+                .as_deref()
+                .is_none_or(|name| name.trim().is_empty())
+        });
 
         egui::TopBottomPanel::top("library-bar")
             .show_separator_line(false)
@@ -4875,22 +4926,29 @@ impl Lector {
                             ui.spacing_mut().button_padding = Vec2::new(8.0, 4.0);
                             ui.spacing_mut().interact_size.y = 32.0;
                             egui::ComboBox::from_id_salt("library-filter")
-                                .width(if wide { 124.0 } else { 104.0 })
+                                .width(if wide { 160.0 } else { 136.0 })
                                 .selected_text(
                                     RichText::new(self.library_filter.label())
                                         .size(theme::text::BODY_SMALL)
                                         .color(th.fg),
                                 )
                                 .show_ui(ui, |ui| {
-                                    for filter in [
+                                    let mut filters = vec![
                                         LibraryFilter::All,
                                         LibraryFilter::Reading,
                                         LibraryFilter::Unread,
                                         LibraryFilter::Missing,
-                                    ] {
+                                    ];
+                                    for name in &series_names {
+                                        filters.push(LibraryFilter::Series(name.clone()));
+                                    }
+                                    if has_no_series {
+                                        filters.push(LibraryFilter::NoSeries);
+                                    }
+                                    for filter in &filters {
                                         ui.selectable_value(
                                             &mut self.library_filter,
-                                            filter,
+                                            filter.clone(),
                                             filter.label(),
                                         );
                                     }
@@ -5057,25 +5115,70 @@ impl Lector {
                         ui.spacing_mut().item_spacing.x = CARD_GAP;
 
                         let mut card_pos = 0usize;
-                        for row in cards.chunks(cols) {
-                            ui.horizontal_top(|ui| {
-                                ui.add_space(left);
-                                for card in row {
-                                    let focus = self.dev.focus_card && card_pos == 0;
-                                    card_pos += 1;
-                                    match library_card(ui, card, th, focus) {
-                                        Some(CardAction::Open) => {
-                                            open_path = Some(PathBuf::from(&card.path));
-                                        }
-                                        Some(CardAction::Remove) => remove = Some(card.index),
-                                        Some(CardAction::Locate) => locate = Some(card.index),
-                                        Some(CardAction::Recover) => recover = Some(card.index),
-                                        Some(CardAction::Edit) => edit = Some(card.index),
-                                        None => {}
+                        let grouped = self.library_order == LibraryOrder::Series
+                            && cards.iter().any(|card| card.series_name.is_some());
+                        let mut groups: Vec<(Option<String>, Vec<&CardData>)> = Vec::new();
+                        if grouped {
+                            for card in &cards {
+                                match groups.last_mut() {
+                                    Some((name, group))
+                                        if matches!(
+                                            (name.as_deref(), card.series_name.as_deref()),
+                                            (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
+                                        ) =>
+                                    {
+                                        group.push(card);
                                     }
+                                    _ => groups.push((card.series_name.clone(), vec![card])),
                                 }
-                            });
-                            ui.add_space(22.0);
+                            }
+                        } else {
+                            groups.push((None, cards.iter().collect()));
+                        }
+
+                        for (series, group) in &groups {
+                            if grouped {
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    ui.add_space(left);
+                                    ui.label(
+                                        RichText::new(series.as_deref().unwrap_or("Sin serie"))
+                                            .size(theme::text::LABEL)
+                                            .strong()
+                                            .color(th.fg),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "· {} libro{}",
+                                            group.len(),
+                                            if group.len() == 1 { "" } else { "s" }
+                                        ))
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                });
+                                ui.add_space(10.0);
+                            }
+                            for row in group.chunks(cols) {
+                                ui.horizontal_top(|ui| {
+                                    ui.add_space(left);
+                                    for card in row {
+                                        let focus = self.dev.focus_card && card_pos == 0;
+                                        card_pos += 1;
+                                        match library_card(ui, card, th, focus) {
+                                            Some(CardAction::Open) => {
+                                                open_path = Some(PathBuf::from(&card.path));
+                                            }
+                                            Some(CardAction::Remove) => remove = Some(card.index),
+                                            Some(CardAction::Locate) => locate = Some(card.index),
+                                            Some(CardAction::Recover) => recover = Some(card.index),
+                                            Some(CardAction::Edit) => edit = Some(card.index),
+                                            None => {}
+                                        }
+                                    }
+                                });
+                                ui.add_space(22.0);
+                            }
                         }
                         ui.add_space(28.0);
                     });
@@ -5645,12 +5748,7 @@ impl Lector {
             .books
             .iter()
             .enumerate()
-            .filter(|(_, b)| match self.library_filter {
-                LibraryFilter::All => true,
-                LibraryFilter::Reading => b.progress.has_started(),
-                LibraryFilter::Unread => !b.progress.has_started(),
-                LibraryFilter::Missing => b.missing,
-            })
+            .filter(|(_, b)| matches_filter(&self.library_filter, b))
             .filter(|(_, b)| {
                 query.is_empty()
                     || collate(&b.title).contains(&query)
@@ -5714,18 +5812,25 @@ impl Lector {
                     .cover
                     .as_deref()
                     .and_then(|rel| cover_texture(ctx, &mut self.library_textures, &data_dir, rel));
+                let series_name = entry
+                    .series
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string);
                 Some(CardData {
                     index,
                     path: entry.path,
                     title: entry.title,
                     author: entry.author,
-                    series: entry.series.as_ref().map(|name| match entry.series_index {
+                    series: series_name.as_ref().map(|name| match entry.series_index {
                         Some(index) if index.fract().abs() < 0.01 => {
                             format!("{name} · {}", index.round() as i64)
                         }
                         Some(index) => format!("{name} · {index:.1}"),
                         None => name.clone(),
                     }),
+                    series_name,
                     cover,
                     chapters: entry.chapters,
                     chapter: entry.progress.chapter,
@@ -9151,5 +9256,34 @@ mod tests {
         assert!(context.ends_with('…'));
         assert!(context.chars().count() <= 102);
         assert_eq!(context_around("hola", 0, 4, 100), "hola");
+    }
+
+    #[test]
+    fn filtro_por_serie_y_sin_serie() {
+        let mut book = BookEntry {
+            series: Some("Saga".into()),
+            ..BookEntry::default()
+        };
+        assert!(matches_filter(&LibraryFilter::Series("Saga".into()), &book));
+        assert!(matches_filter(&LibraryFilter::Series("saga".into()), &book));
+        assert!(!matches_filter(
+            &LibraryFilter::Series("Otra".into()),
+            &book
+        ));
+        assert!(!matches_filter(&LibraryFilter::NoSeries, &book));
+
+        book.series = None;
+        assert!(matches_filter(&LibraryFilter::NoSeries, &book));
+        assert!(!matches_filter(
+            &LibraryFilter::Series("Saga".into()),
+            &book
+        ));
+    }
+
+    #[test]
+    fn etiqueta_de_serie_recorta_nombres_largos() {
+        let label = LibraryFilter::Series("Una serie con un nombre larguísimo".into()).label();
+        assert!(label.starts_with("Serie · "));
+        assert!(label.ends_with('…'));
     }
 }

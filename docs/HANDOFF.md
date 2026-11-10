@@ -102,7 +102,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 151 unit (150 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.417.504 B | `cargo build --profile dist` (2026-11-10) |
+| binario `dist` | 7.417.504 B arm64; 8.408.568 B Intel | `cargo build --profile dist` (2026-11-10) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
@@ -155,8 +155,8 @@ Build en otros sistemas: [`BUILD.md`](BUILD.md) y la matriz de CI
 La entrega es automática (`docs/RELEASING.md`, ADR-0017): push a `main` →
 `build` → `auto-release` decide minor/patch por conventional commits, actualiza
 `Cargo.toml`/`Cargo.lock`, crea el tag y dispara `release.yml`. La release
-publica los tres binarios, `candil-macos-arm64-app.zip`,
-`candil-macos-arm64-app.tar.gz` y `SHA256SUMS.txt`. No se bumpea la versión ni
+publica Linux, Windows y macOS arm64/Intel, los `Candil.app` por arquitectura y
+`SHA256SUMS.txt`. No se bumpea la versión ni
 se crea el tag a mano. Si la publicación falla:
 `gh workflow run release.yml -f tag=vX.Y.Z`.
 

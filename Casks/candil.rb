@@ -2,12 +2,17 @@ cask "candil" do
   version :latest
   sha256 :no_check
 
-  url "https://github.com/quicio/candil/releases/latest/download/candil-macos-arm64-app.tar.gz"
+  on_arm do
+    url "https://github.com/quicio/candil/releases/latest/download/candil-macos-arm64-app.tar.gz"
+  end
+  on_intel do
+    url "https://github.com/quicio/candil/releases/latest/download/candil-macos-x86_64-app.tar.gz"
+  end
+
   name "Candil"
   desc "Lector de EPUB minimalista"
   homepage "https://github.com/quicio/candil"
 
-  depends_on arch: :arm64
   depends_on :macos
 
   app "Candil.app"

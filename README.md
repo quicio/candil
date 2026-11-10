@@ -44,7 +44,8 @@ webview ni motor HTML.
 brew install --cask quicio/tap/candil
 ```
 
-O descargar `candil-macos-arm64-app.zip` desde
+O descargar `candil-macos-arm64-app.zip` (Apple Silicon) o
+`candil-macos-x86_64-app.zip` (Intel) desde
 [Releases](https://github.com/quicio/candil/releases/latest), descomprimir,
 arrastrar `Candil.app` a `/Applications` y, la primera vez, **clic derecho →
 Abrir**. Si macOS sigue bloqueando:
@@ -89,7 +90,7 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 |---|---|---|---|
 | `fast` | iterar | ~16 s (sin incremental, 2026-11-10) | 15.6 MB |
 | `release` | uso diario | ~17 s (LTO thin) | 7.7 MB |
-| `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 7.4 MB |
+| `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 7.4 MB arm64 · 8.4 MB Intel |
 
 Los perfiles `dev` y `fast` no usan compilación incremental ni debug info: se
 pierde velocidad de recompilación, pero se evita que `target/` crezca varios GB.

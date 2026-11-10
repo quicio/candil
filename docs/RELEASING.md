@@ -14,18 +14,21 @@ Candil se publica solo. No hay que tocar `Cargo.toml` ni crear tags a mano.
 4. Actualiza `Cargo.toml` y `Cargo.lock`, commitea
    `chore(release): vX.Y.Z`, crea el tag y lo pushea.
 5. Dispara `release.yml` con ese tag.
-6. `release.yml` compila los tres binarios, arma `Candil.app`,
-   `candil-macos-arm64-app.zip` y `SHA256SUMS.txt`, y publica la release con
-   notas generadas desde los commits.
+6. `release.yml` compila los binarios de Linux, Windows y macOS (arm64 e Intel),
+   arma un `Candil.app` por arquitectura y publica los zips, tar.gz y
+   `SHA256SUMS.txt` con notas generadas desde los commits.
 
 ## Assets
 
 | asset | uso |
 |---|---|
 | `candil-linux-x86_64` | binario Linux |
-| `candil-macos-arm64` | binario macOS (CLI) |
-| `candil-macos-arm64-app.zip` | `Candil.app` firmado ad-hoc (descarga manual) |
-| `candil-macos-arm64-app.tar.gz` | el mismo `Candil.app` para el cask de Homebrew |
+| `candil-macos-arm64` | binario macOS Apple Silicon (CLI) |
+| `candil-macos-x86_64` | binario macOS Intel (CLI) |
+| `candil-macos-arm64-app.zip` | `Candil.app` Apple Silicon firmado ad-hoc (descarga manual) |
+| `candil-macos-arm64-app.tar.gz` | el mismo `Candil.app` Apple Silicon para el cask |
+| `candil-macos-x86_64-app.zip` | `Candil.app` Intel firmado ad-hoc (descarga manual) |
+| `candil-macos-x86_64-app.tar.gz` | el mismo `Candil.app` Intel para el cask |
 | `candil-windows-x86_64.exe` | binario Windows |
 | `SHA256SUMS.txt` | checksums; la app los verifica |
 
@@ -39,7 +42,8 @@ instala**.
 brew install --cask quicio/tap/candil
 ```
 
-o descargar `candil-macos-arm64-app.zip`, descomprimir, arrastrar `Candil.app` a
+o descargar `candil-macos-arm64-app.zip` (Apple Silicon) o
+`candil-macos-x86_64-app.zip` (Intel), descomprimir, arrastrar `Candil.app` a
 `/Applications` y, la primera vez, **clic derecho → Abrir**. Si macOS sigue
 bloqueando:
 

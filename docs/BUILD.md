@@ -54,6 +54,8 @@ lipo -create \
 
 La app no está empaquetada como `.app`; para distribuirla como aplicación de
 Finder hay que crear el bundle (`Contents/MacOS/candil`, `Info.plist`, icono).
+La release de CI publica dos apps separadas, `candil-macos-arm64-app.*` y
+`candil-macos-x86_64-app.*`; no se distribuye un binario universal.
 
 ### macOS: `Candil.app` con icono
 

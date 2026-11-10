@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.15.0
+version: 1.16.0
 updated: 2026-11-09
 ---
 
@@ -44,13 +44,14 @@ configurable: MyMemory recorta a 500 caracteres en palabra y avisa cuando la
 traducción es parcial; Ollama local traduce sin API key y sin activar consultas
 online. M18 agrega filtro por serie o **Sin serie** y encabezados de grupo en el
 orden por serie. M19 agrega detección conservadora de posibles duplicados por
-título y autor, con filtro e insignia, sin borrar archivos.
+título y autor, con filtro e insignia, sin borrar archivos. M20 separa las claves
+de IA por proveedor en el llavero y limita `OPENCODE_API_KEY` a OpenCode Go.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
-salir de la Mac. La API key se guarda en el llavero del sistema o en
-`OPENCODE_API_KEY`; si falta y el proveedor la requiere, el botón de IA queda
-deshabilitado. La prueba real con la clave del usuario queda pendiente;
+salir de la Mac. Cada proveedor guarda su propia API key en el llavero;
+`OPENCODE_API_KEY` solo aplica a OpenCode Go. Si falta la clave y el proveedor la
+requiere, el botón de IA queda deshabilitado. La prueba real con la clave del usuario queda pendiente;
 con una clave inválida se verificó el 401 sin congelar la UI.
 
 Fuera de alcance por ahora: regex/stemming, sincronización entre dispositivos,
@@ -67,8 +68,8 @@ origen.
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
 `respaldo-y-filtro-notas`, `series-desde-opf`, `atajo-traducir-seleccion`,
-`inicio-regreso-enlaces`, `motor-traduccion-local`, `filtrar-y-agrupar-series`
-y `detectar-duplicados` quedaron archivados en
+`inicio-regreso-enlaces`, `motor-traduccion-local`, `filtrar-y-agrupar-series`,
+`detectar-duplicados` y `claves-ia-por-proveedor` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -93,9 +94,9 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 143 unit (142 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 144 unit (143 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.400.816 B | `cargo build --profile dist` (2026-11-09) |
+| binario `dist` | 7.400.848 B | `cargo build --profile dist` (2026-11-10) |
 | cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
@@ -124,7 +125,7 @@ src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes, JSON atómico v2
 src/search.rs  índice efímero por libro; normaliza sin cambiar longitud
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
-src/secrets.rs API key en el llavero; `OPENCODE_API_KEY` como override
+src/secrets.rs API key por proveedor en el llavero; `OPENCODE_API_KEY` solo para OpenCode Go
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
 src/update.rs  consulta de releases, asset por plataforma, descarga y SHA-256
 src/backup.rs  respaldo ZIP de datos, manifiesto, checksums e importación segura
@@ -272,9 +273,11 @@ flotante tapando texto) solo aparecieron así.
     Ninguna consulta remota sale sin click explícito; apagarlo corta toda salida
     externa. La traducción y la IA con Ollama local no salen de la máquina y
     siguen disponibles (ADR-0022).
-17. **Las claves viven en el llavero del sistema o en `OPENCODE_API_KEY`**;
-    nunca en `config.json`, `consultas.json`, logs ni URLs. El estado se muestra
-    como llavero/entorno/no configurada, nunca el valor.
+17. **Cada proveedor tiene su propia clave en el llavero** (cuenta
+    `ai-api-key/<id>`); la histórica compartida se migra una sola vez.
+    `OPENCODE_API_KEY` solo aplica a OpenCode Go. Nunca se escribe una clave en
+    `config.json`, `consultas.json`, logs ni URLs; el estado se muestra como
+    llavero/entorno/no configurada, nunca el valor.
 18. **El historial es local** (`consultas.json`), con límite y borrado; no guarda
     el párrafo de contexto, claves ni se envía a proveedores. Las peticiones
     corren en un hilo y la UI no se bloquea.
@@ -322,6 +325,9 @@ flotante tapando texto) solo aparecieron así.
 33. **Los posibles duplicados usan título y autor normalizados**, no hashes ni
     contenido; la UI dice “posible” y nunca borra ni mueve un archivo sin una
     acción explícita. La detección es estado de UI y no se persiste.
+34. **Las claves de IA son por proveedor** y `OPENCODE_API_KEY` solo aplica a
+    OpenCode Go. Cambiar de proveedor recarga su clave; la clave histórica
+    compartida se migra una sola vez (ADR-0023).
 
 ## Definición de terminado (por tarea)
 

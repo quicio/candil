@@ -14,12 +14,12 @@ destacados/notas —con colores, selección entre párrafos, notas al pie con vi
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
 búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción
-(MyMemory o Ollama local), análisis con IA multi-proveedor, edición de
+(MyMemory o Ollama local), análisis con IA multi-proveedor (una clave por proveedor), edición de
 metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.400.816 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.400.848 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -166,7 +166,7 @@ src/
   annotations.rs destacados/notas por libro (offsets de texto + cita)
   search.rs  índice efímero de búsqueda (normaliza sin cambiar longitud)
   ai.rs      catálogo de proveedores y protocolos de IA
-  secrets.rs API key en el llavero; OPENCODE_API_KEY como override
+  secrets.rs API key por proveedor en el llavero; OPENCODE_API_KEY solo para OpenCode Go
   epub_edit.rs edición segura de metadatos y portada, con backup
   consulta.rs diccionario/traducción/IA (HTTP ureq) e historial local
   covers.rs  miniaturas de portada, hash FNV y caché
@@ -223,9 +223,9 @@ una anotación de otro libro, y la exportación a Markdown desde el mismo panel.
 También suma `G` / click en el porcentaje para abrir “Ir a…”, con salto por
 porcentaje del libro o número de capítulo.
 
-M7 (IA configurable) está cerrado: elegí entre nueve proveedores y guardá la API
-key en el llavero del sistema desde Configuración; `OPENCODE_API_KEY` sigue como
-override.
+M7 (IA configurable) está cerrado: elegí entre nueve proveedores y guardá una
+API key por proveedor en el llavero del sistema desde Configuración.
+`OPENCODE_API_KEY` solo aplica a OpenCode Go.
 
 M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar**
 (o `K`) para Wiktionary, MyMemory o un proveedor de IA; `⇧K` abre Traducción y
@@ -234,9 +234,9 @@ Diccionario, Traducción, IA e Historial; las consultas online están apagadas p
 defecto. La traducción puede usar **MyMemory** o **Ollama local**; el motor
 local no exige activar las consultas online y no manda el texto afuera.
 MyMemory recorta a 500 caracteres en el último espacio antes del límite y avisa
-cuando la traducción es parcial. La API key se guarda en el **llavero del
-sistema** (Keychain/Secret Service/Credential Manager) y `OPENCODE_API_KEY` sigue
-como override. El historial se guarda
+cuando la traducción es parcial. Cada proveedor guarda su **propia API key** en
+el **llavero del sistema** (Keychain/Secret Service/Credential Manager);
+`OPENCODE_API_KEY` solo aplica a OpenCode Go. El historial se guarda
 en `consultas.json` (local, con límite y borrado); desde el detalle del historial
 podés **Ir al texto** y volver a la frase. El centro **Configuración**
 (`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
@@ -319,8 +319,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - Diccionario y traducción usan Wiktionary/MyMemory (online); la traducción
   también puede usar Ollama local (sin API key y sin activar online). La IA admite
   OpenCode Go, OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek y
-  Ollama. Requiere API key salvo Ollama; la clave se guarda en el llavero del
-  sistema o se define en `OPENCODE_API_KEY`. Online está apagado por defecto.
+  Ollama. Requiere API key salvo Ollama; cada proveedor guarda la suya en el
+  llavero del sistema. `OPENCODE_API_KEY` solo aplica a OpenCode Go. Online está
+  apagado por defecto.
   El uso de la suscripción Go para lectura depende de sus términos y límites.
 - MyMemory admite hasta 500 caracteres por consulta: si la selección es más
   larga, se traduce el fragmento hasta la última palabra completa y se avisa.
@@ -342,10 +343,11 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M6 — Consultas y configuración (cerrado):** diccionario Wiktionary,
   traducción MyMemory, análisis con IA multi-proveedor, llavero del sistema,
   historial local (spec 60) y centro de configuración (spec 65). Online apagado
-  por defecto; la clave vive en el llavero o en `OPENCODE_API_KEY`.
+  por defecto; cada proveedor guarda su clave en el llavero y
+  `OPENCODE_API_KEY` solo aplica a OpenCode Go.
 - **M7 — IA configurable (cerrada):** OpenCode Go, OpenAI, Anthropic, Gemini,
-  OpenRouter, Groq, Mistral, DeepSeek y Ollama; clave en el llavero y selector
-  de proveedor en Configuración.
+  OpenRouter, Groq, Mistral, DeepSeek y Ollama; una clave por proveedor en el
+  llavero y selector de proveedor en Configuración.
 - **M17 — Traducción sin fricción (cerrada):** MyMemory recorta a 500 caracteres
   en palabra y avisa; traducción local opcional con Ollama, sin API key y sin
   activar consultas online.
@@ -353,6 +355,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   encabezados de grupo en el orden por serie.
 - **M19 — Posibles duplicados (cerrada):** detección por título y autor
   normalizados, filtro **Duplicados** e insignia en la tarjeta. No borra archivos.
+- **M20 — Claves por proveedor (cerrada):** cada proveedor de IA guarda su clave
+  en el llavero; `OPENCODE_API_KEY` solo aplica a OpenCode Go y la clave histórica
+  se migra sin duplicarse.
 
 ## Modo diagnóstico
 
@@ -380,8 +385,8 @@ cargo run --release -- --shot out.png --panel settings libro.epub
 - La comprobación de actualizaciones solo ocurre al pulsar “Buscar
   actualizaciones”; consulta `api.github.com` y no envía datos del libro ni de la
   biblioteca.
-- La clave de IA se guarda en el llavero del sistema; `OPENCODE_API_KEY` sigue
-  como override. Nunca se escribe en `config.json`, `consultas.json`, logs ni
+- Cada proveedor de IA guarda su propia clave en el llavero del sistema;
+  `OPENCODE_API_KEY` solo funciona con OpenCode Go. Nunca se escribe en `config.json`, `consultas.json`, logs ni
   URLs.
 - El historial guarda la consulta y la respuesta, no el párrafo de contexto.
 

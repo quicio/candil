@@ -15,7 +15,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 143 unit (1 live ignorado) + 10 integración
+cargo test                                  # 144 unit (1 live ignorado) + 10 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec

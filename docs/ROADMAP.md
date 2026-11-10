@@ -32,6 +32,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M17 | Traducción sin fricción | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0022](../docs/adr/0022-traduccion-local-y-limite-mymemory.md) | Traducir con MyMemory hasta 500 caracteres sin partir palabras u Ollama local sin activar online |
 | M18 | Series en la estantería | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Filtrar por serie o **Sin serie** y agrupar la grilla con encabezados en el orden por serie |
 | M19 | Posibles duplicados | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Detectar mismo título y autor, filtrar **Duplicados** e insignia en la tarjeta sin borrar archivos |
+| M20 | Claves por proveedor | **Hecho** | [ai-credentials](../openspec/specs/ai-credentials/spec.md), [ADR-0023](../docs/adr/0023-claves-ia-por-proveedor.md) | Una cuenta de llavero por proveedor, migración de la clave histórica y `OPENCODE_API_KEY` solo para OpenCode Go |
 
 ## M1 — Lector (terminado)
 
@@ -360,7 +361,7 @@ Cerrado el 2026-11-09:
 - Banderas `--order series` y `--series "Nombre"` para capturas y verificación.
 - Tests de nombres de serie, filtro y etiqueta truncada.
 - Verificación: **142 unit (141 + 1 live ignorado) + 10 integración**; `dist`
-  **7.400.816 B**.
+  **7.400.800 B**.
 
 ## M19 — Posibles duplicados (terminado)
 
@@ -376,6 +377,21 @@ Cerrado el 2026-11-09:
 - Tests de normalización, conteo, filtro y título vacío.
 - Verificación: **143 unit (142 + 1 live ignorado) + 10 integración**; `dist`
   **7.400.816 B**.
+
+## M20 — Claves por proveedor (terminado)
+
+Cerrado el 2026-11-10:
+
+- El llavero usa una cuenta por proveedor: `ai-api-key/<id>`.
+- Cambiar de proveedor recarga su clave, limpia el campo de entrada y cancela
+  cualquier confirmación de borrado pendiente.
+- `OPENCODE_API_KEY` solo aplica a OpenCode Go; ya no se envía a otros
+  proveedores.
+- La clave histórica `ai-api-key` se migra una sola vez a la cuenta del primer
+  proveedor que la cargue, sin duplicarla.
+- ADR-0023, tests del formato de cuenta y del alcance de la variable de entorno.
+- Verificación: **144 unit (143 + 1 live ignorado) + 10 integración**; `dist`
+  **7.400.848 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

@@ -6,7 +6,8 @@
 use keyring::Entry;
 
 const SERVICE: &str = "com.quicio.candil";
-const ACCOUNT: &str = "ai-api-key";
+const LEGACY_ACCOUNT: &str = "ai-api-key";
+const ACCOUNT_PREFIX: &str = "ai-api-key/";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
@@ -22,20 +23,43 @@ pub struct KeyState {
     pub error: Option<String>,
 }
 
-fn env_key() -> Option<String> {
+fn env_applies(provider: &str) -> bool {
+    provider == "opencode"
+}
+
+fn env_key(provider: &str) -> Option<String> {
+    // La variable histórica solo aplica a OpenCode Go. Usarla para otro
+    // proveedor mandaría la clave equivocada.
+    if !env_applies(provider) {
+        return None;
+    }
     std::env::var("OPENCODE_API_KEY")
         .ok()
         .map(|key| key.trim().to_string())
         .filter(|key| !key.is_empty())
 }
 
-fn entry() -> Result<Entry, String> {
-    Entry::new(SERVICE, ACCOUNT).map_err(|error| format!("No pude abrir el llavero: {error}"))
+/// Cuenta del llavero para un proveedor. El valor incluye solo el id, nunca la
+/// clave.
+pub fn account_for(provider: &str) -> String {
+    format!("{ACCOUNT_PREFIX}{provider}")
 }
 
-/// Resuelve la clave efectiva: entorno primero, después llavero.
-pub fn load() -> KeyState {
-    if let Some(key) = env_key() {
+fn entry_for(provider: &str) -> Result<Entry, String> {
+    Entry::new(SERVICE, &account_for(provider))
+        .map_err(|error| format!("No pude abrir el llavero: {error}"))
+}
+
+fn legacy_entry() -> Result<Entry, String> {
+    Entry::new(SERVICE, LEGACY_ACCOUNT)
+        .map_err(|error| format!("No pude abrir el llavero: {error}"))
+}
+
+/// Resuelve la clave efectiva del proveedor: entorno (solo OpenCode Go),
+/// después su entrada del llavero. Si no hay entrada propia, migra la clave
+/// histórica compartida a la primera cuenta que la necesite.
+pub fn load(provider: &str) -> KeyState {
+    if let Some(key) = env_key(provider) {
         return KeyState {
             key: Some(key),
             source: Source::Env,
@@ -52,7 +76,7 @@ pub fn load() -> KeyState {
         };
     }
 
-    let entry = match entry() {
+    let entry = match entry_for(provider) {
         Ok(entry) => entry,
         Err(error) => {
             return KeyState {
@@ -74,7 +98,43 @@ pub fn load() -> KeyState {
             source: Source::None,
             error: None,
         },
-        Err(keyring::Error::NoEntry) => KeyState {
+        Err(keyring::Error::NoEntry) => migrate_legacy(provider),
+        Err(error) => KeyState {
+            key: None,
+            source: Source::None,
+            error: Some(format!("No pude leer la clave del llavero: {error}")),
+        },
+    }
+}
+
+/// Mueve la clave histórica `ai-api-key` a la cuenta del proveedor actual. Si
+/// falla la escritura, igual devuelve la clave para esta sesión; si falla el
+/// borrado, la entrada vieja queda como respaldo.
+fn migrate_legacy(provider: &str) -> KeyState {
+    let legacy = match legacy_entry() {
+        Ok(entry) => entry,
+        Err(_) => {
+            return KeyState {
+                key: None,
+                source: Source::None,
+                error: None,
+            }
+        }
+    };
+    match legacy.get_password() {
+        Ok(key) if !key.trim().is_empty() => {
+            let key = key.trim().to_string();
+            if let Ok(entry) = entry_for(provider) {
+                let _ = entry.set_password(&key);
+            }
+            let _ = legacy.delete_credential();
+            KeyState {
+                key: Some(key),
+                source: Source::Keyring,
+                error: None,
+            }
+        }
+        Ok(_) | Err(keyring::Error::NoEntry) => KeyState {
             key: None,
             source: Source::None,
             error: None,
@@ -87,18 +147,18 @@ pub fn load() -> KeyState {
     }
 }
 
-pub fn save(key: &str) -> Result<(), String> {
+pub fn save(provider: &str, key: &str) -> Result<(), String> {
     let key = key.trim();
     if key.is_empty() {
         return Err("La API key está vacía.".into());
     }
-    entry()?
+    entry_for(provider)?
         .set_password(key)
         .map_err(|error| format!("No pude guardar la clave en el llavero: {error}"))
 }
 
-pub fn delete() -> Result<(), String> {
-    match entry()?.delete_credential() {
+pub fn delete(provider: &str) -> Result<(), String> {
+    match entry_for(provider)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(format!("No pude borrar la clave del llavero: {error}")),
     }
@@ -113,5 +173,26 @@ pub fn status(state: &KeyState) -> String {
         Source::Env => "OPENCODE_API_KEY detectada en el entorno (tiene prioridad)".into(),
         Source::Keyring => "Clave guardada en el llavero del sistema".into(),
         Source::None => "Sin API key configurada".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cuentas_por_proveedor_son_estables_y_distintas() {
+        assert_eq!(account_for("openai"), "ai-api-key/openai");
+        assert_eq!(account_for("opencode"), "ai-api-key/opencode");
+        assert_ne!(account_for("openai"), account_for("anthropic"));
+        assert_ne!(account_for("openai"), LEGACY_ACCOUNT);
+    }
+
+    #[test]
+    fn variable_de_entorno_solo_aplica_a_opencode() {
+        assert!(env_applies("opencode"));
+        assert!(!env_applies("openai"));
+        assert!(!env_applies("anthropic"));
+        assert!(!env_applies("ollama"));
     }
 }

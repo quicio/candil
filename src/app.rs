@@ -734,7 +734,7 @@ impl Lector {
         crate::macos::set_app_icon();
 
         let theme_idx = cfg.settings.theme;
-        let ai_key = secrets::load();
+        let ai_key = secrets::load(&cfg.consulta.ai_provider);
         let initial_delete = if dev.confirm_delete {
             annotations.sorted_all().first().map(|a| a.id)
         } else {
@@ -2436,6 +2436,10 @@ impl Lector {
                                                 provider.base_url.into();
                                             self.cfg.consulta.ai_model =
                                                 provider.default_model.into();
+                                            self.ai_key =
+                                                secrets::load(&self.cfg.consulta.ai_provider);
+                                            self.ai_key_input.clear();
+                                            self.confirm_delete_ai_key = false;
                                             changed = true;
                                         }
                                     });
@@ -2485,6 +2489,15 @@ impl Lector {
                                                 th.dim
                                             }),
                                     );
+                                    if ai::requires_key(&self.cfg.consulta.ai_provider) {
+                                        ui.label(
+                                            RichText::new(
+                                                "Cada proveedor guarda su propia clave en el llavero.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        );
+                                    }
                                     if self.confirm_delete_ai_key
                                         && self.ai_key.source == secrets::Source::Keyring
                                     {
@@ -3033,9 +3046,9 @@ impl Lector {
             open_path(&Config::data_dir().to_string_lossy());
         }
         if save_ai_key {
-            match secrets::save(&self.ai_key_input) {
+            match secrets::save(&self.cfg.consulta.ai_provider, &self.ai_key_input) {
                 Ok(()) => {
-                    self.ai_key = secrets::load();
+                    self.ai_key = secrets::load(&self.cfg.consulta.ai_provider);
                     self.ai_key_input.clear();
                     self.say("Clave guardada en el llavero.");
                 }
@@ -3046,9 +3059,9 @@ impl Lector {
             }
         }
         if delete_ai_key {
-            match secrets::delete() {
+            match secrets::delete(&self.cfg.consulta.ai_provider) {
                 Ok(()) => {
-                    self.ai_key = secrets::load();
+                    self.ai_key = secrets::load(&self.cfg.consulta.ai_provider);
                     self.ai_key_input.clear();
                     self.say("Clave borrada del llavero.");
                 }

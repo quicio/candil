@@ -63,6 +63,7 @@ enum LibraryFilter {
     Reading,
     Unread,
     Missing,
+    Duplicates,
     Series(String),
     NoSeries,
 }
@@ -74,6 +75,7 @@ impl LibraryFilter {
             Self::Reading => "Leyendo".into(),
             Self::Unread => "Sin empezar".into(),
             Self::Missing => "Faltantes".into(),
+            Self::Duplicates => "Duplicados".into(),
             Self::Series(name) => {
                 let short: String = name.chars().take(22).collect();
                 if short.chars().count() < name.chars().count() {
@@ -87,12 +89,40 @@ impl LibraryFilter {
     }
 }
 
-fn matches_filter(filter: &LibraryFilter, book: &BookEntry) -> bool {
+/// Clave de posible duplicado: título y autor normalizados. No se usa el
+/// contenido ni el nombre de archivo; dos ediciones distintas pueden compartir
+/// título y autor, por eso la UI habla de "posibles duplicados".
+fn duplicate_key(book: &BookEntry) -> Option<String> {
+    let title = collate(book.title.trim());
+    if title.is_empty() {
+        return None;
+    }
+    let author = collate(book.author.trim());
+    Some(format!("{title}\u{1f}{author}"))
+}
+
+fn duplicate_counts(books: &[BookEntry]) -> HashMap<String, usize> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for book in books {
+        if let Some(key) = duplicate_key(book) {
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn matches_filter(
+    filter: &LibraryFilter,
+    book: &BookEntry,
+    duplicates: &HashMap<String, usize>,
+) -> bool {
     match filter {
         LibraryFilter::All => true,
         LibraryFilter::Reading => book.progress.has_started(),
         LibraryFilter::Unread => !book.progress.has_started(),
         LibraryFilter::Missing => book.missing,
+        LibraryFilter::Duplicates => duplicate_key(book)
+            .is_some_and(|key| duplicates.get(&key).is_some_and(|count| *count > 1)),
         LibraryFilter::Series(name) => book
             .series
             .as_deref()
@@ -111,6 +141,8 @@ struct CardData {
     author: String,
     series: Option<String>,
     series_name: Option<String>,
+    /// Cantidad de libros con el mismo título y autor; 0 = único.
+    duplicate_count: usize,
     cover: Option<(egui::TextureId, Vec2)>,
     chapters: usize,
     chapter: usize,
@@ -647,6 +679,8 @@ pub struct DevOpts {
     pub anchor: Option<String>,
     /// `recent`, `title`, `author`, `series` o `added` (capturas/dev).
     pub library_order: Option<String>,
+    /// `all`, `reading`, `unread`, `missing` o `duplicates` (capturas/dev).
+    pub library_filter: Option<String>,
     /// Filtra la biblioteca por nombre de serie (capturas/dev).
     pub library_series: Option<String>,
 }
@@ -898,6 +932,14 @@ impl Lector {
         }
         if let Some(series) = app.dev.library_series.clone() {
             app.library_filter = LibraryFilter::Series(series);
+        } else if let Some(filter) = app.dev.library_filter.as_deref() {
+            app.library_filter = match filter {
+                "reading" => LibraryFilter::Reading,
+                "unread" => LibraryFilter::Unread,
+                "missing" => LibraryFilter::Missing,
+                "duplicates" => LibraryFilter::Duplicates,
+                _ => LibraryFilter::All,
+            };
         }
         app
     }
@@ -4938,6 +4980,7 @@ impl Lector {
                                         LibraryFilter::Reading,
                                         LibraryFilter::Unread,
                                         LibraryFilter::Missing,
+                                        LibraryFilter::Duplicates,
                                     ];
                                     for name in &series_names {
                                         filters.push(LibraryFilter::Series(name.clone()));
@@ -5743,12 +5786,13 @@ impl Lector {
 
     fn visible_books(&self) -> Vec<usize> {
         let query = collate(self.library_search.trim());
+        let duplicates = duplicate_counts(&self.library.books);
         let mut out: Vec<usize> = self
             .library
             .books
             .iter()
             .enumerate()
-            .filter(|(_, b)| matches_filter(&self.library_filter, b))
+            .filter(|(_, b)| matches_filter(&self.library_filter, b, &duplicates))
             .filter(|(_, b)| {
                 query.is_empty()
                     || collate(&b.title).contains(&query)
@@ -5804,6 +5848,7 @@ impl Lector {
 
     fn cards(&mut self, indices: &[usize], ctx: &egui::Context) -> Vec<CardData> {
         let data_dir = self.library.data_dir.clone();
+        let duplicates = duplicate_counts(&self.library.books);
         indices
             .iter()
             .filter_map(|&index| {
@@ -5818,6 +5863,10 @@ impl Lector {
                     .map(str::trim)
                     .filter(|name| !name.is_empty())
                     .map(str::to_string);
+                let duplicate_count = duplicate_key(&entry)
+                    .and_then(|key| duplicates.get(&key).copied())
+                    .filter(|count| *count > 1)
+                    .unwrap_or(0);
                 Some(CardData {
                     index,
                     path: entry.path,
@@ -5831,6 +5880,7 @@ impl Lector {
                         None => name.clone(),
                     }),
                     series_name,
+                    duplicate_count,
                     cover,
                     chapters: entry.chapters,
                     chapter: entry.progress.chapter,
@@ -8326,6 +8376,17 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
                 Stroke::new(1.0, th.dim.gamma_multiply(0.18)),
                 egui::StrokeKind::Inside,
             );
+            if card.duplicate_count > 0 {
+                let text = format!("Posible duplicado ×{}", card.duplicate_count);
+                let font = FontId::new(theme::text::META, fonts::family(true, false));
+                let galley = ui.painter().layout_no_wrap(text, font, th.bg);
+                let pad = Vec2::new(6.0, 3.0);
+                let size = galley.size() + pad * 2.0;
+                let rect = egui::Rect::from_min_size(cover_rect.min + Vec2::new(8.0, 8.0), size);
+                ui.painter()
+                    .rect_filled(rect, 4.0, th.accent.gamma_multiply(0.92));
+                ui.painter().galley(rect.min + pad, galley, th.bg);
+            }
 
             ui.add_space(8.0);
             ui.allocate_ui_with_layout(
@@ -8466,6 +8527,11 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
         response = response.on_hover_text(
             "El archivo ya no está.\n\nClic para ubicarlo o quitarlo de la biblioteca.",
         );
+    } else if card.duplicate_count > 0 {
+        response = response.on_hover_text(format!(
+            "Posible duplicado: {} libros con el mismo título y autor.\n\nClic para abrir; menú derecho para mostrar en Finder o quitarlo de la biblioteca.",
+            card.duplicate_count
+        ));
     }
     response.context_menu(|ui| {
         if !card.missing && card.error.is_none() && ui.button("Abrir").clicked() {
@@ -9264,19 +9330,69 @@ mod tests {
             series: Some("Saga".into()),
             ..BookEntry::default()
         };
-        assert!(matches_filter(&LibraryFilter::Series("Saga".into()), &book));
-        assert!(matches_filter(&LibraryFilter::Series("saga".into()), &book));
+        let duplicates = HashMap::new();
+        assert!(matches_filter(
+            &LibraryFilter::Series("Saga".into()),
+            &book,
+            &duplicates
+        ));
+        assert!(matches_filter(
+            &LibraryFilter::Series("saga".into()),
+            &book,
+            &duplicates
+        ));
         assert!(!matches_filter(
             &LibraryFilter::Series("Otra".into()),
-            &book
+            &book,
+            &duplicates
         ));
-        assert!(!matches_filter(&LibraryFilter::NoSeries, &book));
+        assert!(!matches_filter(
+            &LibraryFilter::NoSeries,
+            &book,
+            &duplicates
+        ));
 
         book.series = None;
-        assert!(matches_filter(&LibraryFilter::NoSeries, &book));
+        assert!(matches_filter(&LibraryFilter::NoSeries, &book, &duplicates));
         assert!(!matches_filter(
             &LibraryFilter::Series("Saga".into()),
-            &book
+            &book,
+            &duplicates
+        ));
+    }
+
+    #[test]
+    fn detecta_duplicados_por_titulo_y_autor() {
+        let first = BookEntry {
+            title: "Cien años de soledad".into(),
+            author: "Gabriel García Márquez".into(),
+            ..BookEntry::default()
+        };
+        let second = BookEntry {
+            title: "cien anos de soledad".into(),
+            author: "gabriel garcia marquez".into(),
+            ..BookEntry::default()
+        };
+        let unique = BookEntry {
+            title: "Otro libro".into(),
+            author: "Otra autora".into(),
+            ..BookEntry::default()
+        };
+        let empty = BookEntry::default();
+        let books = vec![first.clone(), second.clone(), unique.clone(), empty];
+
+        let counts = duplicate_counts(&books);
+        assert_eq!(counts.values().filter(|count| **count > 1).count(), 1);
+        assert_eq!(
+            counts.get(&duplicate_key(&first).unwrap()).copied(),
+            Some(2)
+        );
+        assert!(matches_filter(&LibraryFilter::Duplicates, &first, &counts));
+        assert!(matches_filter(&LibraryFilter::Duplicates, &second, &counts));
+        assert!(!matches_filter(
+            &LibraryFilter::Duplicates,
+            &unique,
+            &counts
         ));
     }
 

@@ -31,6 +31,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M16 | Inicio y enlaces | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Elegir inicio (último libro/biblioteca), volver con un icono y confirmar enlaces externos |
 | M17 | Traducción sin fricción | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0022](../docs/adr/0022-traduccion-local-y-limite-mymemory.md) | Traducir con MyMemory hasta 500 caracteres sin partir palabras u Ollama local sin activar online |
 | M18 | Series en la estantería | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Filtrar por serie o **Sin serie** y agrupar la grilla con encabezados en el orden por serie |
+| M19 | Posibles duplicados | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Detectar mismo título y autor, filtrar **Duplicados** e insignia en la tarjeta sin borrar archivos |
 
 ## M1 — Lector (terminado)
 
@@ -279,8 +280,8 @@ Cerrado el 2026-11-09:
 - Verificación: **134 unit (133 + 1 live ignorado) + 10 integración**; `dist`
   **7.284.320 B**.
 
-Queda para la siguiente fase de biblioteca: series/colecciones, detección de
-duplicados, virtualización de la grilla y búsqueda full-text de la biblioteca.
+Queda para la siguiente fase de biblioteca: virtualización de la grilla y
+búsqueda full-text de la biblioteca.
 
 ## M14 — Respaldo y notas (terminado)
 
@@ -359,7 +360,22 @@ Cerrado el 2026-11-09:
 - Banderas `--order series` y `--series "Nombre"` para capturas y verificación.
 - Tests de nombres de serie, filtro y etiqueta truncada.
 - Verificación: **142 unit (141 + 1 live ignorado) + 10 integración**; `dist`
-  **7.400.800 B**.
+  **7.400.816 B**.
+
+## M19 — Posibles duplicados (terminado)
+
+Cerrado el 2026-11-09:
+
+- Clave conservadora por **título + autor normalizados** (minúsculas y acentos
+  plegados); un título vacío nunca agrupa.
+- El filtro **Duplicados** muestra solo entradas con al menos otra copia.
+- Insignia **Posible duplicado ×N** en la portada y tooltip con el criterio.
+- No se borra, mueve ni fusiona nada: quitar una entrada sigue siendo una acción
+  explícita del menú contextual.
+- Bandera `--filter duplicates` para capturas.
+- Tests de normalización, conteo, filtro y título vacío.
+- Verificación: **143 unit (142 + 1 live ignorado) + 10 integración**; `dist`
+  **7.400.816 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

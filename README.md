@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.400.800 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.400.816 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -299,6 +299,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   (con debounce) o a mano desde “Refrescar”.
 - Las series se muestran, se ordenan y se filtran; en el orden Serie la grilla
   agrupa los libros con un encabezado y deja **Sin serie** al final.
+- Los posibles duplicados se detectan por título y autor normalizados; no se
+  comparan bytes ni se fusionan entradas. Candil nunca borra un EPUB por su
+  cuenta.
 - Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
   borrar una portada existente ni editar series/editorial/fecha.
 - La actualización desde la app consulta GitHub a pedido, descarga el binario
@@ -348,6 +351,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   activar consultas online.
 - **M18 — Series en la estantería (cerrada):** filtro por serie o **Sin serie** y
   encabezados de grupo en el orden por serie.
+- **M19 — Posibles duplicados (cerrada):** detección por título y autor
+  normalizados, filtro **Duplicados** e insignia en la tarjeta. No borra archivos.
 
 ## Modo diagnóstico
 

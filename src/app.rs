@@ -3551,6 +3551,17 @@ impl Lector {
                         .size(theme::text::META)
                         .color(th.dim),
                     );
+                    if target.text.chars().count() > consulta::MAX_TEXT_CHARS {
+                        ui.label(
+                            RichText::new(format!(
+                                "La selección supera {} caracteres; se enviarán los primeros {}.",
+                                consulta::MAX_TEXT_CHARS,
+                                consulta::MAX_TEXT_CHARS
+                            ))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                        );
+                    }
                     let enabled = (self.cfg.consulta.online_enabled || local_ai)
                         && !self.consulta_busy
                         && has_key;

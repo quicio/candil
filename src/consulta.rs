@@ -708,6 +708,28 @@ pub fn parse_anthropic(body: &str, label: &str) -> Result<String, String> {
     }
 }
 
+/// El proveedor cortó la respuesta por alcanzar el límite de tokens de salida.
+pub fn response_cut_by_tokens(body: &str, protocol: ai::Protocol) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return false;
+    };
+    match protocol {
+        ai::Protocol::OpenAi => {
+            value
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                == Some("length")
+        }
+        ai::Protocol::Anthropic => {
+            value.get("stop_reason").and_then(Value::as_str) == Some("max_tokens")
+        }
+        ai::Protocol::Gemini => value
+            .pointer("/candidates/0/finishReason")
+            .and_then(Value::as_str)
+            .is_some_and(|reason| reason == "MAX_TOKENS"),
+    }
+}
+
 pub fn parse_gemini(body: &str, label: &str) -> Result<String, String> {
     let value: Value = serde_json::from_str(body)
         .map_err(|e| format!("{label} devolvió un JSON inválido: {e}"))?;
@@ -968,15 +990,26 @@ fn ai(
         Protocol::Anthropic => parse_anthropic(&response, provider.label)?,
         Protocol::Gemini => parse_gemini(&response, provider.label)?,
     };
+    let cut_short = response_cut_by_tokens(&response, provider.protocol);
+    let mut sections = vec![Section {
+        title: prompt.label().into(),
+        body: content.clone(),
+    }];
+    if cut_short {
+        sections.push(Section {
+            title: "Aviso".into(),
+            body: format!(
+                "La respuesta se cortó por el límite de {} tokens. Subí «máx. tokens» en Configuración y volvé a consultar.",
+                settings.ai_max_tokens
+            ),
+        });
+    }
     Ok(ConsultaResponse {
         kind: ConsultaKind::Ia,
         provider: provider.label.into(),
         model: Some(settings.ai_model.clone()),
         source_url: Some(provider.source_url.into()),
-        sections: vec![Section {
-            title: prompt.label().into(),
-            body: content.clone(),
-        }],
+        sections,
         raw: truncate_chars(&content, MAX_RESPONSE_CHARS),
     })
 }
@@ -1229,6 +1262,37 @@ mod tests {
         assert!(parse_openai(error, "OpenCode Go")
             .unwrap_err()
             .contains("invalid key"));
+    }
+
+    #[test]
+    fn detecta_respuestas_cortadas_por_tokens() {
+        let openai = r#"{"choices":[{"message":{"content":"..."},"finish_reason":"length"}]}"#;
+        assert!(response_cut_by_tokens(openai, Protocol::OpenAi));
+        let anthropic = r#"{"content":[{"type":"text","text":"..."}],"stop_reason":"max_tokens"}"#;
+        assert!(response_cut_by_tokens(anthropic, Protocol::Anthropic));
+        let gemini = r#"{"candidates":[{"content":{"parts":[{"text":"..."}]},"finishReason":"MAX_TOKENS"}]}"#;
+        assert!(response_cut_by_tokens(gemini, Protocol::Gemini));
+        let normal = r#"{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}"#;
+        assert!(!response_cut_by_tokens(normal, Protocol::OpenAi));
+    }
+
+    #[test]
+    fn ia_avisa_si_la_respuesta_se_corta() {
+        let body =
+            r#"{"choices":[{"message":{"content":"Texto cortado"},"finish_reason":"length"}]}"#;
+        let transport = Mock::ok(body);
+        let result = run(
+            &transport,
+            &request(ConsultaKind::Ia, "frase"),
+            &ConsultaSettings::default(),
+            AiPrompt::Explicar,
+            Some("clave"),
+            "s",
+        )
+        .unwrap();
+        assert_eq!(result.sections.len(), 2);
+        assert_eq!(result.sections[1].title, "Aviso");
+        assert!(result.sections[1].body.contains("1536"));
     }
 
     #[test]

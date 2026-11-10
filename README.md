@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.400.848 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.400.832 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -326,6 +326,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - MyMemory admite hasta 500 caracteres por consulta: si la selección es más
   larga, se traduce el fragmento hasta la última palabra completa y se avisa.
 - La traducción se muestra solo en el panel; no reemplaza el texto del libro.
+- Las respuestas de IA usan **1536 tokens** por defecto. Si igual llegan al
+  límite, Candil muestra un aviso y sugiere subir **máx. tokens**; no corta la
+  respuesta en silencio.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -358,6 +361,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M20 — Claves por proveedor (cerrada):** cada proveedor de IA guarda su clave
   en el llavero; `OPENCODE_API_KEY` solo aplica a OpenCode Go y la clave histórica
   se migra sin duplicarse.
+- **M21 — Respuestas completas de IA (cerrada):** default de 1536 tokens, aviso
+  cuando el proveedor corta por límite y migración del default viejo de 512.
 
 ## Modo diagnóstico
 

@@ -87,7 +87,8 @@ pub const DEFAULT_AI_BASE: &str = "https://opencode.ai/inference/go/openai/v1";
 pub const DEFAULT_AI_MODEL: &str = "deepseek-v4.1-flash";
 pub const HISTORY_DEFAULT: usize = 200;
 pub const AI_TIMEOUT_DEFAULT: u64 = 30;
-pub const AI_MAX_TOKENS_DEFAULT: u32 = 512;
+pub const AI_MAX_TOKENS_DEFAULT: u32 = 1_536;
+const AI_MAX_TOKENS_LEGACY: u32 = 512;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -131,6 +132,10 @@ impl Default for ConsultaSettings {
 impl ConsultaSettings {
     pub fn clamp(&mut self) {
         self.ai_timeout_secs = self.ai_timeout_secs.clamp(5, 120);
+        // El default viejo (512) cortaba explicaciones a mitad de frase.
+        if self.ai_max_tokens == AI_MAX_TOKENS_LEGACY {
+            self.ai_max_tokens = AI_MAX_TOKENS_DEFAULT;
+        }
         self.ai_max_tokens = self.ai_max_tokens.clamp(64, 4096);
         self.history_limit = self.history_limit.min(2000);
         if !crate::ai::is_valid(&self.ai_provider) {
@@ -434,6 +439,23 @@ mod tests {
         assert_eq!(c.ai_base_url, DEFAULT_AI_BASE);
         assert_eq!(c.ai_model, DEFAULT_AI_MODEL);
         assert_eq!(c.translation_provider, "mymemory");
+    }
+
+    #[test]
+    fn max_tokens_viejo_se_actualiza_al_default_nuevo() {
+        let mut c = ConsultaSettings {
+            ai_max_tokens: 512,
+            ..ConsultaSettings::default()
+        };
+        c.clamp();
+        assert_eq!(c.ai_max_tokens, AI_MAX_TOKENS_DEFAULT);
+
+        let mut custom = ConsultaSettings {
+            ai_max_tokens: 700,
+            ..ConsultaSettings::default()
+        };
+        custom.clamp();
+        assert_eq!(custom.ai_max_tokens, 700);
     }
 
     #[test]

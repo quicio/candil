@@ -33,6 +33,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M18 | Series en la estantería | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Filtrar por serie o **Sin serie** y agrupar la grilla con encabezados en el orden por serie |
 | M19 | Posibles duplicados | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Detectar mismo título y autor, filtrar **Duplicados** e insignia en la tarjeta sin borrar archivos |
 | M20 | Claves por proveedor | **Hecho** | [ai-credentials](../openspec/specs/ai-credentials/spec.md), [ADR-0023](../docs/adr/0023-claves-ia-por-proveedor.md) | Una cuenta de llavero por proveedor, migración de la clave histórica y `OPENCODE_API_KEY` solo para OpenCode Go |
+| M21 | Respuestas completas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md) | Default de 1536 tokens, migración del 512 viejo y aviso cuando el proveedor corta la respuesta |
 
 ## M1 — Lector (terminado)
 
@@ -392,6 +393,22 @@ Cerrado el 2026-11-10:
 - ADR-0023, tests del formato de cuenta y del alcance de la variable de entorno.
 - Verificación: **144 unit (143 + 1 live ignorado) + 10 integración**; `dist`
   **7.400.848 B**.
+
+## M21 — Respuestas completas (terminado)
+
+Cerrado el 2026-11-10:
+
+- **máx. tokens** por defecto pasa de 512 a **1536**; una configuración con el
+  valor viejo exacto migra una vez y un valor personalizado se respeta.
+- OpenAI/Ollama (`finish_reason=length`), Anthropic (`stop_reason=max_tokens`) y
+  Gemini (`finishReason=MAX_TOKENS`) detectan el corte.
+- La respuesta cortada agrega un **Aviso** con el límite actual y la acción de
+  subirlo; no se presenta una respuesta incompleta como completa.
+- Una selección de más de 2000 caracteres avisa que se enviarán los primeros
+  2000.
+- Tests de migración de tokens, detección por protocolo y sección de aviso.
+- Verificación: **148 unit (147 + 1 live ignorado) + 10 integración**; `dist`
+  **7.400.832 B**.
 
 ## Consolidación UX/UI (2026-11-08)
 

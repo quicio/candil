@@ -87,9 +87,12 @@ re-enlazar los 249 crates en cada build. Tres perfiles para tres momentos:
 
 | perfil | cuándo | cambio de una línea | binario |
 |---|---|---|---|
-| `fast` | iterar | ~3–6 s (incremental, 2026-11-05) | 10.1 MB |
+| `fast` | iterar | ~16 s (sin incremental, 2026-11-10) | 15.6 MB |
 | `release` | uso diario | ~17 s (LTO thin) | 7.7 MB |
-| `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 5.5 MB |
+| `dist` | distribuir | ~56 s (LTO fat, `opt-level="z"`) | 7.4 MB |
+
+Los perfiles `dev` y `fast` no usan compilación incremental ni debug info: se
+pierde velocidad de recompilación, pero se evita que `target/` crezca varios GB.
 
 ### Compilar en otros sistemas
 

@@ -36,7 +36,9 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 
 - El disco de la máquina está al límite: **no dejes perfiles de compilación
   acumulados**. `cargo clean --profile dist` / `--profile release` antes de builds
-  grandes. Un link que falla con `errno=28` es disco lleno, no código.
+  grandes. `dev` y `fast` corren sin incremental ni debug info para no llenar
+  `target/`; no los reactives sin medir. Un link que falla con `errno=28` es disco
+  lleno, no código.
 - No subir `egui`/`eframe` sin ADR: 0.37 es una reescritura (`App::ui`, sin
   `TopBottomPanel`). Ver `docs/adr/0003`.
 - No agregar motor CSS ni webview: el modelo `Block` es el contrato.

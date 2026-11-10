@@ -103,7 +103,8 @@ el mismo):
 | tests | 151 unit (150 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
 | binario `dist` | 7.417.504 B | `cargo build --profile dist` (2026-11-10) |
-| cambio de una línea | 2.7–6 s según módulo | `cargo build --profile fast` incremental |
+| `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
+| cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
 
 La medición de biblioteca se hizo con 43 EPUB. Después `~/Libros` quedó en 40
@@ -115,7 +116,9 @@ no se comparan directamente. Para reproducir, usar `--inspect` y anotar la fecha
 El 1.3 s de ADR-0006 era la referencia de M1; con el parser más grande, un cambio
 en `xhtml.rs` cuesta ~6 s y en `app.rs`/`config.rs` ~2.7–3.5 s.
 
-Advertencia de entorno: el disco sigue trabajando al límite (95% usado). Si
+Advertencia de entorno: el disco sigue trabajando al límite (95% usado). Los
+perfiles `dev` y `fast` tienen `incremental = false` y `debug = false` para no
+acumular GB en `target/`; un cambio de una línea en `fast` tarda ~16 s. Si
 aparece un error de linker raro (`errno=28`), revisar `df -h` antes que el
 código.
 

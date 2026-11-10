@@ -20,13 +20,20 @@ keyring = "4.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 rfd = "0.15"
 
-# Iteración diaria: optimizado como release pero sin LTO ni debug info.
-# Recompila solo el crate propio (~2-4 s por cambio) y corre a velocidad real.
+# Iteración diaria: optimizado como release, sin LTO ni debug info.
+# Sin incremental: recompila el crate propio (~5-15 s por cambio) pero evita
+# los directorios `incremental/`, que son los que más disco consumen.
 [profile.fast]
 inherits = "dev"
 opt-level = 2
 debug = false
-incremental = true
+incremental = false
+
+# Tests y `cargo build` normal: sin incremental ni debug info para cuidar disco.
+# Si necesitás backtraces con líneas, compilá con `cargo test --profile fast`.
+[profile.dev]
+incremental = false
+debug = false
 
 # Binario de uso normal: LTO thin, buen equilibrio compilación/runtime.
 [profile.release]

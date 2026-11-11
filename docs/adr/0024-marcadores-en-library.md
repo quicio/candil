@@ -69,3 +69,10 @@ reindexar o reasociar.
 - Un escaneo o `relink` conserva los marcadores.
 - No se agregan dependencias.
 - Tests cubren alta, orden, borrado e idempotencia de la posición.
+
+## Actualización (2026-11-11)
+
+La etiqueta dejó de ser un campo reservado: el panel **Marcadores** permite
+escribir una etiqueta al crear y renombrar una existente. `B` sigue guardando sin
+etiqueta y una etiqueta vacía cae al título del capítulo. No cambia el esquema de
+`library.json` ni la migración.

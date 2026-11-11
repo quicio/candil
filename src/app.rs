@@ -688,6 +688,8 @@ pub struct Lector {
     notes_query: String,
     confirm_delete_annotation: Option<u64>,
     show_bookmarks: bool,
+    bookmark_label_input: String,
+    bookmark_edit: Option<(u64, String)>,
     active_color: u8,
     consulta_history: ConsultaHistory,
     consulta_session: String,
@@ -941,6 +943,8 @@ impl Lector {
             annotations_global: false,
             notes_query: String::new(),
             show_bookmarks: false,
+            bookmark_label_input: String::new(),
+            bookmark_edit: None,
             active_color: 0,
             consulta_history,
             consulta_session: new_session_id(),
@@ -1710,9 +1714,23 @@ impl Lector {
             self.say("Ya hay un marcador en esta posición.");
             return;
         }
-        entry.add_bookmark(progress, String::new());
+        entry.add_bookmark(progress, self.bookmark_label_input.trim().to_string());
+        self.bookmark_label_input.clear();
         self.save_library();
         self.say("Marcador añadido.");
+    }
+
+    fn rename_bookmark(&mut self, id: u64, label: String) {
+        let Some(key) = self.book_key() else {
+            return;
+        };
+        let Some(entry) = self.library.books.iter_mut().find(|b| b.path == key) else {
+            return;
+        };
+        if entry.set_bookmark_label(id, label) {
+            self.save_library();
+            self.say("Marcador renombrado.");
+        }
     }
 
     fn remove_bookmark(&mut self, id: u64) {
@@ -7098,6 +7116,9 @@ impl Lector {
         let mut add_here = false;
         let mut jump: Option<Progress> = None;
         let mut remove: Option<u64> = None;
+        let mut edit = self.bookmark_edit.clone();
+        let mut save_edit = false;
+        let mut cancel_edit = false;
 
         egui::Window::new(
             RichText::new("Marcadores")
@@ -7108,26 +7129,60 @@ impl Lector {
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .default_width(widgets::PANEL_SM)
+        .default_width(widgets::PANEL_MD)
         .frame(widgets::panel_frame(th))
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = theme::space::XS;
-            if widgets::button(
-                ui,
-                th,
-                "Añadir marcador aquí",
-                widgets::ButtonKind::Secondary,
-            )
-            .on_hover_text("También podés usar B en el lector")
-            .clicked()
-            {
-                add_here = true;
+            if let Some((_, label)) = edit.as_mut() {
+                ui.label(
+                    RichText::new("Renombrar marcador")
+                        .size(theme::text::LABEL)
+                        .color(th.dim),
+                );
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(label)
+                            .hint_text("Etiqueta")
+                            .desired_width(220.0),
+                    );
+                    if widgets::button(ui, th, "Guardar", widgets::ButtonKind::Primary).clicked() {
+                        save_edit = true;
+                    }
+                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked()
+                    {
+                        cancel_edit = true;
+                    }
+                });
+            } else {
+                ui.label(
+                    RichText::new("Etiqueta opcional")
+                        .size(theme::text::LABEL)
+                        .color(th.dim),
+                );
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.bookmark_label_input)
+                            .hint_text("Ej. «Carta de Darcy»")
+                            .desired_width(220.0),
+                    );
+                    if widgets::button(
+                        ui,
+                        th,
+                        "Añadir marcador aquí",
+                        widgets::ButtonKind::Secondary,
+                    )
+                    .on_hover_text("También podés usar B para guardar sin etiqueta")
+                    .clicked()
+                    {
+                        add_here = true;
+                    }
+                });
+                ui.label(
+                    RichText::new("B guarda sin etiqueta; Mayús+B abre esta lista.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
             }
-            ui.label(
-                RichText::new("B guarda la posición actual; Mayús+B abre esta lista.")
-                    .size(theme::text::META)
-                    .color(th.dim),
-            );
             ui.separator();
             if bookmarks.is_empty() {
                 ui.label(
@@ -7176,12 +7231,28 @@ impl Lector {
                             {
                                 remove = Some(bookmark.id);
                             }
+                            if ui
+                                .small_button(RichText::new("Editar").size(theme::text::META))
+                                .on_hover_text("Renombrar marcador")
+                                .clicked()
+                            {
+                                edit = Some((bookmark.id, bookmark.label.clone()));
+                            }
                         });
                     });
                 }
             });
         });
         self.show_bookmarks = open;
+        if cancel_edit {
+            edit = None;
+        }
+        if save_edit {
+            if let Some((id, label)) = edit.take() {
+                self.rename_bookmark(id, label);
+            }
+        }
+        self.bookmark_edit = edit;
         if add_here {
             self.add_bookmark_here();
         }

@@ -39,6 +39,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M24 | Grilla virtualizada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Desde 240 libros visibles, construir y dibujar solo las filas cercanas al viewport, conservando series |
 | M25 | Búsqueda full-text | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Buscar dentro del texto de la biblioteca en un hilo, con progreso, cancelación y salto al pasaje |
 | M26 | Markdown en IA y notas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0025](../docs/adr/0025-markdown-sin-dependencias.md) | Renderer propio para encabezados, listas, citas, código y énfasis en respuestas y notas |
+| M27 | Etiquetas de marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Etiqueta opcional al crear y renombrar desde el panel; B sigue guardando sin etiqueta |
 
 ## M1 — Lector (terminado)
 
@@ -490,6 +491,20 @@ Cerrado el 2026-11-11:
   editor de nota.
 - Verificación: **156 unit (155 + 1 live ignorado) + 10 integración**; `dist`
   **7.450.752 B** arm64; **8.445.568 B** Intel.
+
+## M27 — Etiquetas de marcadores (terminado)
+
+Cerrado el 2026-11-11:
+
+- El panel **Marcadores** permite escribir una etiqueta y añadir; `B` sigue
+  guardando sin etiqueta.
+- Cada fila tiene **Editar** para renombrar, con Guardar/Cancelar en el mismo
+  panel.
+- Una etiqueta vacía vuelve al título del capítulo y porcentaje.
+- La etiqueta persiste en `library.json` y se conserva al escanear/reasociar.
+- Captura actualizada de marcadores con etiqueta; test de `set_bookmark_label`.
+- Verificación: **156 unit (155 + 1 live ignorado) + 10 integración**; `dist`
+  **7.450.784 B** arm64; **8.445.568 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

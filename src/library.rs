@@ -216,6 +216,14 @@ impl BookEntry {
         self.bookmarks.retain(|bookmark| bookmark.id != id);
         self.bookmarks.len() != before
     }
+
+    pub fn set_bookmark_label(&mut self, id: u64, label: impl Into<String>) -> bool {
+        let Some(bookmark) = self.bookmarks.iter_mut().find(|bookmark| bookmark.id == id) else {
+            return false;
+        };
+        bookmark.label = label.into().trim().to_string();
+        true
+    }
 }
 
 impl Library {
@@ -900,6 +908,9 @@ mod tests {
         assert_eq!(entry.bookmarks[0].label, "Inicio");
         assert_eq!(entry.bookmarks[1].id, a);
         assert_eq!(entry.next_bookmark_id(), 3);
+        assert!(entry.set_bookmark_label(a, "  Final  "));
+        assert_eq!(entry.bookmarks[1].label, "Final");
+        assert!(!entry.set_bookmark_label(99, "nada"));
         assert!(entry.remove_bookmark(a));
         assert!(!entry.remove_bookmark(a));
         assert_eq!(entry.bookmarks.len(), 1);

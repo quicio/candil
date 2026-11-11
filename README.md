@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición, búsqueda dentro del contenido de la biblioteca, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.450.752 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.784 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -346,8 +346,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   respuesta en silencio.
 - Si el proveedor devuelve solo razonamiento interno o un `content` vacío, Candil
   muestra un error accionable en vez de inventar una respuesta.
-- Los marcadores guardan una posición, no una cita, y todavía no tienen etiqueta
-  editable; se muestran con el título del capítulo y el porcentaje.
+- Los marcadores guardan una posición, no una cita. La etiqueta es opcional y
+  editable desde el panel; sin etiqueta se muestra el capítulo y el porcentaje.
 - En bibliotecas de más de 240 libros la grilla virtualiza filas: el foco de
   teclado recorre las tarjetas renderizadas y las demás se crean al scrollear.
 - La búsqueda full-text es bajo demanda: recorre hasta 120 libros y devuelve
@@ -402,6 +402,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   persiste índices.
 - **M26 — Markdown en IA y notas (cerrada):** renderer propio para encabezados,
   listas, citas, código y énfasis, aplicado a respuestas de IA y notas.
+- **M27 — Etiquetas de marcadores (cerrada):** campo opcional al crear y acción
+  Editar para renombrar; `B` sigue guardando sin etiqueta.
 
 ## Modo diagnóstico
 

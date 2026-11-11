@@ -14,6 +14,7 @@ pub mod fonts;
 pub mod library;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod markdown;
 pub mod search;
 pub mod secrets;
 pub mod store;

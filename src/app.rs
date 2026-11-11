@@ -25,6 +25,7 @@ use crate::epub::Book;
 use crate::epub_edit::{self, CoverExt, CoverUpload, Edits};
 use crate::fonts;
 use crate::library::{BookEntry, Bookmark, Library, ScanStats};
+use crate::markdown;
 use crate::search;
 use crate::secrets;
 use crate::theme::{self, Theme, THEMES};
@@ -3824,11 +3825,21 @@ impl Lector {
                             egui::ScrollArea::vertical()
                                 .max_height(330.0)
                                 .show(ui, |ui| {
-                                    ui.label(
-                                        RichText::new(&view.response)
-                                            .size(theme::text::BODY_SMALL)
-                                            .color(th.fg),
-                                    );
+                                    if view.kind == ConsultaKind::Ia {
+                                        markdown::show(
+                                            ui,
+                                            th,
+                                            &view.response,
+                                            theme::text::BODY_SMALL,
+                                            th.fg,
+                                        );
+                                    } else {
+                                        ui.label(
+                                            RichText::new(&view.response)
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.fg),
+                                        );
+                                    }
                                 });
                         }
                         ui.horizontal(|ui| {
@@ -3961,11 +3972,21 @@ impl Lector {
                                     .size(theme::text::META)
                                     .color(th.dim),
                             );
-                            ui.label(
-                                RichText::new(&section.body)
-                                    .size(theme::text::BODY_SMALL)
-                                    .color(th.fg),
-                            );
+                            if result.kind == ConsultaKind::Ia {
+                                markdown::show(
+                                    ui,
+                                    th,
+                                    &section.body,
+                                    theme::text::BODY_SMALL,
+                                    th.fg,
+                                );
+                            } else {
+                                ui.label(
+                                    RichText::new(&section.body)
+                                        .size(theme::text::BODY_SMALL)
+                                        .color(th.fg),
+                                );
+                            }
                             ui.add_space(3.0);
                         }
                     });
@@ -7607,11 +7628,12 @@ impl Lector {
                             );
                         }
                         if !a.note.is_empty() {
-                            ui.label(
-                                RichText::new(truncate(&a.note, 220))
-                                    .size(theme::text::LABEL)
-                                    .italics()
-                                    .color(th.fg.gamma_multiply(0.88)),
+                            markdown::inline(
+                                ui,
+                                th,
+                                &truncate(&a.note, 220),
+                                theme::text::LABEL,
+                                th.fg.gamma_multiply(0.88),
                             );
                         }
                         ui.horizontal(|ui| {
@@ -7822,6 +7844,24 @@ impl Lector {
             if editor.focus {
                 response.request_focus();
                 editor.focus = false;
+            }
+            if !editor.draft.trim().is_empty() {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Vista previa")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                egui::Frame::new()
+                    .fill(th.bg)
+                    .stroke(Stroke::new(1.0, th.border))
+                    .corner_radius(theme::radius::SM)
+                    .inner_margin(egui::Margin::symmetric(8, 6))
+                    .show(ui, |ui| {
+                        ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
+                            markdown::show(ui, th, &editor.draft, theme::text::LABEL, th.fg);
+                        });
+                    });
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {

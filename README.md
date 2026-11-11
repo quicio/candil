@@ -14,12 +14,12 @@ destacados/notas —con colores, selección entre párrafos, notas al pie con vi
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
 búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción
-(MyMemory o Ollama local), análisis con IA multi-proveedor (una clave por proveedor), edición de
+(MyMemory o Ollama local), análisis con IA multi-proveedor (una clave por proveedor) con Markdown renderizado, edición de
 metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.434.176 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.752 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -285,6 +285,10 @@ avanzado.
 |---|---|
 | ![Panel de marcadores con salto y borrado](docs/img/reader-bookmarks.jpg) | ![Resultados de búsqueda dentro de los libros](docs/img/library-content.jpg) |
 
+| **Markdown en IA** | **Vista previa de nota** |
+|---|---|
+| ![Respuesta de IA con encabezado, listas y código](docs/img/reader-markdown.jpg) | ![Nota con Markdown y su vista previa](docs/img/note-markdown.jpg) |
+
 | **Editar EPUB** | **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
 |---|---|---|---|
 | ![Editar metadatos y portada](docs/img/library-edit.png) | ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
@@ -349,6 +353,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - La búsqueda full-text es bajo demanda: recorre hasta 120 libros y devuelve
   hasta 100 resultados (20 por libro). No se indexa en disco y puede tardar en
   bibliotecas grandes; se puede cancelar.
+- El Markdown es un subconjunto: encabezados, listas, citas, código, negrita,
+  itálica y separadores. No renderiza tablas, imágenes ni enlaces clicables.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
   una fase posterior. La IA no admite preguntas libres, solo prompts
   predefinidos.
@@ -394,6 +400,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M25 — Búsqueda full-text (cerrada):** Enter en el buscador recorre el
   contenido de los libros en un hilo, muestra resultados y abre el pasaje; no
   persiste índices.
+- **M26 — Markdown en IA y notas (cerrada):** renderer propio para encabezados,
+  listas, citas, código y énfasis, aplicado a respuestas de IA y notas.
 
 ## Modo diagnóstico
 

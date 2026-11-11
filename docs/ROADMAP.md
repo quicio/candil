@@ -38,6 +38,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M23 | Marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Guardar posiciones con B, listarlas con Mayús+B, saltar y borrar desde el panel |
 | M24 | Grilla virtualizada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Desde 240 libros visibles, construir y dibujar solo las filas cercanas al viewport, conservando series |
 | M25 | Búsqueda full-text | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Buscar dentro del texto de la biblioteca en un hilo, con progreso, cancelación y salto al pasaje |
+| M26 | Markdown en IA y notas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0025](../docs/adr/0025-markdown-sin-dependencias.md) | Renderer propio para encabezados, listas, citas, código y énfasis en respuestas y notas |
 
 ## M1 — Lector (terminado)
 
@@ -475,6 +476,20 @@ Cerrado el 2026-11-10:
 - Sin índice persistente ni cambios en `library.json`.
 - Verificación: **152 unit (151 + 1 live ignorado) + 10 integración**; `dist`
   **7.434.160 B** arm64; **8.433.248 B** Intel.
+
+## M26 — Markdown en IA y notas (terminado)
+
+Cerrado el 2026-11-11:
+
+- `src/markdown.rs` parsea párrafos, encabezados, listas, citas, código,
+  separadores y énfasis inline sin dependencias.
+- Se aplica a respuestas de IA en el panel y el historial, a la vista previa de
+  notas y al editor de notas.
+- Diccionario y traducción siguen en texto plano.
+- ADR-0025, tests de bloques, énfasis y código inline; capturas de historial y
+  editor de nota.
+- Verificación: **156 unit (155 + 1 live ignorado) + 10 integración**; `dist`
+  **7.450.752 B** arm64; **8.445.568 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

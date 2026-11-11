@@ -247,7 +247,8 @@ con el mismo mecanismo de `TextFormat::background` que los destacados.
 
 ## Consultas y configuración
 
-`consulta.rs` define `ConsultaKind`, `ConsultaRequest/Response`, `Transport`,
+`markdown.rs` renderiza un subconjunto Markdown con egui, sin dependencias; se
+usa en respuestas de IA y notas. `consulta.rs` define `ConsultaKind`, `ConsultaRequest/Response`, `Transport`,
 `HttpTransport` (ureq+rustls, timeout), parsers de Wiktionary/dictionaryapi.dev,
 MyMemory y respuestas OpenAI-compatible, prompts predefinidos e
 `ConsultaHistory`. La red está apagada por defecto; cada consulta remota es

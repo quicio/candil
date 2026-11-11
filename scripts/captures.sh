@@ -88,7 +88,7 @@ items = [
     {
         'id': 1, 'book': pp, 'chapter': 1, 'block': 0, 'start': 0, 'end': 1,
         'quote': 'is a truth universally acknowledged',
-        'note': 'La ironía abre la novela: una “verdad” que en realidad es un chisme de vecinas.',
+        'note': 'La ironía abre la novela: una **verdad** que en realidad es un *chisme* de vecinas.\n\n- Primer punto\n- Segundo punto',
         'color': 0, 'created': now - 300,
     },
     {
@@ -140,6 +140,16 @@ data = {
             'response': 'Es una verdad universalmente reconocida.',
             'error': None,
         },
+        {
+            'id': 3, 'created': now + 100, 'kind': 'ia',
+            'provider': 'OpenCode Go', 'model': 'deepseek-v4.1-flash',
+            'prompt': 'Explicar en contexto',
+            'source_lang': 'en', 'target_lang': 'es',
+            'book': pp, 'book_title': 'Pride and Prejudice',
+            'chapter': 1, 'block': 0, 'quote': 'is a truth universally acknowledged',
+            'response': '# Idea principal\n\nEl pasaje dice **esto** y *aquello* con `código`.\n\n- Punto uno\n- Punto dos\n\n> Una cita breve.\n\n```\ncargo test\n```',
+            'error': None,
+        },
     ],
 }
 json.dump(data, open(f'{lib.rsplit("/", 1)[0]}/consultas.json', 'w'), ensure_ascii=False, indent=2)
@@ -189,6 +199,7 @@ shot reader-goto.png --anchor "$ANCHOR" --panel goto "$PP"
 shot reader-config.png --anchor "$ANCHOR" --panel config "$PP"
 shot reader-consulta.png --anchor "$ANCHOR" --consulta sleep --consulta-kind diccionario --consulta-demo "$PP"
 shot reader-history.png --anchor "$ANCHOR" --consulta truth --consulta-kind historial --consulta-demo "$PP"
+shot reader-markdown.png --anchor "$ANCHOR" --consulta truth --consulta-kind historial --consulta-demo "$PP"
 
 # Biblioteca vacía y biblioteca con un EPUB roto (sin contenido de usuario).
 EMPTY=$(mktemp -d)
@@ -249,5 +260,7 @@ jpg "$SHOTS/reader-goto.png" reader-goto.jpg
 jpg "$SHOTS/reader-config.png" reader-config.jpg
 jpg "$SHOTS/reader-consulta.png" reader-consulta.jpg
 jpg "$SHOTS/reader-history.png" reader-history.jpg
+jpg "$SHOTS/reader-markdown.png" reader-markdown.jpg
+jpg "$SHOTS/reader-note.png" note-markdown.jpg
 
 echo "capturas -> docs/img (sandbox: $SANDBOX)"

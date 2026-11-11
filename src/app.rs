@@ -5177,7 +5177,7 @@ impl Lector {
             if truncated {
                 ui.label(
                     RichText::new(format!(
-                        "Se muestran hasta {CONTENT_SEARCH_MAX_HITS} resultados (máx. {CONTENT_SEARCH_PER_BOOK} por libro) de los primeros {CONTENT_SEARCH_MAX_BOOKS} libros."
+                        "Lista parcial: máximo {CONTENT_SEARCH_MAX_HITS} resultados, {CONTENT_SEARCH_PER_BOOK} por libro y {CONTENT_SEARCH_MAX_BOOKS} libros."
                     ))
                     .size(theme::text::META)
                     .color(th.dim),
@@ -5186,35 +5186,111 @@ impl Lector {
             ui.separator();
             ScrollArea::vertical().max_height(440.0).show(ui, |ui| {
                 ui.set_width(ui.available_width());
+                let body = FontId::new(theme::text::BODY_SMALL, fonts::family(false, false));
+                let body_bold = FontId::new(theme::text::BODY_SMALL, fonts::family(true, false));
+                let meta = FontId::new(theme::text::META, fonts::family(false, false));
                 for (index, hit) in hits.iter().enumerate() {
-                    ui.push_id(("content-hit", index), |ui| {
-                        let title = format!(
-                            "{} · Cap. {} · {}",
-                            truncate(&hit.book_title, 40),
-                            hit.chapter + 1,
-                            truncate(&hit.chapter_title, 40)
+                    let mut header = LayoutJob::default();
+                    header.append(
+                        &truncate(&hit.book_title, 42),
+                        0.0,
+                        TextFormat {
+                            font_id: body_bold.clone(),
+                            color: th.fg,
+                            ..Default::default()
+                        },
+                    );
+                    header.append(
+                        &format!("   Cap. {}", hit.chapter + 1),
+                        0.0,
+                        TextFormat {
+                            font_id: meta.clone(),
+                            color: th.dim,
+                            ..Default::default()
+                        },
+                    );
+                    if !hit.chapter_title.trim().is_empty() {
+                        header.append(
+                            &format!("  ·  {}", truncate(&hit.chapter_title, 44)),
+                            0.0,
+                            TextFormat {
+                                font_id: meta.clone(),
+                                color: th.dim,
+                                ..Default::default()
+                            },
                         );
-                        let snippet = format!(
-                            "{} {} {}",
-                            hit.before.trim_end(),
-                            hit.matched,
-                            hit.after.trim_start()
+                    }
+                    let mut snippet = LayoutJob::default();
+                    snippet.append(
+                        &hit.before,
+                        0.0,
+                        TextFormat {
+                            font_id: body.clone(),
+                            color: th.fg,
+                            ..Default::default()
+                        },
+                    );
+                    snippet.append(
+                        &hit.matched,
+                        0.0,
+                        TextFormat {
+                            font_id: body_bold.clone(),
+                            color: th.accent,
+                            ..Default::default()
+                        },
+                    );
+                    snippet.append(
+                        &hit.after,
+                        0.0,
+                        TextFormat {
+                            font_id: body.clone(),
+                            color: th.fg,
+                            ..Default::default()
+                        },
+                    );
+
+                    let card = egui::Frame::new()
+                        .fill(th.bg)
+                        .stroke(Stroke::new(1.0, th.border))
+                        .corner_radius(theme::radius::SM)
+                        .inner_margin(egui::Margin::symmetric(10, 8))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.add(egui::Label::new(header).wrap());
+                            ui.add_space(4.0);
+                            ui.add(egui::Label::new(snippet).wrap());
+                        });
+                    let rect = card.response.rect;
+                    let id = ui.make_persistent_id(("content-hit", index));
+                    let mut response = ui.interact(rect, id, Sense::click());
+                    if response.has_focus() {
+                        ui.painter().rect_stroke(
+                            rect.expand(2.0),
+                            theme::radius::SM + 1.0,
+                            Stroke::new(2.0, th.accent),
+                            egui::StrokeKind::Inside,
                         );
-                        let response = ui.add(
-                            egui::Button::new(
-                                RichText::new(format!("{title}\n{}", truncate(&snippet, 180)))
-                                    .size(theme::text::BODY_SMALL)
-                                    .color(th.fg),
-                            )
-                            .frame(false)
-                            .wrap()
-                            .min_size(Vec2::new(ui.available_width(), 0.0)),
+                    } else if response.hovered() {
+                        ui.painter().rect_stroke(
+                            rect.expand(1.0),
+                            theme::radius::SM + 1.0,
+                            Stroke::new(1.0, th.accent.gamma_multiply(0.55)),
+                            egui::StrokeKind::Inside,
                         );
-                        if response.clicked() {
-                            jump = Some(hit.clone());
-                        }
-                    });
-                    ui.add_space(theme::space::XS);
+                    }
+                    let activated = response.clicked()
+                        || (response.has_focus()
+                            && ui.input(|i| {
+                                i.key_pressed(Key::Enter) || i.key_pressed(Key::Space)
+                            }));
+                    if activated {
+                        jump = Some(hit.clone());
+                    }
+                    response = response
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text("Abrir en el libro");
+                    let _ = response;
+                    ui.add_space(6.0);
                 }
             });
         });

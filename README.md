@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.434.160 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.434.176 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación

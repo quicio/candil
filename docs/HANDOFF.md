@@ -106,7 +106,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 152 unit (151 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.434.176 B arm64; Intel pendiente de medir | `cargo build --profile dist` (2026-11-10) |
+| binario `dist` | 7.434.176 B arm64; 8.437.344 B Intel | `cargo build --profile dist` (2026-11-11) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |

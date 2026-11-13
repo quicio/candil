@@ -1,6 +1,6 @@
 [package]
 name = "candil"
-version = "0.21.1"
+version = "0.22.0"
 edition = "2021"
 description = "Lector de EPUB minimalista en Rust"
 license = "MIT"

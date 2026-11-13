@@ -656,6 +656,7 @@ pub struct Lector {
     library_search: String,
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
+    library_content_enabled: bool,
     library_content: Option<LibraryContentSearch>,
     cfg: Config,
     ai_key: secrets::KeyState,
@@ -912,6 +913,7 @@ impl Lector {
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
+            library_content_enabled: false,
             library_content: None,
             cfg,
             ai_key,
@@ -1083,6 +1085,7 @@ impl Lector {
         if let Some(query) = app.dev.library_content_query.clone() {
             if app.screen == Screen::Library {
                 app.library_search = query;
+                app.library_content_enabled = true;
                 app.start_library_content_search(&cc.egui_ctx);
             }
         }
@@ -5164,6 +5167,9 @@ impl Lector {
         } else {
             None
         };
+        let screen = ctx.screen_rect();
+        let window_w = (screen.width() * 0.72).clamp(520.0, 920.0);
+        let window_h = (screen.height() * 0.72).clamp(420.0, 760.0);
 
         let mut open = true;
         let mut cancel = false;
@@ -5177,9 +5183,11 @@ impl Lector {
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .default_width(widgets::PANEL_MD)
-        .max_width(widgets::PANEL_LG)
-        .max_height(560.0)
+        .min_width(520.0)
+        .default_width(window_w)
+        .max_width(window_w)
+        .default_height(window_h)
+        .max_height(window_h)
         .frame(widgets::panel_frame(th))
         .show(ctx, |ui| {
             ui.label(
@@ -5223,7 +5231,9 @@ impl Lector {
                 );
             }
             ui.separator();
-            ScrollArea::vertical().max_height(440.0).show(ui, |ui| {
+            ScrollArea::vertical()
+                .max_height((window_h - 190.0).max(240.0))
+                .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let body = FontId::new(theme::text::BODY_SMALL, fonts::family(false, false));
                 let body_bold = FontId::new(theme::text::BODY_SMALL, fonts::family(true, false));
@@ -5355,8 +5365,25 @@ impl Lector {
         }
     }
 
+    fn add_google_drive_folder(&mut self, ctx: &egui::Context) {
+        let Some(dir) = google_drive_dir() else {
+            self.say(
+                "No encontré Google Drive para escritorio. Instalalo o usá «Añadir carpeta» para elegir la carpeta sincronizada.",
+            );
+            return;
+        };
+        let key = dir.to_string_lossy().to_string();
+        if self.library.folders.iter().any(|folder| folder == &key) {
+            self.say("Google Drive ya está en la biblioteca.");
+            return;
+        }
+        self.start_scan(Some(dir), ctx);
+        self.say("Indexando Google Drive…");
+    }
+
     fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
         let mut add_folder = false;
+        let mut add_google_drive = false;
         let mut rescan = false;
         let mut open_path: Option<PathBuf> = None;
         let mut open_file = false;
@@ -5469,7 +5496,10 @@ impl Lector {
                     } else {
                         0.0
                     };
-                    let reserve = if compact { 130.0 } else { 208.0 } + continue_reserve;
+                    let content_toggle_reserve = if compact { 58.0 } else { 88.0 };
+                    let reserve = if compact { 130.0 } else { 208.0 }
+                        + continue_reserve
+                        + content_toggle_reserve;
                     let search_w = (ui.available_width() - reserve).max(150.0);
                     let search = egui::Frame::new()
                         .fill(th.bg)
@@ -5480,7 +5510,11 @@ impl Lector {
                             ui.set_min_height(32.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.library_search)
-                                    .hint_text("Buscar título o autor… · Enter: texto")
+                                    .hint_text(if compact {
+                                        "Buscar título o autor…"
+                                    } else {
+                                        "Buscar título o autor… · Enter: texto"
+                                    })
                                     .desired_width((search_w - 20.0).max(120.0))
                                     .frame(false),
                             )
@@ -5492,7 +5526,8 @@ impl Lector {
                             Stroke::new(2.0, th.accent),
                             egui::StrokeKind::Inside,
                         );
-                        if ctx.input(|i| i.key_pressed(Key::Enter)) {
+                        if self.library_content_enabled && ctx.input(|i| i.key_pressed(Key::Enter))
+                        {
                             content_search = true;
                         }
                     }
@@ -5506,9 +5541,25 @@ impl Lector {
                     }) {
                         search.inner.request_focus();
                     }
-                    let _ = search
-                        .response
-                        .on_hover_text("Enter: buscar también dentro del contenido de los libros.");
+                    let _ = search.response.on_hover_text(
+                        "Marcá «Contenido» y presioná Enter para buscar dentro de los libros.",
+                    );
+
+                    let toggle = ui
+                        .add(egui::Checkbox::new(
+                            &mut self.library_content_enabled,
+                            if compact { "Texto" } else { "Contenido" },
+                        ))
+                        .on_hover_text("Buscar también dentro del texto de los libros (Enter)");
+                    if toggle.changed() {
+                        if self.library_content_enabled {
+                            content_search = true;
+                        } else {
+                            if let Some(previous) = self.library_content.take() {
+                                previous.cancel.store(true, Ordering::Relaxed);
+                            }
+                        }
+                    }
 
                     if let Some((path, title, author)) = &recent {
                         if show_continue {
@@ -5617,6 +5668,10 @@ impl Lector {
                                     .clicked()
                                     {
                                         add_folder = true;
+                                        ui.close();
+                                    }
+                                    if ui.button("Añadir Google Drive…").clicked() {
+                                        add_google_drive = true;
                                         ui.close();
                                     }
                                 });
@@ -5813,6 +5868,19 @@ impl Lector {
                         {
                             add_folder = true;
                         }
+                        if google_drive_dir().is_some() {
+                            ui.add_space(8.0);
+                            if widgets::button(
+                                ui,
+                                th,
+                                "Añadir Google Drive…",
+                                widgets::ButtonKind::Ghost,
+                            )
+                            .clicked()
+                            {
+                                self.add_google_drive_folder(ctx);
+                            }
+                        }
                         if has_folders {
                             ui.add_space(8.0);
                             if widgets::button(ui, th, "Refrescar", widgets::ButtonKind::Ghost)
@@ -5881,6 +5949,7 @@ impl Lector {
                             )
                             .clicked()
                             {
+                                self.library_content_enabled = true;
                                 self.start_library_content_search(ctx);
                             }
                         }
@@ -6095,6 +6164,9 @@ impl Lector {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                 self.start_scan(Some(dir), ctx);
             }
+        }
+        if add_google_drive {
+            self.add_google_drive_folder(ctx);
         }
         if rescan && !self.scanning {
             self.start_scan(None, ctx);
@@ -9367,6 +9439,33 @@ fn cover_texture(
     Some((id, size))
 }
 
+/// Carpetas típicas de Google Drive para escritorio. La app indexa la carpeta
+/// local; no habla con la API de Google ni guarda credenciales.
+fn google_drive_candidates(home: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        let cloud = home.join("Library/CloudStorage");
+        if let Ok(entries) = std::fs::read_dir(cloud) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("GoogleDrive-") {
+                    out.push(entry.path().join("My Drive"));
+                }
+            }
+        }
+    }
+    out.push(home.join("Google Drive"));
+    out
+}
+
+fn google_drive_dir() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    google_drive_candidates(&home)
+        .into_iter()
+        .find(|path| path.is_dir())
+}
+
 fn reveal_in_finder(path: &str) {
     #[cfg(target_os = "macos")]
     {
@@ -10457,6 +10556,23 @@ mod tests {
             &book,
             &duplicates
         ));
+    }
+
+    #[test]
+    fn candidatos_de_google_drive_incluyen_la_carpeta_del_home() {
+        let home = std::env::temp_dir().join(format!(
+            "candil-gd-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let drive = home.join("Google Drive");
+        std::fs::create_dir_all(&drive).unwrap();
+        let candidates = google_drive_candidates(&home);
+        assert!(candidates.contains(&drive));
+        assert!(candidates.iter().any(|path| path.is_dir()));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

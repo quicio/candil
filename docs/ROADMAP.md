@@ -40,6 +40,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M25 | Búsqueda full-text | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Buscar dentro del texto de la biblioteca en un hilo, con progreso, cancelación y salto al pasaje |
 | M26 | Markdown en IA y notas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0025](../docs/adr/0025-markdown-sin-dependencias.md) | Renderer propio para encabezados, listas, citas, código y énfasis en respuestas y notas |
 | M27 | Etiquetas de marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Etiqueta opcional al crear y renombrar desde el panel; B sigue guardando sin etiqueta |
+| M28 | Búsqueda visible y Drive | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0026](../docs/adr/0026-google-drive-carpeta-local.md) | Toggle Contenido, panel de resultados amplio y carpeta local de Google Drive sin OAuth |
 
 ## M1 — Lector (terminado)
 
@@ -505,6 +506,22 @@ Cerrado el 2026-11-11:
 - Captura actualizada de marcadores con etiqueta; test de `set_bookmark_label`.
 - Verificación: **156 unit (155 + 1 live ignorado) + 10 integración**; `dist`
   **7.450.784 B** arm64; **8.445.568 B** Intel.
+
+## M28 — Búsqueda visible y Google Drive (terminado)
+
+Cerrado el 2026-11-12:
+
+- Toggle **Contenido** en la barra: con él activo, Enter busca dentro del texto;
+  activarlo con una consulta válida inicia la búsqueda.
+- El panel de resultados escala con la ventana (hasta 920×760) y el scroll interno
+  acompaña.
+- **Añadir Google Drive…** detecta la carpeta local de Drive para escritorio
+  (macOS `~/Library/CloudStorage/GoogleDrive-*/My Drive`, además de
+  `~/Google Drive`) y la indexa sin OAuth ni credenciales.
+- Fallback explicado si no se detecta Drive; ADR-0026.
+- Test de candidatos de Google Drive y captura actualizada del panel.
+- Verificación: **158 unit (157 + 1 live ignorado) + 10 integración**; `dist`
+  **7.450.800 B** arm64; **8.449.688 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

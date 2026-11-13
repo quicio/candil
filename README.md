@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca con toggle, carpeta local de Google Drive, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.450.784 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.800 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -350,9 +350,13 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   editable desde el panel; sin etiqueta se muestra el capítulo y el porcentaje.
 - En bibliotecas de más de 240 libros la grilla virtualiza filas: el foco de
   teclado recorre las tarjetas renderizadas y las demás se crean al scrollear.
-- La búsqueda full-text es bajo demanda: recorre hasta 120 libros y devuelve
-  hasta 100 resultados (20 por libro). No se indexa en disco y puede tardar en
-  bibliotecas grandes; se puede cancelar.
+- La búsqueda full-text se activa con el toggle **Contenido** y Enter; recorre
+  hasta 120 libros y devuelve hasta 100 resultados (20 por libro). No se indexa
+  en disco y puede tardar en bibliotecas grandes; se puede cancelar. El panel
+  escala con la ventana.
+- Google Drive se usa como **carpeta local** de Drive para escritorio. Candil no
+  pide cuenta, no usa la API de Google ni guarda credenciales; si no detecta la
+  carpeta, se puede elegir a mano con **Añadir carpeta…**.
 - El Markdown es un subconjunto: encabezados, listas, citas, código, negrita,
   itálica y separadores. No renderiza tablas, imágenes ni enlaces clicables.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
@@ -404,6 +408,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   listas, citas, código y énfasis, aplicado a respuestas de IA y notas.
 - **M27 — Etiquetas de marcadores (cerrada):** campo opcional al crear y acción
   Editar para renombrar; `B` sigue guardando sin etiqueta.
+- **M28 — Búsqueda visible y Google Drive (cerrada):** toggle **Contenido**,
+  panel de resultados más amplio y carpeta local de Google Drive sin OAuth.
 
 ## Modo diagnóstico
 

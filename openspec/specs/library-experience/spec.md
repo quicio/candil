@@ -35,6 +35,10 @@ Search SHALL be the most discoverable library action; order and filter controls 
 - **WHEN** some books have no series and the user selects "Sin serie"
 - **THEN** only books without series metadata are shown
 
+#### Scenario: Content search toggle
+- **WHEN** the library search is visible
+- **THEN** a "Contenido" toggle is visible and indicates whether Enter will search inside the books
+
 #### Scenario: No matches
 - **WHEN** the query or filter returns no books
 - **THEN** the library shows a specific empty-result message and a way to clear the query or filter
@@ -278,8 +282,13 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 #### Scenario: Start from the library search
 
-- **WHEN** the user types at least 3 characters and presses Enter in the library search field
+- **WHEN** the "Contenido" toggle is active, the user types at least 3 characters and presses Enter
 - **THEN** a background search starts across the available books
+
+#### Scenario: Toggle starts the search
+
+- **WHEN** the user activates "Contenido" with a query of at least 3 characters
+- **THEN** the background search starts immediately
 
 #### Scenario: Start from an empty metadata result
 
@@ -301,6 +310,11 @@ The library SHALL search inside the text of its books on explicit request, run t
 - **WHEN** the user selects a content result
 - **THEN** the book opens at that chapter and the matching text is highlighted
 
+#### Scenario: Wide results
+
+- **WHEN** the results panel opens
+- **THEN** its width and height scale with the window, up to 920×760, instead of using the small fixed panel
+
 #### Scenario: Limits
 
 - **WHEN** there are more matches than the configured limits
@@ -315,4 +329,28 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 - **WHEN** the query has fewer than 3 characters
 - **THEN** the content search does not start and the panel explains the minimum
+
+### Requirement: Google Drive local folder
+
+The library SHALL offer to add the local Google Drive for desktop folder as a watched folder without requiring OAuth or storing Google credentials.
+
+#### Scenario: Drive detected
+
+- **WHEN** a Google Drive for desktop folder exists in a known location
+- **THEN** the library offers "Añadir Google Drive…" and indexes that folder like any other
+
+#### Scenario: Drive not detected
+
+- **WHEN** no Google Drive folder is found
+- **THEN** the action explains how to install Drive for desktop or use "Añadir carpeta…"
+
+#### Scenario: No credentials
+
+- **WHEN** the Google Drive folder is added
+- **THEN** Candil does not call the Google API, does not ask for a Google account and does not write tokens
+
+#### Scenario: Synced changes
+
+- **WHEN** Drive updates files in the watched folder
+- **THEN** the normal incremental rescan reflects new, changed or missing EPUB
 

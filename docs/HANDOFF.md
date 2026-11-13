@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.23.0
+version: 1.24.0
 updated: 2026-11-09
 ---
 
@@ -55,7 +55,8 @@ de 240 libros visibles: solo construye y dibuja las filas cercanas al viewport.
 M25 agrega búsqueda full-text bajo demanda en la biblioteca, en un hilo, con
 progreso, cancelación y salto al pasaje, sin persistir índices. M26 agrega un
 renderer Markdown propio para respuestas de IA y notas. M27 agrega etiquetas
-opcionales y editables a los marcadores.
+opcionales y editables a los marcadores. M28 agrega el toggle **Contenido**, un
+panel de resultados más amplio y la carpeta local de Google Drive sin OAuth.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -81,8 +82,8 @@ origen.
 `inicio-regreso-enlaces`, `motor-traduccion-local`, `filtrar-y-agrupar-series`,
 `detectar-duplicados`, `claves-ia-por-proveedor`, `respuestas-ia-completas` y
 `contenido-ia-variantes`, `marcadores-lector`, `virtualizar-grilla`,
-`busqueda-full-text-biblioteca`, `markdown-ia-notas` y `etiquetas-marcadores`
-quedaron archivados en
+`busqueda-full-text-biblioteca`, `markdown-ia-notas`, `etiquetas-marcadores` y
+`usabilidad-busqueda-drive` quedaron archivados en
 `openspec/changes/archive/`. `docs/specs/` queda como archivo histórico de M1–M6.
 Las fases 1 (tokens, contraste AA, `src/ui.rs`, foco y swatches), 2
 (biblioteca: cabecera, tarjetas focusables, estados de error/faltante y escaneo
@@ -107,9 +108,9 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 156 unit (155 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 158 unit (157 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.450.784 B arm64; 8.445.568 B Intel | `cargo build --profile dist` (2026-11-11) |
+| binario `dist` | 7.450.800 B arm64; 8.449.688 B Intel | `cargo build --profile dist` (2026-11-12) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
@@ -372,6 +373,10 @@ flotante tapando texto) solo aparecieron así.
 41. **La etiqueta del marcador es opcional y editable**: se guarda en
     `Bookmark.label`; vacía cae al título del capítulo. `B` guarda sin etiqueta y
     el panel permite crearla o renombrarla sin cambiar el esquema (ADR-0024).
+42. **Google Drive es una carpeta local**, no una cuenta: se indexa la carpeta de
+    Drive para escritorio como cualquier otra, sin OAuth, API de Google ni
+    credenciales (ADR-0026). La búsqueda full-text exige el toggle **Contenido** y
+    su panel escala con la ventana.
 
 ## Definición de terminado (por tarea)
 

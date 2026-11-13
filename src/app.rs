@@ -5,7 +5,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use eframe::egui::text::{LayoutJob, TextFormat};
@@ -249,6 +249,97 @@ struct LibraryContentSearch {
     failed: usize,
     busy: bool,
     truncated: bool,
+}
+
+const CONTENT_SEARCH_CACHE_BYTES: usize = 64 * 1024 * 1024;
+
+struct SearchCacheEntry {
+    key: String,
+    index: Arc<search::SearchIndex>,
+    bytes: usize,
+}
+
+/// Índices de búsqueda por libro, en memoria y con tope. La clave incluye
+/// tamaño y mtime, así un EPUB editado no reutiliza texto viejo.
+struct SearchCache {
+    entries: Vec<SearchCacheEntry>,
+    bytes: usize,
+    limit: usize,
+}
+
+impl SearchCache {
+    fn new(limit: usize) -> Self {
+        Self {
+            entries: Vec::new(),
+            bytes: 0,
+            limit,
+        }
+    }
+
+    fn get(&mut self, key: &str) -> Option<Arc<search::SearchIndex>> {
+        let position = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(position);
+        let index = Arc::clone(&entry.index);
+        self.entries.push(entry);
+        Some(index)
+    }
+
+    fn put(&mut self, key: String, index: Arc<search::SearchIndex>) {
+        let bytes = search_index_bytes(&index);
+        if bytes > self.limit {
+            return;
+        }
+        self.entries.retain(|entry| entry.key != key);
+        self.bytes = self.entries.iter().map(|entry| entry.bytes).sum();
+        while self.bytes + bytes > self.limit && !self.entries.is_empty() {
+            let removed = self.entries.remove(0);
+            self.bytes = self.bytes.saturating_sub(removed.bytes);
+        }
+        self.bytes += bytes;
+        self.entries.push(SearchCacheEntry { key, index, bytes });
+    }
+}
+
+impl Default for SearchCache {
+    fn default() -> Self {
+        Self::new(CONTENT_SEARCH_CACHE_BYTES)
+    }
+}
+
+fn cache_key(path: &Path) -> String {
+    match std::fs::metadata(path) {
+        Ok(metadata) => {
+            let mtime = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+            format!("{}|{}|{}", path.display(), metadata.len(), mtime)
+        }
+        Err(_) => format!("{}|missing", path.display()),
+    }
+}
+
+fn search_index_bytes(index: &search::SearchIndex) -> usize {
+    let block_overhead = std::mem::size_of::<search::BlockText>();
+    let blocks: usize = index
+        .chapters
+        .iter()
+        .map(|chapter| {
+            chapter
+                .blocks
+                .iter()
+                .map(|block| block.original.len() + block.normalized.len() + block_overhead)
+                .sum::<usize>()
+        })
+        .sum();
+    let titles: usize = index
+        .chapters
+        .iter()
+        .map(|chapter| chapter.title.len())
+        .sum();
+    blocks + titles + std::mem::size_of::<search::SearchIndex>()
 }
 
 struct CardData {
@@ -660,6 +751,7 @@ pub struct Lector {
     library_filter: LibraryFilter,
     library_content_enabled: bool,
     library_content: Option<LibraryContentSearch>,
+    content_cache: Arc<Mutex<SearchCache>>,
     cfg: Config,
     ai_key: secrets::KeyState,
     ai_key_input: String,
@@ -920,6 +1012,7 @@ impl Lector {
             library_filter: LibraryFilter::All,
             library_content_enabled: false,
             library_content: None,
+            content_cache: Arc::new(Mutex::new(SearchCache::default())),
             cfg,
             ai_key,
             ai_key_input: String::new(),
@@ -5004,6 +5097,7 @@ impl Lector {
         let cancel_thread = cancel.clone();
         let repaint = ctx.clone();
         let query_thread = query.clone();
+        let cache = Arc::clone(&self.content_cache);
         std::thread::spawn(move || {
             let mut scanned = 0usize;
             let mut failed = 0usize;
@@ -5014,56 +5108,75 @@ impl Lector {
                     break;
                 }
                 scanned += 1;
-                match Book::open(&path) {
-                    Ok(mut book) => {
-                        let index = search::build(&mut book);
-                        let remaining = CONTENT_SEARCH_MAX_HITS.saturating_sub(hits);
-                        if remaining == 0 {
-                            truncated = true;
-                            break;
+                let key = cache_key(&path);
+                let cached = cache.lock().ok().and_then(|mut cache| cache.get(&key));
+                let index = if let Some(index) = cached {
+                    index
+                } else {
+                    match Book::open(&path) {
+                        Ok(mut book) => {
+                            let index = Arc::new(search::build(&mut book));
+                            if let Ok(mut cache) = cache.lock() {
+                                cache.put(key, Arc::clone(&index));
+                            }
+                            index
                         }
-                        let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
-                        let (found, more) = search::search(&index, &query_thread, per_book);
-                        if more {
-                            truncated = true;
-                        }
-                        if !found.is_empty() {
-                            let batch: Vec<LibraryContentHit> = found
-                                .into_iter()
-                                .map(|hit| {
-                                    let chapter_title = index
-                                        .chapters
-                                        .get(hit.chapter)
-                                        .map(|chapter| chapter.title.clone())
-                                        .unwrap_or_default();
-                                    LibraryContentHit {
-                                        path: path.clone(),
-                                        book_title: title.clone(),
-                                        chapter: hit.chapter,
-                                        chapter_title,
-                                        block: hit.block,
-                                        start: hit.start,
-                                        end: hit.end,
-                                        before: hit.before,
-                                        matched: hit.matched,
-                                        after: hit.after,
-                                    }
-                                })
-                                .collect();
-                            hits += batch.len();
-                            let _ = tx.send(LibraryContentMsg::Hits(batch));
-                        }
-                        if hits >= CONTENT_SEARCH_MAX_HITS {
-                            truncated = true;
+                        Err(_) => {
+                            failed += 1;
                             let _ = tx.send(LibraryContentMsg::Progress {
                                 scanned,
                                 total,
                                 failed,
                             });
-                            break;
+                            repaint.request_repaint();
+                            continue;
                         }
                     }
-                    Err(_) => failed += 1,
+                };
+                let remaining = CONTENT_SEARCH_MAX_HITS.saturating_sub(hits);
+                if remaining == 0 {
+                    truncated = true;
+                    break;
+                }
+                let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
+                let (found, more) = search::search(&index, &query_thread, per_book);
+                if more {
+                    truncated = true;
+                }
+                if !found.is_empty() {
+                    let batch: Vec<LibraryContentHit> = found
+                        .into_iter()
+                        .map(|hit| {
+                            let chapter_title = index
+                                .chapters
+                                .get(hit.chapter)
+                                .map(|chapter| chapter.title.clone())
+                                .unwrap_or_default();
+                            LibraryContentHit {
+                                path: path.clone(),
+                                book_title: title.clone(),
+                                chapter: hit.chapter,
+                                chapter_title,
+                                block: hit.block,
+                                start: hit.start,
+                                end: hit.end,
+                                before: hit.before,
+                                matched: hit.matched,
+                                after: hit.after,
+                            }
+                        })
+                        .collect();
+                    hits += batch.len();
+                    let _ = tx.send(LibraryContentMsg::Hits(batch));
+                }
+                if hits >= CONTENT_SEARCH_MAX_HITS {
+                    truncated = true;
+                    let _ = tx.send(LibraryContentMsg::Progress {
+                        scanned,
+                        total,
+                        failed,
+                    });
+                    break;
                 }
                 let _ = tx.send(LibraryContentMsg::Progress {
                     scanned,
@@ -10802,6 +10915,31 @@ mod tests {
             &book,
             &duplicates
         ));
+    }
+
+    #[test]
+    fn cache_de_indices_reutiliza_y_evicta() {
+        let index = |text: &str| {
+            Arc::new(search::SearchIndex {
+                chapters: vec![search::ChapterIndex {
+                    title: "Uno".into(),
+                    blocks: vec![search::BlockText {
+                        block: 0,
+                        original: text.into(),
+                        normalized: search::normalize(text),
+                    }],
+                }],
+            })
+        };
+        let a = index("uno");
+        let b = index("dos");
+        let size = search_index_bytes(&a);
+        let mut cache = SearchCache::new(size * 2 - 1);
+        cache.put("a".into(), Arc::clone(&a));
+        assert!(cache.get("a").is_some());
+        cache.put("b".into(), Arc::clone(&b));
+        assert!(cache.get("a").is_none());
+        assert!(cache.get("b").is_some());
     }
 
     #[test]

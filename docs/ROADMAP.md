@@ -42,6 +42,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M27 | Etiquetas de marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Etiqueta opcional al crear y renombrar desde el panel; B sigue guardando sin etiqueta |
 | M28 | Búsqueda visible y Drive | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0026](../docs/adr/0026-google-drive-carpeta-local.md) | Toggle Contenido, panel de resultados amplio y carpeta local de Google Drive sin OAuth |
 | M29 | Enviar a dispositivo | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0027](../docs/adr/0027-enviar-dispositivo.md) | Copiar EPUB a un Kobo montado o carpeta, sin sobrescribir; Kindle vía Send to Kindle |
+| M30 | Caché de búsqueda | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0028](../docs/adr/0028-cache-busqueda-full-text.md) | Índices full-text en memoria (64 MB) con invalidación por archivo; segunda búsqueda rápida |
 
 ## M1 — Lector (terminado)
 
@@ -539,6 +540,18 @@ Cerrado el 2026-11-12:
 - Test de detección de Kobo y nombres únicos; captura del diálogo.
 - Verificación: **159 unit (158 + 1 live ignorado) + 10 integración**; `dist`
   **7.450.832 B** arm64; **8.462.000 B** Intel.
+
+## M30 — Caché de búsqueda (terminado)
+
+Cerrado el 2026-11-13:
+
+- `SearchCache` LRU en memoria de 64 MB con `Arc<SearchIndex>`.
+- Clave ruta + tamaño + mtime: un EPUB editado no reutiliza texto viejo.
+- La primera búsqueda de la sesión construye; las siguientes reutilizan.
+- Sin archivos nuevos, sin respaldo y sin cambios de UI.
+- Test de reutilización y evicción; ADR-0028.
+- Verificación: **160 unit (159 + 1 live ignorado) + 10 integración**; `dist`
+  **7.450.864 B** arm64; **8.466.112 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

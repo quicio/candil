@@ -278,7 +278,7 @@ The library SHALL render only the rows near the viewport when the visible grid i
 
 ### Requirement: Full-text library search
 
-The library SHALL search inside the text of its books on explicit request, run the search without blocking the UI, show progress and results with their source, and open the selected result at the matching passage without persisting an index.
+The library SHALL search inside the text of its books on explicit request, run the search without blocking the UI, reuse a bounded in-memory index cache across searches, show progress and results with their source, and open the selected result at the matching passage without persisting an index.
 
 #### Scenario: Start from the library search
 
@@ -294,6 +294,21 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 - **WHEN** the metadata filter has no matches and the query has at least 3 characters
 - **THEN** the empty state offers a "Buscar en el contenido" action
+
+#### Scenario: Cache hit
+
+- **WHEN** a book index is already in the session cache and the file has not changed
+- **THEN** the search reuses it without reopening the EPUB
+
+#### Scenario: Cache invalidation
+
+- **WHEN** the EPUB size or modification time changes
+- **THEN** the old index is not reused and the book is parsed again
+
+#### Scenario: Cache budget
+
+- **WHEN** adding an index would exceed 64 MB
+- **THEN** the least recently used indexes are evicted; an individual index larger than the budget is not cached
 
 #### Scenario: Progress and cancellation
 

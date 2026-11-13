@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.450.832 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.864 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -354,6 +354,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   hasta 120 libros y devuelve hasta 100 resultados (20 por libro). No se indexa
   en disco y puede tardar en bibliotecas grandes; se puede cancelar. El panel
   escala con la ventana.
+- Los índices de búsqueda se cachean en memoria hasta **64 MB** durante la sesión:
+  la primera búsqueda parsea y las siguientes reutilizan. La caché se pierde al
+  cerrar Candil y no ocupa disco.
 - Google Drive se usa como **carpeta local** de Drive para escritorio: **Añadir
   Google Drive…** abre el selector en `My Drive` para elegir una subcarpeta.
   Candil no pide cuenta, no usa la API de Google ni guarda credenciales.
@@ -419,6 +422,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M29 — Enviar a dispositivo (cerrada):** copia un EPUB a un Kobo montado o a
   cualquier carpeta, sin sobrescribir ni modificar el original. Kindle requiere
   Send to Kindle o conversión.
+- **M30 — Caché de búsqueda (cerrada):** índices full-text en memoria con tope de
+  64 MB; la segunda búsqueda no vuelve a abrir los EPUB.
 
 ## Modo diagnóstico
 

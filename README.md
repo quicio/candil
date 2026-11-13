@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca con toggle, carpeta local de Google Drive, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca con toggle, carpeta local de Google Drive, envío a Kobo o dispositivo, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas y export Markdown—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.450.816 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.832 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -285,9 +285,9 @@ avanzado.
 |---|---|
 | ![Panel de marcadores con salto y borrado](docs/img/reader-bookmarks.jpg) | ![Resultados de búsqueda dentro de los libros](docs/img/library-content.jpg) |
 
-| **Markdown en IA** | **Vista previa de nota** |
-|---|---|
-| ![Respuesta de IA con encabezado, listas y código](docs/img/reader-markdown.jpg) | ![Nota con Markdown y su vista previa](docs/img/note-markdown.jpg) |
+| **Markdown en IA** | **Vista previa de nota** | **Enviar a dispositivo** |
+|---|---|---|
+| ![Respuesta de IA con encabezado, listas y código](docs/img/reader-markdown.jpg) | ![Nota con Markdown y su vista previa](docs/img/note-markdown.jpg) | ![Diálogo para enviar un EPUB a un Kobo o carpeta](docs/img/send-device.jpg) |
 
 | **Editar EPUB** | **Consulta: Wiktionary** | **Configuración · Consultas** | **Historial** |
 |---|---|---|---|
@@ -360,6 +360,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - Si los EPUB están solo en la nube, Drive los descarga al escanearlos o abrirlos
   y puede consumir disco. Marcá la carpeta como **disponible sin conexión** para
   evitarlo. La integración por cuenta/API no está incluida.
+- **Enviar a dispositivo** copia el EPUB; no lo mueve ni borra del dispositivo. El
+  Kobo lee EPUB por USB. El Kindle normalmente no: hay que usar Send to Kindle o
+  un archivo convertido, y Candil no convierte formatos.
 - El Markdown es un subconjunto: encabezados, listas, citas, código, negrita,
   itálica y separadores. No renderiza tablas, imágenes ni enlaces clicables.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para
@@ -413,6 +416,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   Editar para renombrar; `B` sigue guardando sin etiqueta.
 - **M28 — Búsqueda visible y Google Drive (cerrada):** toggle **Contenido**,
   panel de resultados más amplio y carpeta local de Google Drive sin OAuth.
+- **M29 — Enviar a dispositivo (cerrada):** copia un EPUB a un Kobo montado o a
+  cualquier carpeta, sin sobrescribir ni modificar el original. Kindle requiere
+  Send to Kindle o conversión.
 
 ## Modo diagnóstico
 

@@ -275,6 +275,7 @@ enum CardAction {
     Locate,
     Recover,
     Edit,
+    SendToDevice,
 }
 
 /// Un extremo de la selección: bloque y offset de caracteres dentro de
@@ -653,6 +654,7 @@ pub struct Lector {
     confirm_remove_book: Option<usize>,
     confirm_remove_folder: Option<String>,
     confirm_recover_book: Option<usize>,
+    device_send: Option<usize>,
     library_search: String,
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
@@ -811,6 +813,8 @@ pub struct DevOpts {
     pub library_scroll: Option<f32>,
     /// Ejecuta una búsqueda full-text en la biblioteca al iniciar (capturas).
     pub library_content_query: Option<String>,
+    /// Abre el diálogo de envío a dispositivo para el primer libro (capturas).
+    pub send_device: bool,
 }
 
 impl Lector {
@@ -910,6 +914,7 @@ impl Lector {
             confirm_remove_folder: initial_folder,
             confirm_recover_book: initial_recover,
             confirm_delete_annotation: initial_delete,
+            device_send: None,
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
@@ -1089,6 +1094,9 @@ impl Lector {
                 app.start_library_content_search(&cc.egui_ctx);
             }
         }
+        if app.dev.send_device && app.screen == Screen::Library && !app.library.books.is_empty() {
+            app.device_send = Some(0);
+        }
         app
     }
 
@@ -1129,6 +1137,7 @@ impl Lector {
                 self.consulta_history_view = None;
                 self.pending_block_jump = None;
                 self.reader_focus = None;
+                self.device_send = None;
                 self.search_index = None;
                 self.search_results.clear();
                 self.search_truncated = false;
@@ -1867,6 +1876,7 @@ impl Lector {
         self.show_annotations = false;
         self.annotations_global = false;
         self.show_bookmarks = false;
+        self.device_send = None;
         self.show_consulta = false;
         self.show_config = false;
         self.consulta_target = None;
@@ -5390,6 +5400,142 @@ impl Lector {
         );
     }
 
+    fn copy_book_to_folder(&mut self, index: usize, folder: PathBuf) {
+        let Some(entry) = self.library.books.get(index).cloned() else {
+            return;
+        };
+        let source = PathBuf::from(&entry.path);
+        if !source.is_file() {
+            self.say("El EPUB ya no está en su ruta original.");
+            return;
+        }
+        let target_dir = if folder.join(".kobo").is_dir() {
+            let books = folder.join("Books");
+            if books.is_dir() {
+                books
+            } else {
+                folder
+            }
+        } else {
+            folder
+        };
+        if !target_dir.is_dir() {
+            self.say("La carpeta de destino ya no está disponible.");
+            return;
+        }
+        if let (Some(Ok(source_dir)), Ok(dest_dir)) = (
+            source.parent().map(std::fs::canonicalize),
+            std::fs::canonicalize(&target_dir),
+        ) {
+            if source_dir == dest_dir {
+                self.say("Elegí la carpeta del dispositivo, no la carpeta de la biblioteca.");
+                return;
+            }
+        }
+        let target = unique_destination(&target_dir, &source);
+        match std::fs::copy(&source, &target) {
+            Ok(_) => self.say(format!(
+                "Enviado «{}» a {}",
+                truncate(&entry.title, 40),
+                target.display()
+            )),
+            Err(error) => self.say(format!("No pude copiar el EPUB al dispositivo: {error}")),
+        }
+    }
+
+    fn send_to_device_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(index) = self.device_send else {
+            return;
+        };
+        let Some(entry) = self.library.books.get(index).cloned() else {
+            self.device_send = None;
+            return;
+        };
+        let kobo = kobo_dir();
+        let mut open = true;
+        let mut send_kobo = false;
+        let mut choose_folder = false;
+        let mut cancel = false;
+
+        egui::Window::new(
+            RichText::new("Enviar a dispositivo")
+                .size(theme::text::TITLE)
+                .strong()
+                .color(th.fg),
+        )
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(widgets::PANEL_MD)
+        .frame(widgets::panel_frame(th))
+        .show(ctx, |ui| {
+            ui.label(
+                RichText::new(format!("«{}»", truncate(&entry.title, 80)))
+                    .size(theme::text::BODY)
+                    .color(th.fg),
+            );
+            ui.add_space(theme::space::XS);
+            if let Some(kobo) = &kobo {
+                ui.label(
+                    RichText::new(format!("Kobo detectado en {}", kobo.display()))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+                if widgets::button(ui, th, "Enviar a Kobo", widgets::ButtonKind::Primary).clicked()
+                {
+                    send_kobo = true;
+                }
+            } else {
+                ui.label(
+                    RichText::new("No detecté un Kobo conectado.")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+            }
+            ui.add_space(theme::space::XS);
+            if widgets::button(
+                ui,
+                th,
+                "Elegir carpeta o dispositivo…",
+                widgets::ButtonKind::Secondary,
+            )
+            .clicked()
+            {
+                choose_folder = true;
+            }
+            ui.label(
+                RichText::new(
+                    "El Kobo lee EPUB por USB. El Kindle normalmente no: usá Send to Kindle o un archivo convertido.",
+                )
+                .size(theme::text::META)
+                .color(th.dim),
+            );
+            ui.add_space(theme::space::XS);
+            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked() {
+                cancel = true;
+            }
+        });
+
+        if !open || cancel {
+            self.device_send = None;
+            return;
+        }
+        if send_kobo {
+            if let Some(kobo) = kobo {
+                self.copy_book_to_folder(index, kobo);
+                self.device_send = None;
+            }
+        } else if choose_folder {
+            if let Some(folder) = rfd::FileDialog::new()
+                .set_title("Elegir dispositivo o carpeta")
+                .pick_folder()
+            {
+                self.copy_book_to_folder(index, folder);
+                self.device_send = None;
+            }
+        }
+    }
+
     fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
         let mut add_folder = false;
         let mut add_google_drive = false;
@@ -5402,6 +5548,7 @@ impl Lector {
         let mut edit: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
         let mut content_search = false;
+        let mut send_device: Option<usize> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
         let book_count = self.library.books.len() - missing_count;
@@ -6079,6 +6226,9 @@ impl Lector {
                                                             Some(CardAction::Edit) => {
                                                                 edit = Some(card.index)
                                                             }
+                                                            Some(CardAction::SendToDevice) => {
+                                                                send_device = Some(card.index)
+                                                            }
                                                             None => {}
                                                         }
                                                     }
@@ -6162,6 +6312,9 @@ impl Lector {
                                             Some(CardAction::Locate) => locate = Some(card.index),
                                             Some(CardAction::Recover) => recover = Some(card.index),
                                             Some(CardAction::Edit) => edit = Some(card.index),
+                                            Some(CardAction::SendToDevice) => {
+                                                send_device = Some(card.index)
+                                            }
                                             None => {}
                                         }
                                     }
@@ -6212,6 +6365,9 @@ impl Lector {
         }
         if let Some(index) = edit {
             self.open_epub_editor(index, ctx);
+        }
+        if let Some(index) = send_device {
+            self.device_send = Some(index);
         }
         if let Some(path) = open_path {
             self.open(path);
@@ -8848,6 +9004,7 @@ impl eframe::App for Lector {
 
         self.config_window(ctx, &th);
         self.library_content_window(ctx, &th);
+        self.send_to_device_window(ctx, &th);
         self.data_notice_window(ctx, &th);
         self.help_window(ctx, &th);
         self.status_toast(ctx, &th);
@@ -9480,6 +9637,77 @@ fn google_drive_dir() -> Option<PathBuf> {
         .find(|path| path.is_dir())
 }
 
+/// Un Kobo montado tiene una carpeta `.kobo` en la raíz.
+fn kobo_in(root: &Path) -> Option<PathBuf> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(root)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && path.join(".kobo").is_dir())
+        .collect();
+    found.sort();
+    found.into_iter().next()
+}
+
+fn kobo_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(path) = kobo_in(Path::new("/Volumes")) {
+            return Some(path);
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(home) = dirs::home_dir() {
+            if let Some(user) = home.file_name() {
+                let user = user.to_string_lossy();
+                for base in ["/media", "/run/media"] {
+                    if let Some(path) = kobo_in(&Path::new(base).join(user.as_ref())) {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        for letter in b'D'..=b'Z' {
+            let root = format!("{}:\\", letter as char);
+            if let Some(path) = kobo_in(Path::new(&root)) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// Nunca pisa un archivo existente en el dispositivo.
+fn unique_destination(dir: &Path, source: &Path) -> PathBuf {
+    let name = source
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "libro.epub".into());
+    let mut target = dir.join(&name);
+    if !target.exists() {
+        return target;
+    }
+    let stem = source
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "libro".into());
+    let ext = source
+        .extension()
+        .map(|ext| format!(".{}", ext.to_string_lossy()))
+        .unwrap_or_default();
+    for index in 2.. {
+        target = dir.join(format!("{stem} ({index}){ext}"));
+        if !target.exists() {
+            return target;
+        }
+    }
+    unreachable!()
+}
+
 fn reveal_in_finder(path: &str) {
     #[cfg(target_os = "macos")]
     {
@@ -9762,6 +9990,10 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
             && ui.button("Editar metadatos y portada…").clicked()
         {
             action = Some(CardAction::Edit);
+            ui.close();
+        }
+        if !card.missing && card.error.is_none() && ui.button("Enviar a dispositivo…").clicked() {
+            action = Some(CardAction::SendToDevice);
             ui.close();
         }
         ui.separator();
@@ -10570,6 +10802,29 @@ mod tests {
             &book,
             &duplicates
         ));
+    }
+
+    #[test]
+    fn detecta_kobo_y_nombres_unicos() {
+        let root = std::env::temp_dir().join(format!(
+            "candil-kobo-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let kobo = root.join("KOBOeReader");
+        std::fs::create_dir_all(kobo.join(".kobo")).unwrap();
+        assert_eq!(kobo_in(&root).as_deref(), Some(kobo.as_path()));
+
+        let dest = root.join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("libro.epub"), b"x").unwrap();
+        let source = root.join("libro.epub");
+        let next = unique_destination(&dest, &source);
+        assert_eq!(next.file_name().unwrap(), "libro (2).epub");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

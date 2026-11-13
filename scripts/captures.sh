@@ -182,6 +182,7 @@ shot library-search.png --screen library --search austen
 shot library-edit.png --screen library --edit
 shot config-data.png --screen library --panel advanced
 shot config-startup.png --screen library --panel config
+shot send-device.png --screen library --send-device
 shot library-content.png --screen library --library-content-query truth
 
 # Lector: Chapter I de Pride and Prejudice (dominio público).
@@ -247,6 +248,7 @@ png "$SHOTS/library-edit.png" library-edit.png
 png "$SHOTS/config-data.png" config-data.png
 png "$SHOTS/config-startup.png" config-startup.png
 jpg "$SHOTS/library-content.png" library-content.jpg
+jpg "$SHOTS/send-device.png" send-device.jpg
 png "$SHOTS/reader-settings.png" reader-settings.png
 jpg "$SHOTS/reader-highlight.png" reader-highlight.jpg
 jpg "$SHOTS/reader-selection.png" reader-selection.jpg

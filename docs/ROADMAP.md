@@ -41,6 +41,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M26 | Markdown en IA y notas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0025](../docs/adr/0025-markdown-sin-dependencias.md) | Renderer propio para encabezados, listas, citas, código y énfasis en respuestas y notas |
 | M27 | Etiquetas de marcadores | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0024](../docs/adr/0024-marcadores-en-library.md) | Etiqueta opcional al crear y renombrar desde el panel; B sigue guardando sin etiqueta |
 | M28 | Búsqueda visible y Drive | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0026](../docs/adr/0026-google-drive-carpeta-local.md) | Toggle Contenido, panel de resultados amplio y carpeta local de Google Drive sin OAuth |
+| M29 | Enviar a dispositivo | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0027](../docs/adr/0027-enviar-dispositivo.md) | Copiar EPUB a un Kobo montado o carpeta, sin sobrescribir; Kindle vía Send to Kindle |
 
 ## M1 — Lector (terminado)
 
@@ -525,6 +526,19 @@ Cerrado el 2026-11-12:
 - Test de candidatos de Google Drive y captura actualizada del panel.
 - Verificación: **158 unit (157 + 1 live ignorado) + 10 integración**; `dist`
   **7.450.800 B** arm64; **8.449.688 B** Intel.
+
+## M29 — Enviar a dispositivo (terminado)
+
+Cerrado el 2026-11-12:
+
+- **Enviar a dispositivo…** en el menú de cada tarjeta.
+- Detecta Kobo por `.kobo` y copia a `Books/` o la raíz.
+- **Elegir carpeta o dispositivo…** para cualquier lector montado.
+- Nombres únicos (`libro (2).epub`), sin sobrescribir; el original no se toca.
+- Aviso de Kindle: EPUB por USB no; Send to Kindle o conversión.
+- Test de detección de Kobo y nombres únicos; captura del diálogo.
+- Verificación: **159 unit (158 + 1 live ignorado) + 10 integración**; `dist`
+  **7.450.832 B** arm64; **8.462.000 B** Intel.
 
 ## Consolidación UX/UI (2026-11-08)
 

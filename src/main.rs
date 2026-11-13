@@ -176,6 +176,10 @@ fn main() -> eframe::Result<()> {
                 dev.library_content_query = args.get(i + 1).cloned();
                 i += 2;
             }
+            "--send-device" => {
+                dev.send_device = true;
+                i += 1;
+            }
             other => {
                 path = Some(PathBuf::from(other));
                 i += 1;

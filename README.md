@@ -19,7 +19,7 @@ metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
 local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
-Binario final (`dist`): **7.1 MiB** (7.450.800 B), arranque instantáneo, sin
+Binario final (`dist`): **7.1 MiB** (7.450.816 B), arranque instantáneo, sin
 webview ni motor HTML.
 
 ## Documentación
@@ -354,9 +354,12 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   hasta 120 libros y devuelve hasta 100 resultados (20 por libro). No se indexa
   en disco y puede tardar en bibliotecas grandes; se puede cancelar. El panel
   escala con la ventana.
-- Google Drive se usa como **carpeta local** de Drive para escritorio. Candil no
-  pide cuenta, no usa la API de Google ni guarda credenciales; si no detecta la
-  carpeta, se puede elegir a mano con **Añadir carpeta…**.
+- Google Drive se usa como **carpeta local** de Drive para escritorio: **Añadir
+  Google Drive…** abre el selector en `My Drive` para elegir una subcarpeta.
+  Candil no pide cuenta, no usa la API de Google ni guarda credenciales.
+- Si los EPUB están solo en la nube, Drive los descarga al escanearlos o abrirlos
+  y puede consumir disco. Marcá la carpeta como **disponible sin conexión** para
+  evitarlo. La integración por cuenta/API no está incluida.
 - El Markdown es un subconjunto: encabezados, listas, citas, código, negrita,
   itálica y separadores. No renderiza tablas, imágenes ni enlaces clicables.
 - El idioma de origen se deduce de `Book.lang`; el override manual queda para

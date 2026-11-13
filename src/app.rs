@@ -5366,19 +5366,28 @@ impl Lector {
     }
 
     fn add_google_drive_folder(&mut self, ctx: &egui::Context) {
-        let Some(dir) = google_drive_dir() else {
+        let Some(root) = google_drive_dir() else {
             self.say(
                 "No encontré Google Drive para escritorio. Instalalo o usá «Añadir carpeta» para elegir la carpeta sincronizada.",
             );
             return;
         };
+        let Some(dir) = rfd::FileDialog::new()
+            .set_title("Elegir carpeta dentro de Google Drive")
+            .set_directory(&root)
+            .pick_folder()
+        else {
+            return;
+        };
         let key = dir.to_string_lossy().to_string();
         if self.library.folders.iter().any(|folder| folder == &key) {
-            self.say("Google Drive ya está en la biblioteca.");
+            self.say("Esa carpeta de Google Drive ya está en la biblioteca.");
             return;
         }
         self.start_scan(Some(dir), ctx);
-        self.say("Indexando Google Drive…");
+        self.say(
+            "Indexando Google Drive… Si los EPUB no están descargados, Drive los baja al abrirlos; marcá la carpeta como disponible sin conexión.",
+        );
     }
 
     fn library_screen(&mut self, ctx: &egui::Context, th: &Theme) {
@@ -5670,7 +5679,11 @@ impl Lector {
                                         add_folder = true;
                                         ui.close();
                                     }
-                                    if ui.button("Añadir Google Drive…").clicked() {
+                                    if ui
+                                        .button("Añadir Google Drive…")
+                                        .on_hover_text("Elegir una carpeta dentro de Google Drive")
+                                        .clicked()
+                                    {
                                         add_google_drive = true;
                                         ui.close();
                                     }
@@ -5876,6 +5889,7 @@ impl Lector {
                                 "Añadir Google Drive…",
                                 widgets::ButtonKind::Ghost,
                             )
+                            .on_hover_text("Elegir una carpeta dentro de Google Drive")
                             .clicked()
                             {
                                 self.add_google_drive_folder(ctx);

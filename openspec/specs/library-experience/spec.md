@@ -332,12 +332,27 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 ### Requirement: Google Drive local folder
 
-The library SHALL offer to add the local Google Drive for desktop folder as a watched folder without requiring OAuth or storing Google credentials.
+The library SHALL offer to add a chosen subfolder of the local Google Drive for desktop as a watched folder without requiring OAuth or storing Google credentials.
 
 #### Scenario: Drive detected
 
 - **WHEN** a Google Drive for desktop folder exists in a known location
-- **THEN** the library offers "Añadir Google Drive…" and indexes that folder like any other
+- **THEN** "Añadir Google Drive…" opens a folder picker at the Drive root so the user can choose a subfolder
+
+#### Scenario: Choose a subfolder
+
+- **WHEN** the user selects a subfolder inside Google Drive
+- **THEN** that folder is indexed like any other watched folder and `My Drive` is not added wholesale
+
+#### Scenario: Already indexed
+
+- **WHEN** the chosen folder is already in the library
+- **THEN** Candil does not duplicate it and says it is already indexed
+
+#### Scenario: Cloud-only files
+
+- **WHEN** the folder contains EPUB that Drive has not downloaded
+- **THEN** the message explains that Drive downloads them when opened and recommends marking the folder as available offline
 
 #### Scenario: Drive not detected
 

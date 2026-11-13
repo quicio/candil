@@ -515,9 +515,12 @@ Cerrado el 2026-11-12:
   activarlo con una consulta válida inicia la búsqueda.
 - El panel de resultados escala con la ventana (hasta 920×760) y el scroll interno
   acompaña.
-- **Añadir Google Drive…** detecta la carpeta local de Drive para escritorio
+- **Añadir Google Drive…** detecta la raíz local de Drive para escritorio
   (macOS `~/Library/CloudStorage/GoogleDrive-*/My Drive`, además de
-  `~/Google Drive`) y la indexa sin OAuth ni credenciales.
+  `~/Google Drive`) y abre el selector para elegir una **subcarpeta**; no indexa
+  `My Drive` completo. Sin OAuth ni credenciales.
+- Aviso si los EPUB están solo en la nube: Drive los descarga al abrirlos; se
+  recomienda marcarlos como disponible sin conexión.
 - Fallback explicado si no se detecta Drive; ADR-0026.
 - Test de candidatos de Google Drive y captura actualizada del panel.
 - Verificación: **158 unit (157 + 1 live ignorado) + 10 integración**; `dist`

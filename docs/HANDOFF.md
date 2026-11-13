@@ -110,7 +110,7 @@ el mismo):
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
 | tests | 158 unit (157 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
-| binario `dist` | 7.450.800 B arm64; 8.449.688 B Intel | `cargo build --profile dist` (2026-11-12) |
+| binario `dist` | 7.450.816 B arm64; 8.449.680 B Intel | `cargo build --profile dist` (2026-11-12) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
 | fixtures | `mini.epub` 2.517 B; `edge.epub` 1.854 B; `notes.epub` 2.183 B | `scripts/make_fixture.py` |
@@ -373,10 +373,12 @@ flotante tapando texto) solo aparecieron así.
 41. **La etiqueta del marcador es opcional y editable**: se guarda en
     `Bookmark.label`; vacía cae al título del capítulo. `B` guarda sin etiqueta y
     el panel permite crearla o renombrarla sin cambiar el esquema (ADR-0024).
-42. **Google Drive es una carpeta local**, no una cuenta: se indexa la carpeta de
-    Drive para escritorio como cualquier otra, sin OAuth, API de Google ni
-    credenciales (ADR-0026). La búsqueda full-text exige el toggle **Contenido** y
-    su panel escala con la ventana.
+42. **Google Drive es una carpeta local**, no una cuenta: **Añadir Google Drive…**
+    abre el selector en la raíz de Drive para elegir una subcarpeta y se indexa
+    como cualquier otra, sin OAuth, API de Google ni credenciales (ADR-0026). Si
+    los archivos están solo en la nube, Drive los descarga al abrirlos; se avisa y
+    se recomienda disponible sin conexión. La búsqueda full-text exige el toggle
+    **Contenido** y su panel escala con la ventana.
 
 ## Definición de terminado (por tarea)
 

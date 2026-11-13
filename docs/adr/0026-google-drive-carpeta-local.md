@@ -27,10 +27,20 @@ Drive para escritorio:
 - El botón solo aparece si la carpeta existe; en el menú **Carpetas** siempre está
   la opción y, si no se detecta, explica cómo instalarlo o usar **Añadir
   carpeta…**.
+- La acción abre un selector en la raíz de Drive para elegir una **subcarpeta**;
+  no indexa `My Drive` completo por accidente.
 
 La carpeta se indexa como cualquier otra: ruta canónica, escaneo incremental y
 portadas en `covers/`. No se copian EPUB, no se guardan credenciales y no se
 llama a la API de Google.
+
+### Archivos solo en la nube
+
+Drive para escritorio puede mantener archivos como placeholders. Al escanear o
+abrir un EPUB, Drive puede descargarlo y consumir disco. Candil avisa al agregar
+la carpeta y recomienda marcarla como **disponible sin conexión**. Detectar
+placeholders y descargar solo lo necesario requiere OAuth/API y una caché propia;
+queda fuera de esta decisión.
 
 ### Búsqueda
 

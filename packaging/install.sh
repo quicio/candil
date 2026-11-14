@@ -39,7 +39,7 @@ done
 
 if [ "$mode" = "system" ]; then
   prefix="/usr/local"
-  if [ "$(id -u)" -ne 0 ]; then
+  if [ -z "$dry_run" ] && [ "$(id -u)" -ne 0 ]; then
     echo "para --system hay que correr con sudo (o usar el modo por usuario)" >&2
     exit 1
   fi

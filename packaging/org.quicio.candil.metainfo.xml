@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.quicio.candil</id>
+  <launchable type="desktop-id">candil.desktop</launchable>
+  <name>Candil</name>
+  <summary>Minimalist EPUB reader</summary>
+  <summary xml:lang="es">Lector de EPUB minimalista</summary>
+  <developer id="org.quicio">
+    <name>Hugo Moraga</name>
+  </developer>
+
+  <description>
+    <p>
+      Candil is a minimal EPUB reader written in Rust. It opens one book at a
+      time with careful typography, keeps a local library indexed from your own
+      folders, and stores highlights, notes and bookmarks next to your data
+      instead of inside the book.
+    </p>
+    <p>
+      Highlights and notes are kept as character offsets plus the quoted text,
+      so they survive reindexing. AI queries (dictionary, translation,
+      explanation) are opt-in, run only on explicit action, and the API key
+      lives in the system keyring — never in the config files.
+    </p>
+    <p>
+      Everything is local: no accounts, no telemetry, no sync server. A backup
+      exports the four user JSON files so you can move to another machine.
+    </p>
+    <p xml:lang="es">
+      Candil es un lector de EPUB minimalista escrito en Rust. Abre un libro a
+      la vez con tipografía cuidada, mantiene una biblioteca local indexada
+      desde tus propias carpetas y guarda destacados, notas y marcadores junto a
+      tus datos, no dentro del libro.
+    </p>
+    <p xml:lang="es">
+      Los destacados y notas se guardan como offsets de caracteres más la cita,
+      así sobreviven a una reindexación. Las consultas de IA (diccionario,
+      traducción, explicación) son opcionales, solo salen con una acción
+      explícita y la clave vive en el llavero del sistema, nunca en los archivos
+      de configuración.
+    </p>
+    <p xml:lang="es">
+      Todo es local: sin cuentas, sin telemetría, sin servidor de sincronización.
+      El respaldo exporta los cuatro JSON de usuario para moverte de máquina.
+    </p>
+  </description>
+
+  <categories>
+    <category>Office</category>
+    <category>Viewer</category>
+  </categories>
+
+  <keywords>
+    <keyword>epub</keyword>
+    <keyword>ebook</keyword>
+    <keyword>reader</keyword>
+    <keyword>annotations</keyword>
+    <keyword>libro</keyword>
+    <keyword>lector</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/quicio/candil</url>
+  <url type="bugtracker">https://github.com/quicio/candil/issues</url>
+  <url type="vcs-browser">https://github.com/quicio/candil</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Library with covers, search and series grouping</caption>
+      <caption xml:lang="es">Biblioteca con portadas, búsqueda y series</caption>
+      <image type="source">https://raw.githubusercontent.com/quicio/candil/main/docs/img/library-full.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Reading workspace with highlights and notes</caption>
+      <caption xml:lang="es">Lectura con destacados y notas</caption>
+      <image type="source">https://raw.githubusercontent.com/quicio/candil/main/docs/img/reader-highlight.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings: typography, startup and data</caption>
+      <caption xml:lang="es">Configuración: tipografía, arranque y datos</caption>
+      <image type="source">https://raw.githubusercontent.com/quicio/candil/main/docs/img/config-data.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.23.0" date="2026-11-13">
+      <url type="details">https://github.com/quicio/candil/releases/tag/v0.23.0</url>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1"/>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+
+  <provides>
+    <binary>candil</binary>
+  </provides>
+</component>

@@ -1,0 +1,37 @@
+# Maintainer: Hugo Moraga <hg.moraga@gmail.com>
+#
+# Paquete binario del AUR. El tarball lo publica `release.yml` en GitHub
+# Releases y trae binario, .desktop, iconos, man page y metadatos AppStream.
+# `.github/workflows/aur.yml` reescribe pkgver y sha256sums en cada release.
+pkgname=candil-bin
+pkgver=0.23.0
+pkgrel=1
+pkgdesc="Lector de EPUB minimalista en Rust"
+arch=('x86_64')
+url="https://github.com/quicio/candil"
+license=('MIT')
+depends=('libxkbcommon' 'wayland' 'mesa' 'libx11' 'libxcursor')
+optdepends=(
+  'xdg-desktop-portal: diálogos de archivo nativos (rfd los pide por D-Bus)'
+  'gnome-keyring: guardar la clave de IA en el llavero'
+)
+provides=('candil')
+conflicts=('candil' 'candil-git')
+source=("candil-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/candil-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('16422e55d208b03b30fbab11bd60be226b6ee479aaf63d5b7a6d45671b217ee1')
+
+package() {
+  install -Dm755 "$srcdir/candil-$pkgver-linux-x86_64/candil" "$pkgdir/usr/bin/candil"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/candil.desktop" \
+    "$pkgdir/usr/share/applications/candil.desktop"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/icons/256x256/apps/candil.png" \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/candil.png"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/icons/scalable/apps/candil.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/candil.svg"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/org.quicio.candil.metainfo.xml" \
+    "$pkgdir/usr/share/metainfo/org.quicio.candil.metainfo.xml"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/candil.1.gz" \
+    "$pkgdir/usr/share/man/man1/candil.1.gz"
+  install -Dm644 "$srcdir/candil-$pkgver-linux-x86_64/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

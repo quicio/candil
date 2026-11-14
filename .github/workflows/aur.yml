@@ -1,0 +1,63 @@
+name: aur
+
+# Publica `candil-bin` en el AUR cada vez que sale una release.
+#
+# Requiere dos secretos del repo:
+#   AUR_SSH_PRIVATE_KEY  clave SSH con acceso de escritura a aur@aur.archlinux.org
+#   AUR_USERNAME         usuario del AUR (para el commit)
+# y un ssh-keyscan previo en `known_hosts` (lo hace el action).
+#
+# La versión y el checksum salen de SHA256SUMS.txt de la release, no del
+# PKGBUILD del repo: el tarball es reproducible, pero el número publicado es la
+# verdad.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag ya publicado (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PKGNAME: candil-bin
+
+jobs:
+  publish:
+    name: Actualizar candil-bin en el AUR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Calcular pkgver y sha256sums desde la release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          gh release download "$TAG" --pattern SHA256SUMS.txt --dir /tmp/sums --clobber
+          sum=$(grep -E "  candil-${version}-linux-x86_64\.tar\.gz$" /tmp/sums/SHA256SUMS.txt | cut -d' ' -f1)
+          [ -n "$sum" ] || { echo "no encontré el tarball $version en SHA256SUMS.txt" >&2; exit 1; }
+          sed -i -E "s/^pkgver=.*/pkgver=${version}/" packaging/aur/PKGBUILD
+          sed -i -E "s/^sha256sums=.*/sha256sums=('${sum}')/" packaging/aur/PKGBUILD
+          echo "→ $PKGNAME $version ($sum)"
+          grep -E '^(pkgver|sha256sums)=' packaging/aur/PKGBUILD
+
+      - name: Publicar en el AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: ${{ env.PKGNAME }}
+          pkgbuild: packaging/aur/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "upgpkg: ${{ env.PKGNAME }} ${{ github.event.inputs.tag || github.ref_name }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519

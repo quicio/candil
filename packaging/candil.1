@@ -1,0 +1,65 @@
+.TH CANDIL 1 "2026-11-13" "candil 0.23.0" "Manual del usuario"
+.SH NOMBRE
+candil \- lector de EPUB minimalista con biblioteca local
+.SH SINOPSIS
+.B candil
+.RI [ opciones ]
+.RI [ archivo.epub ]
+.SH DESCRIPCIÓN
+.B candil
+abre un EPUB con tipografía cuidada y guarda destacados, notas, marcadores y
+progreso en su propio directorio de datos, sin modificar el libro.
+Sin argumentos abre la biblioteca, que indexa las carpetas que le indiques y
+muestra las portadas guardadas en caché.
+Las consultas de IA (diccionario, traducción, explicación) están apagadas por
+defecto y solo salen a la red con una acción explícita.
+.SH OPCIONES
+.TP
+.B \-\-version, \-V
+Imprime la versión y termina.
+.TP
+.B \-\-resume
+Reabre el último libro leído; si el archivo ya no existe, abre la biblioteca.
+.TP
+.BI \-\-scan " CARPETA"
+Indexa una carpeta sin abrir la interfaz: imprime cuántos libros encontró,
+cuántos fallaron y cuántas portadas generó.
+.TP
+.BI \-\-inspect " archivo.epub"
+Diagnóstico de parseo de un libro: capítulos, bloques, imágenes y enlaces.
+No abre ventana.
+.TP
+.BI \-\-library\-path " CARPETA"
+Usa esa carpeta como biblioteca en esta ejecución, sin tocar la configuración.
+.TP
+.BI \-\-shot " archivo.png"
+(\fIuso interno\fR) Renderiza la interfaz a un PNG y termina. Pensado para
+tests y capturas de documentación; combinable con \fB\-\-screen\fP,
+\fB\-\-chapter\fP y \fB\-\-anchor\fP.
+.TP
+.B \-\-help
+Muestra una ayuda breve dentro de la aplicación.
+.SH ARCHIVOS
+.TP
+.I ~/.config/candil/
+Directorio de datos: \fIconfig.json\fP, \fIlibrary.json\fP,
+\fIannotations.json\fP, \fIconsultas.json\fP, \fIcovers/\fP y
+\fIbackups/\fP. Se escribe de forma atómica; una instalación anterior llamada
+\fIlector\fP se migra sola la primera vez.
+.SH VARIABLES DE ENTORNO
+.TP
+.B OPENCODE_API_KEY
+Clave del proveedor de IA cuando no querés usar el llavero del sistema.
+.TP
+.B CANDIL_NO_KEYRING
+Si está definida, no se consulta el llavero (útil en sesiones sin servicio de
+secretos, por ejemplo Wayland sin \fIgnome\-keyring\fP ni \fIKWallet\fP).
+.SH DEPENDENCIAS EN TIEMPO DE EJECUCIÓN
+Para dibujar la ventana: \fIlibwayland\-client\fP y \fIlibxkbcommon\fP en
+Wayland, o \fIlibX11\fP y \fIlibXcursor\fP en X11, más un \fIlibEGL\fP /
+\fIlibGL\fP provisto por el driver (Mesa).
+Los diálogos de archivo usan el portal XDG
+(\fIxdg\-desktop\-portal\fP y su backend); el llavero necesita un servicio de
+secretos por D\-Bus (\fIgnome\-keyring\fP o \fIKWallet\fP).
+.SH VÉASE TAMBIÉN
+Documentación del proyecto: https://github.com/quicio/candil

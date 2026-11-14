@@ -30,11 +30,26 @@ Candil se publica solo. No hay que tocar `Cargo.toml` ni crear tags a mano.
 | `candil-macos-x86_64-app.zip` | `Candil.app` Intel firmado ad-hoc (descarga manual) |
 | `candil-macos-x86_64-app.tar.gz` | el mismo `Candil.app` Intel para el cask |
 | `candil-windows-x86_64.exe` | binario Windows |
+| `candil-<ver>-linux-x86_64.tar.gz` | Linux portable: binario + `.desktop`, iconos, man page y AppStream |
+| `candil_<ver>_amd64.deb` | Debian/Ubuntu (deps de nfpm) |
+| `candil-<ver>-1.x86_64.rpm` | Fedora/openSUSE (deps de nfpm) |
+| `candil-<ver>-1-x86_64.pkg.tar.zst` | Arch sin AUR (los paquetes los arma `packaging/build.sh`) |
 | `SHA256SUMS.txt` | checksums; la app los verifica |
 
 La app (Configuración → Avanzado → Buscar actualizaciones) prefiere el zip del
 `.app` en macOS y el binario en Linux/Windows. Descarga y verifica; **no
 instala**.
+
+## Instalación en Linux
+
+Arch: `paru -S candil-bin`. El workflow `aur.yml` reescribe `pkgver` y
+`sha256sums` de `packaging/aur/PKGBUILD` a partir de `SHA256SUMS.txt` de cada
+release y publica en el AUR (necesita `AUR_SSH_PRIVATE_KEY`, `AUR_USERNAME` y
+`AUR_EMAIL` como secretos del repo).
+
+`.deb`, `.rpm` y `.pkg.tar.zst` los genera `packaging/build.sh` en el job de
+Linux con nfpm; el tarball lleva `INSTALL.txt` con el equivalente por usuario
+en `~/.local`.
 
 ## Instalación en macOS
 

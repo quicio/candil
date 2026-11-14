@@ -732,6 +732,18 @@ const CARD_AUTHOR_H: f32 = 34.0;
 const CARD_STATUS_H: f32 = 24.0;
 const CARD_H: f32 = CARD_COVER_H + 8.0 + CARD_TEXT_H + CARD_AUTHOR_H + CARD_STATUS_H;
 
+enum ScanUpdate {
+    Progress {
+        done: usize,
+        total: usize,
+    },
+    Done {
+        library: Library,
+        stats: ScanStats,
+        complete: bool,
+    },
+}
+
 pub struct Lector {
     screen: Screen,
     book: Option<Book>,
@@ -740,7 +752,9 @@ pub struct Lector {
     textures: HashMap<String, egui::TextureHandle>,
     library: Library,
     library_textures: HashMap<String, egui::TextureHandle>,
-    scan_rx: Option<Receiver<(Library, ScanStats)>>,
+    scan_rx: Option<Receiver<ScanUpdate>>,
+    scan_cancel: Option<Arc<AtomicBool>>,
+    scan_progress: Option<(usize, usize)>,
     scanning: bool,
     confirm_remove_book: Option<usize>,
     confirm_remove_folder: Option<String>,
@@ -1001,6 +1015,8 @@ impl Lector {
             library,
             library_textures: HashMap::new(),
             scan_rx: None,
+            scan_cancel: None,
+            scan_progress: None,
             scanning: false,
             confirm_remove_book: initial_remove,
             confirm_remove_folder: initial_folder,
@@ -3329,33 +3345,11 @@ impl Lector {
         }
         if add_folder {
             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                let stats = self.library.scan_folder(&dir);
-                if let Err(e) = self.library.save() {
-                    self.status = Some((
-                        format!("No pude guardar la biblioteca: {e}"),
-                        Instant::now(),
-                    ));
-                } else {
-                    self.status = Some((
-                        format!("{} libros encontrados", stats.found),
-                        Instant::now(),
-                    ));
-                }
+                self.start_scan(Some(dir), ctx);
             }
         }
-        if rescan {
-            let stats = self.library.rescan();
-            if let Err(e) = self.library.save() {
-                self.status = Some((
-                    format!("No pude guardar la biblioteca: {e}"),
-                    Instant::now(),
-                ));
-            } else {
-                self.status = Some((
-                    format!("{} libros, {} actualizados", stats.found, stats.updated),
-                    Instant::now(),
-                ));
-            }
+        if rescan && !self.scanning {
+            self.start_scan(None, ctx);
         }
         if let Some(folder) = remove_folder {
             self.library.unwatch_folder(&folder);
@@ -5010,52 +5004,93 @@ impl Lector {
         if self.scanning {
             return;
         }
+        if let Some(dir) = &folder {
+            self.library.watch_folder(dir);
+        }
         self.save_library();
         let mut library = self.library.clone();
         let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
         self.scan_rx = Some(rx);
+        self.scan_cancel = Some(cancel.clone());
+        self.scan_progress = None;
         self.scanning = true;
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let stats = if let Some(folder) = folder {
-                library.scan_folder(&folder)
-            } else {
-                library.rescan()
+            let progress_tx = tx.clone();
+            let progress_cancel = cancel.clone();
+            let mut on_progress = |done: usize, total: usize| {
+                let _ = progress_tx.send(ScanUpdate::Progress { done, total });
+                !progress_cancel.load(Ordering::Relaxed)
             };
-            let _ = tx.send((library, stats));
+            let (stats, complete) = if let Some(folder) = folder {
+                library.scan_folder_with(&folder, &mut on_progress)
+            } else {
+                library.rescan_with(&mut on_progress)
+            };
+            let _ = tx.send(ScanUpdate::Done {
+                library,
+                stats,
+                complete,
+            });
             ctx.request_repaint();
         });
     }
 
+    fn cancel_scan(&mut self) {
+        if let Some(cancel) = &self.scan_cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
     fn poll_scan(&mut self, ctx: &egui::Context) {
-        let Some(result) = self.scan_rx.as_ref().map(|rx| rx.try_recv()) else {
-            return;
-        };
-        match result {
-            Ok((library, stats)) => {
-                self.library = library;
-                self.library_textures.clear();
-                self.scanning = false;
-                self.scan_rx = None;
-                self.migrate_progress();
-                self.save_library();
-                if stats.found == 0 {
-                    self.say("No encontré EPUB en las carpetas vigiladas.");
-                } else {
-                    self.say(format!(
-                        "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
-                        stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
-                    ));
+        loop {
+            let Some(result) = self.scan_rx.as_ref().map(|rx| rx.try_recv()) else {
+                return;
+            };
+            match result {
+                Ok(ScanUpdate::Progress { done, total }) => {
+                    self.scan_progress = Some((done, total));
+                    ctx.request_repaint();
                 }
-                ctx.request_repaint();
-            }
-            Err(TryRecvError::Empty) => {
-                ctx.request_repaint_after(Duration::from_millis(100));
-            }
-            Err(TryRecvError::Disconnected) => {
-                self.scanning = false;
-                self.scan_rx = None;
-                self.say("El escaneo se interrumpió.");
+                Ok(ScanUpdate::Done {
+                    library,
+                    stats,
+                    complete,
+                }) => {
+                    self.library = library;
+                    self.library_textures.clear();
+                    self.scanning = false;
+                    self.scan_rx = None;
+                    self.scan_cancel = None;
+                    self.scan_progress = None;
+                    self.migrate_progress();
+                    self.save_library();
+                    if !complete {
+                        self.say("Escaneo cancelado. Se conservaron los libros ya revisados.");
+                    } else if stats.found == 0 {
+                        self.say("No encontré EPUB en las carpetas vigiladas.");
+                    } else {
+                        self.say(format!(
+                            "{} encontrados · {} nuevos · {} actualizados · {} sin cambios · {} fallos",
+                            stats.found, stats.added, stats.updated, stats.unchanged, stats.failed
+                        ));
+                    }
+                    ctx.request_repaint();
+                    return;
+                }
+                Err(TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(100));
+                    return;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.scanning = false;
+                    self.scan_rx = None;
+                    self.scan_cancel = None;
+                    self.scan_progress = None;
+                    self.say("El escaneo se interrumpió.");
+                    return;
+                }
             }
         }
     }
@@ -5715,11 +5750,19 @@ impl Lector {
                     ui.add_space(2.0);
                     if self.scanning {
                         ui.add(egui::Spinner::new());
-                        ui.label(
-                            RichText::new("Escaneando…")
-                                .size(theme::text::META)
-                                .color(th.dim),
-                        );
+                        let label = match self.scan_progress {
+                            Some((done, total)) => {
+                                format!("Escaneando… {done}/{total}")
+                            }
+                            None => "Escaneando…".to_string(),
+                        };
+                        ui.label(RichText::new(label).size(theme::text::META).color(th.dim));
+                        if wide
+                            && widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost)
+                                .clicked()
+                        {
+                            self.cancel_scan();
+                        }
                     } else {
                         ui.label(
                             RichText::new(format!("{book_count} libros"))
@@ -5881,6 +5924,18 @@ impl Lector {
                                 .clicked()
                                 {
                                     rescan = true;
+                                    ui.close();
+                                }
+                                if self.scanning
+                                    && widgets::button(
+                                        ui,
+                                        th,
+                                        "Cancelar escaneo",
+                                        widgets::ButtonKind::Secondary,
+                                    )
+                                    .clicked()
+                                {
+                                    self.cancel_scan();
                                     ui.close();
                                 }
                                 if ui.button("Configuración").clicked() {
@@ -6112,11 +6167,24 @@ impl Lector {
                         ui.add_space(120.0);
                         ui.add(egui::Spinner::new());
                         ui.add_space(8.0);
-                        ui.label(
-                            RichText::new("Escaneando la biblioteca…")
-                                .size(theme::text::BODY)
-                                .color(th.dim),
-                        );
+                        let label = match self.scan_progress {
+                            Some((done, total)) => {
+                                format!("Escaneando la biblioteca… {done}/{total}")
+                            }
+                            None => "Escaneando la biblioteca…".to_string(),
+                        };
+                        ui.label(RichText::new(label).size(theme::text::BODY).color(th.dim));
+                        ui.add_space(12.0);
+                        if widgets::button(
+                            ui,
+                            th,
+                            "Cancelar escaneo",
+                            widgets::ButtonKind::Secondary,
+                        )
+                        .clicked()
+                        {
+                            self.cancel_scan();
+                        }
                     });
                     return;
                 }

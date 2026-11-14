@@ -99,6 +99,23 @@ Scanning and refreshing SHALL provide timely feedback without blocking the windo
 - **WHEN** the user triggers a refresh
 - **THEN** the library shows progress or a busy state and remains responsive until the scan finishes
 
+#### Scenario: Slow or remote folder
+- **WHEN** a scan takes long because the folder is on a slow or remote filesystem
+- **THEN** the header and empty state show how many books were reviewed out of the total found
+- **AND** the user can cancel the scan without closing the app
+
+#### Scenario: Cancelled scan
+- **WHEN** the user cancels a running scan
+- **THEN** the books already reviewed are kept, the remaining ones are not marked missing, and the watched folder stays saved
+
+#### Scenario: Folder survives an interrupted scan
+- **WHEN** a folder is added and the app closes or the scan is cancelled before it finishes
+- **THEN** the folder remains in the library and the next scan indexes the books still pending
+
+#### Scenario: Folder with many files
+- **WHEN** the user adds a folder with many EPUB, including files that are not downloaded locally
+- **THEN** the scan still runs in the background and the app remains responsive
+
 ### Requirement: Continue reading shortcut
 
 The library SHALL offer a direct shortcut to the most recently opened valid book without requiring the user to find its card.

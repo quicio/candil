@@ -361,27 +361,55 @@ impl Library {
         self.folders.retain(|f| f != folder);
     }
 
+    /// Registra una carpeta para vigilarla sin escanearla todavía. Devuelve
+    /// `true` si era nueva. Se llama antes de lanzar un escaneo para que la
+    /// carpeta no se pierda si la app se cierra a mitad de camino.
+    pub fn watch_folder(&mut self, dir: &Path) -> bool {
+        if !dir.is_dir() {
+            return false;
+        }
+        let root = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let root_key = root.to_string_lossy().to_string();
+        if self.folders.iter().any(|f| f == &root_key) {
+            return false;
+        }
+        self.folders.push(root_key);
+        true
+    }
+
     /// Escanea una carpeta recursivamente, sin seguir symlinks. La primera vez
     /// abre cada EPUB; las siguientes comparan `size` + `mtime`.
     pub fn scan_folder(&mut self, dir: &Path) -> ScanStats {
+        self.scan_folder_with(dir, &mut |_, _| true).0
+    }
+
+    /// Igual que `scan_folder`, pero informa el avance antes de cada libro y
+    /// permite cancelar. El callback recibe `(revisados, total)` y devuelve si
+    /// el escaneo debe continuar. Devuelve las estadísticas y si terminó.
+    pub fn scan_folder_with<F>(&mut self, dir: &Path, on_progress: &mut F) -> (ScanStats, bool)
+    where
+        F: FnMut(usize, usize) -> bool,
+    {
         let mut stats = ScanStats::default();
         if !dir.is_dir() {
-            return stats;
+            return (stats, true);
         }
+        self.watch_folder(dir);
 
         let root = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
-        let root_key = root.to_string_lossy().to_string();
-        if !self.folders.iter().any(|f| f == &root_key) {
-            self.folders.push(root_key);
-        }
-
         let covers_dir = self.data_dir.join("covers");
         let mut files = Vec::new();
         collect_epubs(&root, &mut files);
         files.sort();
+        let total = files.len();
         let mut seen: HashSet<String> = HashSet::new();
+        let mut complete = true;
 
-        for path in files {
+        for (processed, path) in files.into_iter().enumerate() {
+            if !on_progress(processed, total) {
+                complete = false;
+                break;
+            }
             stats.found += 1;
             let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
             let key = canonical.to_string_lossy().to_string();
@@ -451,21 +479,36 @@ impl Library {
             }
         }
 
-        for book in &mut self.books {
-            if Path::new(&book.path).starts_with(&root) && !seen.contains(&book.path) {
-                book.missing = true;
+        if complete {
+            for book in &mut self.books {
+                if Path::new(&book.path).starts_with(&root) && !seen.contains(&book.path) {
+                    book.missing = true;
+                }
             }
         }
-        stats
+        (stats, complete)
     }
 
     pub fn rescan(&mut self) -> ScanStats {
+        self.rescan_with(&mut |_, _| true).0
+    }
+
+    /// Igual que `rescan`, pero informa el avance y permite cancelar entre
+    /// carpetas. Si una carpeta se cancela, no se marcan libros faltantes.
+    pub fn rescan_with<F>(&mut self, on_progress: &mut F) -> (ScanStats, bool)
+    where
+        F: FnMut(usize, usize) -> bool,
+    {
         let folders = self.folders.clone();
         let mut total = ScanStats::default();
         for folder in folders {
-            total.add(self.scan_folder(Path::new(&folder)));
+            let (stats, complete) = self.scan_folder_with(Path::new(&folder), on_progress);
+            total.add(stats);
+            if !complete {
+                return (total, false);
+            }
         }
-        total
+        (total, true)
     }
 }
 
@@ -658,6 +701,66 @@ mod tests {
         assert_eq!(loaded.folders.len(), 1);
         assert_eq!(loaded.schema_version, SCHEMA_VERSION);
 
+        let _ = std::fs::remove_dir_all(data);
+    }
+
+    #[test]
+    fn vigilar_carpeta_sin_escanear() {
+        let data = temp_dir("watch-folder");
+        let mut lib = Library::with_data_dir(data.clone());
+
+        assert!(lib.watch_folder(&fixtures()));
+        assert!(!lib.watch_folder(&fixtures()));
+        assert_eq!(lib.folders.len(), 1);
+        assert!(lib.books.is_empty());
+
+        let path = data.join("library.json");
+        lib.save_to(&path).expect("guardar biblioteca");
+        let loaded = Library::load_from(&path);
+        assert_eq!(loaded.folders, lib.folders);
+
+        let _ = std::fs::remove_dir_all(data);
+    }
+
+    #[test]
+    fn escaneo_informa_avance_y_cancela() {
+        let data = temp_dir("scan-progress");
+        let mut lib = Library::with_data_dir(data.clone());
+        let mut avance = Vec::new();
+
+        let (stats, complete) = lib.scan_folder_with(&fixtures(), &mut |done, total| {
+            avance.push((done, total));
+            done < 2
+        });
+
+        assert!(!complete);
+        assert_eq!(avance, vec![(0, 3), (1, 3), (2, 3)]);
+        assert_eq!(stats.found, 2);
+        assert_eq!(lib.books.len(), 2);
+
+        let _ = std::fs::remove_dir_all(data);
+    }
+
+    #[test]
+    fn cancelar_no_marca_faltantes() {
+        let source = temp_dir("cancel-missing-src");
+        std::fs::copy(fixtures().join("mini.epub"), source.join("a.epub")).unwrap();
+        std::fs::copy(fixtures().join("mini.epub"), source.join("b.epub")).unwrap();
+        let data = temp_dir("cancel-missing-data");
+        let mut lib = Library::with_data_dir(data.clone());
+
+        let first = lib.scan_folder(&source);
+        assert_eq!(first.added, 2);
+
+        std::fs::remove_file(source.join("b.epub")).unwrap();
+        let (_, complete) = lib.scan_folder_with(&source, &mut |_, _| false);
+        assert!(!complete);
+        assert!(lib.books.iter().all(|book| !book.missing));
+
+        lib.scan_folder(&source);
+        assert!(lib.books.iter().any(|book| book.missing));
+
+        let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(data);
     }
 

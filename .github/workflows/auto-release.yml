@@ -50,7 +50,11 @@ jobs:
             exit 0
           fi
 
-          if git diff --quiet "$last"..HEAD -- src Cargo.toml Cargo.lock assets resources; then
+          # `packaging/` cuenta como código: un cambio ahí produce artefactos
+          # nuevos (.deb/.rpm/.pkg.tar.zst/tarball) que solo existen si sale una
+          # release. Sin esto, el empaquetado quedaba inerte hasta el próximo
+          # cambio en `src/`.
+          if git diff --quiet "$last"..HEAD -- src Cargo.toml Cargo.lock assets resources packaging; then
             out "skip=true"
             exit 0
           fi

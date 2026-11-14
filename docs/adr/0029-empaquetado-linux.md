@@ -67,6 +67,19 @@ el tarball es reproducible y su checksum no cambia entre builds iguales.
 El asset crudo `candil-linux-x86_64` se mantiene: `update.rs` lo busca por
 nombre y la actualización asistida (ADR-0016) no se toca.
 
+### `packaging/install.sh` mientras no hay AUR
+
+El paquete del AUR depende de una cuenta, y el registro está cerrado por tandas.
+Para que instalar no sea "bajar un archivo y acordarse de los permisos", el
+tarball viene con un instalador: baja la última release, verifica el SHA-256
+contra `SHA256SUMS.txt` y copia los siete archivos en `~/.local` (o
+`/usr/local` con `--system`). Refresca `mimeinfo.cache` e `icon-theme.cache`,
+así que la asociación `.epub` funciona sin pasos extra.
+
+No es un repo de pacman propio: eso pediría clave PGP, hosting y una base de
+datos firmada, y el AUR debería cubrirlo en semanas. Si el registro sigue
+cerrado, ese es el paso siguiente, no el primero.
+
 ### AUR `candil-bin`
 
 Arch es la plataforma de desarrollo, así que el AUR es la vía principal de

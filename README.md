@@ -60,11 +60,25 @@ el aviso del todo hace falta Developer ID + notarización.
 
 ### Linux
 
-Arch, desde el AUR (binario de la release, sin compilar):
+Arch, desde el AUR (binario de la release, sin compilar) — disponible cuando
+reabra el registro del AUR, hoy cerrado por el incidente de paquetes maliciosos:
 
 ```bash
 paru -S candil-bin      # o yay -S candil-bin
 ```
+
+Todavía no hay paquete en el AUR (el registro está cerrado). Mientras tanto,
+instalación en un comando, sin root — baja el tarball de la última release y
+verifica su SHA-256 antes de copiar nada:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/quicio/candil/main/packaging/install.sh
+less install.sh          # miralo antes de correrlo
+bash install.sh          # ~/.local
+sudo bash install.sh     # /usr/local
+```
+
+Acepta `--version X.Y.Z`, `--dry-run` y `--archive ruta/al/tarball`.
 
 Cada release publica además paquetes nativos y un tarball portable:
 

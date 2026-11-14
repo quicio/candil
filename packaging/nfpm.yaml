@@ -1,0 +1,110 @@
+# nFPM: un solo archivo para .deb, .rpm y paquete de Arch.
+#
+# Se ejecuta en CI (job de Linux de release.yml) y en local:
+#   VERSION=0.23.0 nfpm package -f packaging/nfpm.yaml -p deb -t /tmp/out
+#
+# Espera el binario en target/dist/candil (lo deja `cargo build --profile dist`).
+#
+# Los tres paquetes instalan lo mismo: binario, .desktop, iconos, man page y
+# metadatos AppStream.
+
+name: candil
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: "1"
+section: office
+priority: optional
+maintainer: Hugo Moraga <hg.moraga@gmail.com>
+vendor: quicio
+homepage: https://github.com/quicio/candil
+license: MIT
+description: |
+  Lector de EPUB minimalista en Rust.
+  Abre un libro a la vez con tipografía cuidada, mantiene una biblioteca local
+  indexada desde tus propias carpetas y guarda destacados, notas y marcadores
+  junto a tus datos, no dentro del libro. Las consultas de IA son opcionales y
+  la clave vive en el llavero del sistema.
+depends:
+  # libs que el binario abre con dlopen (winit x11-dl / wayland-dlopen): no
+  # aparecen en `ldd`, pero sin ellas no hay ventana.
+  - libxkbcommon0
+  - libwayland-client0
+  - libgl1
+
+recommends:
+  - xdg-desktop-portal
+  - xdg-desktop-portal-gtk
+
+suggests:
+  - gnome-keyring
+
+contents:
+  - src: target/dist/candil
+    dst: /usr/bin/candil
+    file_info:
+      mode: 0755
+  - src: packaging/candil.desktop
+    dst: /usr/share/applications/candil.desktop
+    file_info:
+      mode: 0644
+  - src: assets/candil-icon-256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/candil.png
+    file_info:
+      mode: 0644
+  - src: assets/candil-icon.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/candil.svg
+    file_info:
+      mode: 0644
+  # build.sh la deja comprimida en .packaging/
+  - src: .packaging/candil.1.gz
+    dst: /usr/share/man/man1/candil.1.gz
+    file_info:
+      mode: 0644
+  - src: packaging/org.quicio.candil.metainfo.xml
+    dst: /usr/share/metainfo/org.quicio.candil.metainfo.xml
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/candil/LICENSE
+    file_info:
+      mode: 0644
+
+# Sin maintainer scripts: .deb, .rpm y Arch ya refrescan las cachés con los
+# triggers/hooks de desktop-file-utils y gtk-update-icon-cache. Un script a
+# mano solo agrega formas de fallar al instalar.
+
+overrides:
+  deb:
+    depends:
+      - libxkbcommon0
+      - libwayland-client0
+      - libgl1
+      - libx11-6
+      - libxcursor1
+    recommends:
+      - xdg-desktop-portal
+      - xdg-desktop-portal-gtk
+    suggests:
+      - gnome-keyring
+  rpm:
+    depends:
+      - libxkbcommon
+      - libwayland-client
+      - mesa-libGL
+      - libX11
+      - libXcursor
+    recommends:
+      - xdg-desktop-portal
+      - xdg-desktop-portal-gtk
+  archlinux:
+    depends:
+      - libxkbcommon
+      - wayland
+      - mesa
+      - libx11
+      - libxcursor
+    recommends:
+      - xdg-desktop-portal
+    suggests:
+      - gnome-keyring

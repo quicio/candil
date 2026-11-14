@@ -1,0 +1,21 @@
+pkgbase = candil-bin
+	pkgdesc = Lector de EPUB minimalista en Rust
+	pkgver = 0.23.0
+	pkgrel = 1
+	url = https://github.com/quicio/candil
+	arch = x86_64
+	license = MIT
+	depends = libxkbcommon
+	depends = wayland
+	depends = mesa
+	depends = libx11
+	depends = libxcursor
+	optdepends = xdg-desktop-portal: diálogos de archivo nativos (rfd los pide por D-Bus)
+	optdepends = gnome-keyring: guardar la clave de IA en el llavero
+	provides = candil
+	conflicts = candil
+	conflicts = candil-git
+	source = candil-0.23.0-linux-x86_64.tar.gz::https://github.com/quicio/candil/releases/download/v0.23.0/candil-0.23.0-linux-x86_64.tar.gz
+	sha256sums = 16422e55d208b03b30fbab11bd60be226b6ee479aaf63d5b7a6d45671b217ee1
+
+pkgname = candil-bin

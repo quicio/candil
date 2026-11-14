@@ -1,0 +1,81 @@
+name: aur
+
+# Publica `candil-bin` en el AUR cada vez que sale una release.
+#
+# Requiere tres secretos del repo:
+#   AUR_SSH_PRIVATE_KEY  clave SSH con acceso de escritura a aur@aur.archlinux.org
+#   AUR_USERNAME         usuario del AUR (autor del commit)
+#   AUR_EMAIL            mail del commit
+# Mientras falte la clave el job sale en gris con un aviso: no rompe la release.
+#
+# La versión y el checksum salen de SHA256SUMS.txt de la release, no del
+# PKGBUILD del repo: el tarball es reproducible, pero el número publicado manda.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag ya publicado (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PKGNAME: candil-bin
+
+jobs:
+  publish:
+    name: Actualizar candil-bin en el AUR
+    runs-on: ubuntu-latest
+    # El registro del AUR se cierra por tandas (503 en /register), así que la
+    # cuenta puede no existir todavía. Con el secreto vacío el job sale en gris
+    # con un aviso, en vez de romper la release en rojo.
+    env:
+      AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - name: Aviso cuando faltan credenciales del AUR
+        if: env.AUR_KEY == ''
+        shell: bash
+        run: |
+          echo "::notice title=AUR::Falta AUR_SSH_PRIVATE_KEY (cuenta del AUR pendiente). Los paquetes ya se publicaron; solo se omite el push al AUR."
+          {
+            echo "### AUR omitido"
+            echo "Sin AUR_SSH_PRIVATE_KEY no se publicó candil-bin. El resto de los assets de la release no se toca."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        if: env.AUR_KEY != ''
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Calcular pkgver y sha256sums desde la release
+        if: env.AUR_KEY != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          gh release download "$TAG" --pattern SHA256SUMS.txt --dir /tmp/sums --clobber
+          sum=$(grep -E "  candil-${version}-linux-x86_64\.tar\.gz$" /tmp/sums/SHA256SUMS.txt | cut -d' ' -f1)
+          [ -n "$sum" ] || { echo "no encontré el tarball $version en SHA256SUMS.txt" >&2; exit 1; }
+          sed -i -E "s/^pkgver=.*/pkgver=${version}/" packaging/aur/PKGBUILD
+          sed -i -E "s/^sha256sums=.*/sha256sums=('${sum}')/" packaging/aur/PKGBUILD
+          echo "→ $PKGNAME $version ($sum)"
+          grep -E '^(pkgver|sha256sums)=' packaging/aur/PKGBUILD
+
+      - name: Publicar en el AUR
+        if: env.AUR_KEY != ''
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: ${{ env.PKGNAME }}
+          pkgbuild: packaging/aur/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "upgpkg: ${{ env.PKGNAME }} ${{ github.event.inputs.tag || github.ref_name }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519

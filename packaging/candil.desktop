@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Candil
+GenericName=EPUB Reader
+GenericName[es]=Lector de EPUB
+Comment=Minimalist EPUB reader with a local library, notes and AI queries
+Comment[es]=Lector de EPUB minimalista con biblioteca local, notas y consultas
+Exec=candil %F
+Icon=candil
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/epub+zip;
+Keywords=epub;ebook;book;reader;libro;lector;
+StartupWMClass=candil
+StartupNotify=true

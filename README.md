@@ -58,6 +58,48 @@ Candil no está notarizado por Apple: la primera apertura puede mostrar la
 advertencia de Gatekeeper. El cask intenta quitar la cuarentena; para eliminar
 el aviso del todo hace falta Developer ID + notarización.
 
+### Linux
+
+Arch, desde el AUR (binario de la release, sin compilar) — disponible cuando
+reabra el registro del AUR, hoy cerrado por el incidente de paquetes maliciosos:
+
+```bash
+paru -S candil-bin      # o yay -S candil-bin
+```
+
+Todavía no hay paquete en el AUR (el registro está cerrado). Mientras tanto,
+instalación en un comando, sin root — baja el tarball de la última release y
+verifica su SHA-256 antes de copiar nada:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/quicio/candil/main/packaging/install.sh
+less install.sh          # miralo antes de correrlo
+bash install.sh          # ~/.local
+sudo bash install.sh     # /usr/local
+```
+
+Acepta `--version X.Y.Z`, `--dry-run` y `--archive ruta/al/tarball`.
+
+Cada release publica además paquetes nativos y un tarball portable:
+
+| asset | instalación |
+|---|---|
+| `candil_<ver>_amd64.deb` | `sudo apt install ./candil_<ver>_amd64.deb` |
+| `candil-<ver>-1.x86_64.rpm` | `sudo dnf install ./candil-<ver>-1.x86_64.rpm` |
+| `candil-<ver>-1-x86_64.pkg.tar.zst` | `sudo pacman -U candil-<ver>-1-x86_64.pkg.tar.zst` |
+| `candil-<ver>-linux-x86_64.tar.gz` | sin root: copiar a `~/.local` (ver `INSTALL.txt` adentro) |
+
+Los paquetes instalan el binario, la entrada de menú, los iconos, la `man page`
+y los metadatos AppStream.
+
+Dependencias en tiempo de ejecución: `libwayland-client` + `libxkbcommon` en
+Wayland, o `libX11` + `libXcursor` en X11, más un `libEGL`/`libGL` del driver
+(Mesa). Las libs se abren con `dlopen`, así que no aparecen en `ldd` pero sin
+ellas no hay ventana. Los diálogos de archivo usan el portal XDG
+(`xdg-desktop-portal`); la clave de IA vive en el llavero del sistema
+(`gnome-keyring` o KWallet) y, sin servicio de secretos, se exporta
+`CANDIL_NO_KEYRING=1`.
+
 ### Desde el código
 
 ```bash

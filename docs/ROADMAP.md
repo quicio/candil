@@ -477,8 +477,7 @@ Cerrado el 2026-11-10:
 
 - **Enter** en el buscador de la biblioteca inicia una búsqueda dentro del texto;
   si no hay coincidencias de metadatos, el estado vacío también lo ofrece.
-- La búsqueda corre en un hilo, un libro a la vez, y muestra `n de total` con
-  opción de cancelar.
+- La búsqueda corre en un hilo y muestra `n de total` con opción de cancelar.
 - Resultados con libro, capítulo y fragmento; al elegir uno se abre el libro y se
   resalta la coincidencia.
 - Topes: 100 resultados, 20 por libro y 120 libros; se avisa si la lista es
@@ -570,6 +569,9 @@ Cerrado el 2026-11-15:
   la copia falla.
 - **Preparar offline** copia en un hilo los libros remotos visibles, con
   progreso y cancelación; **Limpiar caché** está en Configuración → Avanzado.
+- La búsqueda avanzada indexa hasta 4 libros en paralelo conservando el orden de
+  biblioteca, los topes y la cancelación; en 4 EPUB grandes la indexación pasó de
+  **435 ms a 127 ms** (~3,4×) en la medición local.
 - No entra en el respaldo ni cambia `library.json`, anotaciones o progreso;
   ADR-0033 y escenarios nuevos en `library-experience`.
 - Tests de copia, reutilización, invalidación, LRU y `clear`.

@@ -1,9 +1,9 @@
 //! Ventana y lectura: barra mínima, columna centrada, scroll continuo.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -6970,99 +6970,173 @@ impl Lector {
         let cache = Arc::clone(&self.content_cache);
         let book_cache = Arc::clone(&self.book_cache);
         std::thread::spawn(move || {
-            let mut scanned = 0usize;
-            let mut failed = 0usize;
-            let mut hits = 0usize;
-            let mut truncated = truncated_books;
-            for (path, title) in books {
-                if cancel_thread.load(Ordering::Relaxed) {
-                    break;
-                }
-                scanned += 1;
-                let key = cache_key(&path);
-                let cached = cache.lock().ok().and_then(|mut cache| cache.get(&key));
-                let index = if let Some(index) = cached {
-                    index
-                } else {
-                    match open_cached_book(&book_cache, &path) {
-                        Ok(mut book) => {
-                            let index = Arc::new(search::build(&mut book));
-                            if let Ok(mut cache) = cache.lock() {
-                                cache.put(key, Arc::clone(&index));
+            struct BuiltBook {
+                order: usize,
+                path: PathBuf,
+                title: String,
+                index: Option<Arc<search::SearchIndex>>,
+            }
+
+            let workers = std::thread::available_parallelism()
+                .map(|count| count.get())
+                .unwrap_or(2)
+                .clamp(2, 4)
+                .min(total.max(1));
+            let (built_tx, built_rx) = mpsc::channel();
+            std::thread::scope(|scope| {
+                let next = Arc::new(AtomicUsize::new(0));
+                for _ in 0..workers {
+                    let built_tx = built_tx.clone();
+                    let books = &books;
+                    let next = Arc::clone(&next);
+                    let cache = Arc::clone(&cache);
+                    let book_cache = Arc::clone(&book_cache);
+                    let cancel = Arc::clone(&cancel_thread);
+                    scope.spawn(move || loop {
+                        if cancel.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let order = next.fetch_add(1, Ordering::Relaxed);
+                        let Some((path, title)) = books.get(order) else {
+                            break;
+                        };
+                        let key = cache_key(path);
+                        let cached = cache.lock().ok().and_then(|mut cache| cache.get(&key));
+                        let index = if let Some(index) = cached {
+                            Some(index)
+                        } else {
+                            match open_cached_book(&book_cache, path) {
+                                Ok(mut book) => {
+                                    let index = Arc::new(search::build(&mut book));
+                                    if let Ok(mut cache) = cache.lock() {
+                                        cache.put(key, Arc::clone(&index));
+                                    }
+                                    Some(index)
+                                }
+                                Err(_) => None,
                             }
-                            index
-                        }
-                        Err(_) => {
-                            failed += 1;
-                            let _ = tx.send(LibraryContentMsg::Progress {
-                                scanned,
-                                total,
-                                failed,
-                            });
-                            repaint.request_repaint();
-                            continue;
-                        }
-                    }
-                };
-                let remaining = CONTENT_SEARCH_MAX_HITS.saturating_sub(hits);
-                if remaining == 0 {
-                    truncated = true;
-                    break;
-                }
-                let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
-                let (found, more) = search::search_mode(&index, &query_thread, mode, per_book);
-                if more {
-                    truncated = true;
-                }
-                if !found.is_empty() {
-                    let batch: Vec<LibraryContentHit> = found
-                        .into_iter()
-                        .map(|hit| {
-                            let chapter_title = index
-                                .chapters
-                                .get(hit.chapter)
-                                .map(|chapter| chapter.title.clone())
-                                .unwrap_or_default();
-                            LibraryContentHit {
+                        };
+                        if built_tx
+                            .send(BuiltBook {
+                                order,
                                 path: path.clone(),
-                                book_title: title.clone(),
-                                chapter: hit.chapter,
-                                chapter_title,
-                                block: hit.block,
-                                start: hit.start,
-                                end: hit.end,
-                                before: hit.before,
-                                matched: hit.matched,
-                                after: hit.after,
-                            }
-                        })
-                        .collect();
-                    hits += batch.len();
-                    let _ = tx.send(LibraryContentMsg::Hits(batch));
+                                title: title.clone(),
+                                index,
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+                    });
                 }
-                if hits >= CONTENT_SEARCH_MAX_HITS {
-                    truncated = true;
+                drop(built_tx);
+
+                let mut scanned = 0usize;
+                let mut failed = 0usize;
+                let mut hits = 0usize;
+                let mut truncated = truncated_books;
+                let mut process = |built: BuiltBook| -> bool {
+                    scanned += 1;
+                    let BuiltBook {
+                        path, title, index, ..
+                    } = built;
+                    let Some(index) = index else {
+                        failed += 1;
+                        let _ = tx.send(LibraryContentMsg::Progress {
+                            scanned,
+                            total,
+                            failed,
+                        });
+                        repaint.request_repaint();
+                        return true;
+                    };
+                    let remaining = CONTENT_SEARCH_MAX_HITS.saturating_sub(hits);
+                    if remaining == 0 {
+                        truncated = true;
+                        return false;
+                    }
+                    let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
+                    let (found, more) = search::search_mode(&index, &query_thread, mode, per_book);
+                    if more {
+                        truncated = true;
+                    }
+                    if !found.is_empty() {
+                        let batch: Vec<LibraryContentHit> = found
+                            .into_iter()
+                            .map(|hit| {
+                                let chapter_title = index
+                                    .chapters
+                                    .get(hit.chapter)
+                                    .map(|chapter| chapter.title.clone())
+                                    .unwrap_or_default();
+                                LibraryContentHit {
+                                    path: path.clone(),
+                                    book_title: title.clone(),
+                                    chapter: hit.chapter,
+                                    chapter_title,
+                                    block: hit.block,
+                                    start: hit.start,
+                                    end: hit.end,
+                                    before: hit.before,
+                                    matched: hit.matched,
+                                    after: hit.after,
+                                }
+                            })
+                            .collect();
+                        hits += batch.len();
+                        let _ = tx.send(LibraryContentMsg::Hits(batch));
+                    }
+                    if hits >= CONTENT_SEARCH_MAX_HITS {
+                        truncated = true;
+                        let _ = tx.send(LibraryContentMsg::Progress {
+                            scanned,
+                            total,
+                            failed,
+                        });
+                        return false;
+                    }
                     let _ = tx.send(LibraryContentMsg::Progress {
                         scanned,
                         total,
                         failed,
                     });
-                    break;
+                    repaint.request_repaint();
+                    true
+                };
+
+                let mut pending = BTreeMap::new();
+                let mut next_order = 0usize;
+                while let Ok(built) = built_rx.recv() {
+                    if cancel_thread.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    pending.insert(built.order, built);
+                    while let Some(built) = pending.remove(&next_order) {
+                        if !process(built) {
+                            cancel_thread.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        next_order += 1;
+                    }
+                    if cancel_thread.load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
-                let _ = tx.send(LibraryContentMsg::Progress {
+                if !cancel_thread.load(Ordering::Relaxed) {
+                    for (_, built) in std::mem::take(&mut pending) {
+                        if !process(built) {
+                            break;
+                        }
+                    }
+                }
+                let _ = tx.send(LibraryContentMsg::Done {
                     scanned,
                     total,
                     failed,
+                    truncated,
                 });
                 repaint.request_repaint();
-            }
-            let _ = tx.send(LibraryContentMsg::Done {
-                scanned,
-                total,
-                failed,
-                truncated,
             });
-            repaint.request_repaint();
         });
 
         state.query = query;

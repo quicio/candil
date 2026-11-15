@@ -295,7 +295,7 @@ The library SHALL render only the rows near the viewport when the visible grid i
 
 ### Requirement: Full-text library search
 
-The library SHALL offer an explicit advanced search over the text of its books, with query modes, book inclusion/exclusion, background execution, a bounded in-memory index cache, progress, results with their source, and opening the selected result at the matching passage without persisting an index.
+The library SHALL offer an explicit advanced search over the text of its books, with query modes, book inclusion/exclusion, background execution, parallel indexing, a bounded in-memory index cache, progress, results with their source, and opening the selected result at the matching passage without persisting an index.
 
 #### Scenario: Start the advanced search
 
@@ -321,6 +321,11 @@ The library SHALL offer an explicit advanced search over the text of its books, 
 
 - **WHEN** the metadata filter has no matches and the query has at least 2 characters
 - **THEN** the empty state offers a "Buscar en el contenido" action that opens the advanced search with the query
+
+#### Scenario: Parallel indexing
+
+- **WHEN** the advanced search has several books to parse
+- **THEN** Candil builds up to four indexes at once while preserving library order, progress and the result limits
 
 #### Scenario: Cache hit
 

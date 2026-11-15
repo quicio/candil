@@ -478,7 +478,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M30 — Caché de búsqueda (cerrada):** índices full-text en memoria con tope de
   64 MB; la segunda búsqueda no vuelve a abrir los EPUB.
 - **M36 — Caché de EPUB remotos (cerrada):** copia local descartable con LRU de
-  1 GB, apertura/búsqueda aceleradas, preparación offline y limpieza manual.
+  1 GB, apertura/búsqueda aceleradas, preparación offline y limpieza manual. La
+  búsqueda avanzada indexa hasta 4 libros en paralelo.
 
 ## Modo diagnóstico
 

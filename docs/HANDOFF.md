@@ -76,6 +76,8 @@ inclusión/exclusión de libros y progreso/cancelación. M36 agrega una caché l
 descartable de EPUB en montajes remotos (`~/.cache/candil/books`, 1 GB, LRU):
 acelera apertura y búsqueda sin cambiar la ruta original, permite **Preparar
 offline** los libros visibles y **Limpiar caché** desde Configuración (ADR-0033).
+La búsqueda avanzada construye los índices de hasta 4 libros en paralelo y
+conserva el orden, los topes y la cancelación.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin

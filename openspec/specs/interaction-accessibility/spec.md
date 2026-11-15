@@ -7,6 +7,11 @@ Define the interaction and accessibility contract that makes every Candil surfac
 
 Every primary action SHALL be reachable and operable with the keyboard, and existing shortcuts SHALL keep working.
 
+#### Scenario: Escribir sin atajos
+
+- **WHEN** un campo de texto tiene el foco
+- **THEN** las letras se escriben y no abren paneles; Escape sigue cerrando el campo o el panel
+
 #### Scenario: Existing shortcut
 - **WHEN** the user presses Space, arrows, T, S, D, G, K, H, N, Command+F, Command+O or Command+,
 - **THEN** the action behaves as documented in README and in-app help

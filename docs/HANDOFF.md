@@ -222,6 +222,7 @@ cargo run --profile fast -- --shot /tmp/p.png --panel share --selection libro.ep
 cargo run --profile fast -- --shot /tmp/p.png --screen library --panel share-config
 cargo run --profile fast -- --selection --share-save /tmp/cita.png libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --study-demo libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --selection --chat-demo libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel config libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind diccionario --consulta-run libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind historial libro.epub
@@ -428,6 +429,10 @@ flotante tapando texto) solo aparecieron así.
     usuario pulsa “Guardar nota”, con `origin: ai`. No hay envío automático:
     online apagado bloquea el chat remoto y la bandeja muestra qué se manda
     (ADR-0032).
+48. **Escribir no dispara atajos**: si un campo de texto tiene foco, las letras
+    son texto y no abren paneles ni consultas; solo Escape sigue cerrando. El
+    botón “Chat” de la selección guarda el destacado, abre el estudio con ese
+    pasaje en la bandeja y enfoca el compositor sin enviar nada.
 
 ## Definición de terminado (por tarea)
 

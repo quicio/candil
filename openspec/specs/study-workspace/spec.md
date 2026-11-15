@@ -45,6 +45,11 @@ El compositor SHALL permitir adjuntar selección actual, página actual, destaca
 - **WHEN** el usuario elige “Selección actual”
 - **THEN** la cita, el capítulo y los párrafos vecinos quedan como contexto visible y removible
 
+#### Scenario: Enviar una selección desde el lector
+
+- **WHEN** el usuario selecciona texto y pulsa “Chat”
+- **THEN** el destacado se guarda, se abre el panel de estudio con el pasaje en la bandeja de contexto y el compositor recibe el foco, sin enviar nada todavía
+
 #### Scenario: Enviar sin contexto adjunto
 
 - **WHEN** hay una selección activa y el usuario envía una pregunta sin contextos adjuntos

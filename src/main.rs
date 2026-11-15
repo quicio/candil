@@ -138,6 +138,10 @@ fn main() -> eframe::Result<()> {
                 dev.study_demo = true;
                 i += 1;
             }
+            "--chat-demo" => {
+                dev.chat_demo = true;
+                i += 1;
+            }
             "--consulta" => {
                 dev.consulta = args.get(i + 1).cloned();
                 i += 2;

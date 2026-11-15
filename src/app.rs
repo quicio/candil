@@ -789,6 +789,7 @@ struct StudyUi {
     error: Option<String>,
     scroll_bottom: bool,
     scroll_hold: u8,
+    focus_composer: bool,
     confirm_delete: bool,
 }
 
@@ -804,6 +805,7 @@ impl Default for StudyUi {
             error: None,
             scroll_bottom: true,
             scroll_hold: 0,
+            focus_composer: false,
             confirm_delete: false,
         }
     }
@@ -1015,6 +1017,8 @@ pub struct DevOpts {
     pub share_save: Option<PathBuf>,
     /// Abre el modo estudio con una sesión de ejemplo (capturas/dev).
     pub study_demo: bool,
+    /// Envía la selección sintética al estudio (capturas/dev).
+    pub chat_demo: bool,
     /// Salta a un ancla del libro al abrir (capturas/dev).
     pub anchor: Option<String>,
     /// `recent`, `title`, `author`, `series` o `added` (capturas/dev).
@@ -1623,6 +1627,9 @@ impl Lector {
                 if self.dev.study_demo {
                     self.seed_study_demo();
                 }
+                if self.dev.chat_demo {
+                    self.send_selection_to_study(ctx);
+                }
                 self.apply_open_action(ctx, action);
                 self.dirty = true;
             }
@@ -1726,13 +1733,11 @@ impl Lector {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
-    fn share_selection(&mut self, ctx: &egui::Context) {
-        let Some(selection) = self.selection.clone() else {
-            return;
-        };
-        let Some(book_key) = self.book_key() else {
-            return;
-        };
+    fn selection_highlight_id(
+        &mut self,
+        selection: &Selection,
+        book_key: &str,
+    ) -> Option<(u64, bool)> {
         let existing = self
             .annotations
             .items
@@ -1746,18 +1751,30 @@ impl Lector {
                     && annotation.end_block() == selection.end_block()
             })
             .map(|annotation| annotation.id);
-        let (id, created) = match existing {
-            Some(id) => (id, false),
+        match existing {
+            Some(id) => Some((id, false)),
             None => {
                 let id = self.annotations.add(annotation_from_selection(
-                    &selection,
-                    book_key,
+                    selection,
+                    book_key.to_string(),
                     String::new(),
                     self.active_color.min(2),
                 ));
                 self.save_annotations();
-                (id, true)
+                Some((id, true))
             }
+        }
+    }
+
+    fn share_selection(&mut self, ctx: &egui::Context) {
+        let Some(selection) = self.selection.clone() else {
+            return;
+        };
+        let Some(book_key) = self.book_key() else {
+            return;
+        };
+        let Some((id, created)) = self.selection_highlight_id(&selection, &book_key) else {
+            return;
         };
         if let Some(annotation) = self.annotations.get(id).cloned() {
             self.open_share(annotation, ctx);
@@ -1982,6 +1999,41 @@ impl Lector {
             self.study.scroll_bottom = true;
             self.study.scroll_hold = 4;
         }
+        ctx.request_repaint();
+    }
+
+    fn send_selection_to_study(&mut self, ctx: &egui::Context) {
+        let Some(selection) = self.selection.clone() else {
+            return;
+        };
+        let Some(book_key) = self.book_key() else {
+            return;
+        };
+        let _ = self.selection_highlight_id(&selection, &book_key);
+        let context = self.study_selection_context();
+        self.study.show = true;
+        self.show_toc = false;
+        self.show_settings = false;
+        self.show_annotations = false;
+        self.show_bookmarks = false;
+        self.show_search = false;
+        self.show_goto = false;
+        self.show_consulta = false;
+        self.show_config = false;
+        self.note = None;
+        self.link_preview = None;
+        self.external_link = None;
+        self.ensure_study_session();
+        if let Some(context) = context {
+            self.study.contexts.clear();
+            self.attach_study_context(context);
+        }
+        self.study.focus_composer = true;
+        self.study.scroll_bottom = true;
+        self.study.scroll_hold = 4;
+        self.study.error = None;
+        self.surrender_reader_focus(ctx);
+        self.selection = None;
         ctx.request_repaint();
     }
 
@@ -3441,6 +3493,7 @@ impl Lector {
                         ("D", "Destacados y notas"),
                         ("K", "Consultar selección"),
                         ("Mayús+K", "Traducir selección"),
+                        ("Chat", "Destacar y preparar pregunta en estudio"),
                     ],
                 ),
                 (
@@ -6012,7 +6065,7 @@ impl Lector {
             )
         });
 
-        if ctrl && key_o {
+        if ctrl && key_o && !typing {
             if let Some(p) = rfd::FileDialog::new()
                 .add_filter("EPUB", &["epub"])
                 .pick_file()
@@ -6021,7 +6074,7 @@ impl Lector {
             }
         }
 
-        if ctrl && key_f && self.book.is_some() {
+        if ctrl && key_f && self.book.is_some() && !typing {
             self.show_search = true;
             self.search_focus = true;
             self.show_toc = false;
@@ -6034,7 +6087,7 @@ impl Lector {
             ctx.request_repaint();
         }
 
-        if ctrl && key_comma {
+        if ctrl && key_comma && !typing {
             if self.show_config {
                 self.show_config = false;
             } else {
@@ -6051,7 +6104,12 @@ impl Lector {
             self.toggle_study(ctx);
         }
 
-        if key_k && self.book.is_some() && self.note.is_none() && self.selection.is_some() {
+        if key_k
+            && !typing
+            && self.book.is_some()
+            && self.note.is_none()
+            && self.selection.is_some()
+        {
             self.open_consulta(ctx);
             if shift && self.show_consulta {
                 self.consulta_tab = ConsultaTab::Traduccion;
@@ -6152,7 +6210,7 @@ impl Lector {
         }
 
         if self.book.is_some() && self.note.is_none() {
-            if key_d {
+            if key_d && !typing {
                 self.show_annotations = !self.show_annotations;
                 self.show_toc = false;
                 self.show_settings = false;
@@ -6165,10 +6223,10 @@ impl Lector {
                 }
             }
             if self.selection.is_some() {
-                if key_h {
+                if key_h && !typing {
                     self.add_highlight(ctx);
                 }
-                if key_n {
+                if key_n && !typing {
                     self.open_note_for_selection(ctx);
                 }
             } else if key_n && !typing && self.show_search && !self.search_results.is_empty() {
@@ -9380,13 +9438,14 @@ impl Lector {
         }
         pos.x = pos.x.clamp(
             screen.left() + 8.0,
-            (screen.right() - 500.0).max(screen.left() + 8.0),
+            (screen.right() - 560.0).max(screen.left() + 8.0),
         );
 
         let mut highlight = false;
         let mut note = false;
         let mut consultar = false;
         let mut capture = false;
+        let mut chat = false;
         egui::Area::new(egui::Id::new("selection_bar"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
@@ -9441,6 +9500,14 @@ impl Lector {
                             {
                                 capture = true;
                             }
+                            if widgets::button(ui, th, "Chat", widgets::ButtonKind::Ghost)
+                                .on_hover_text(
+                                    "Guardar el destacado y preparar la pregunta en el estudio",
+                                )
+                                .clicked()
+                            {
+                                chat = true;
+                            }
                         });
                     });
             });
@@ -9456,6 +9523,9 @@ impl Lector {
         }
         if capture {
             self.share_selection(ctx);
+        }
+        if chat {
+            self.send_selection_to_study(ctx);
         }
     }
 
@@ -10176,6 +10246,10 @@ impl Lector {
                                 .desired_width(f32::INFINITY)
                                 .hint_text("Preguntá sobre el pasaje, el capítulo o lo anterior…"),
                         );
+                        if self.study.focus_composer {
+                            response.request_focus();
+                            self.study.focus_composer = false;
+                        }
                         if response.has_focus() && send_shortcut {
                             send = true;
                         }
@@ -10188,17 +10262,18 @@ impl Lector {
                             } else {
                                 "Enviar"
                             };
-                            if widgets::button(
-                                ui,
-                                th,
-                                label,
-                                widgets::ButtonKind::Primary,
-                            )
-                            .clicked()
-                                && send_enabled
-                            {
-                                send = true;
-                            }
+                            ui.add_enabled_ui(send_enabled, |ui| {
+                                if widgets::button(
+                                    ui,
+                                    th,
+                                    label,
+                                    widgets::ButtonKind::Primary,
+                                )
+                                .clicked()
+                                {
+                                    send = true;
+                                }
+                            });
                             ui.label(
                                 RichText::new(provider_label)
                                     .size(theme::text::META)

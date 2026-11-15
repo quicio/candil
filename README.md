@@ -488,6 +488,7 @@ cargo run --release -- --shot out.png --panel share --selection libro.epub # ven
 cargo run --release -- --shot out.png --screen library --panel share-config # muestra en ajustes
 cargo run --release -- --selection --share-save cita.png libro.epub        # PNG de la cita
 cargo run --release -- --shot out.png --study-demo libro.epub              # modo estudio con una sesión de muestra
+cargo run --release -- --shot out.png --selection --chat-demo libro.epub    # destacar y preparar el chat
 cargo run --release -- --shot out.png --link-preview libro.epub # vista previa de una nota
 cargo run --release -- --shot out.png --screen library --update-demo # UI de actualizaciones
 cargo run --release -- --shot out.png --panel settings libro.epub

@@ -19,9 +19,9 @@ The library SHALL present the product identity, the library count and the search
 
 Search SHALL be the most discoverable library action; order and filter controls SHALL remain available without occupying permanent visual weight equal to search.
 
-#### Scenario: Search by title or author
-- **WHEN** the user types a query
-- **THEN** the grid filters immediately and the query remains visible and editable
+#### Scenario: General search by metadata
+- **WHEN** the user types a query in the library search
+- **THEN** the grid filters immediately by title, author, series, language or path, and the query remains visible and editable
 
 #### Scenario: Change order or filter
 - **WHEN** the user opens the order or filter control
@@ -35,9 +35,9 @@ Search SHALL be the most discoverable library action; order and filter controls 
 - **WHEN** some books have no series and the user selects "Sin serie"
 - **THEN** only books without series metadata are shown
 
-#### Scenario: Content search toggle
-- **WHEN** the library search is visible
-- **THEN** a "Contenido" toggle is visible and indicates whether Enter will search inside the books
+#### Scenario: Open advanced search
+- **WHEN** the user presses "Avanzada" or Ctrl+Shift+F
+- **THEN** the advanced search window opens with the current query prefilled, without starting a content search until the user presses "Buscar"
 
 #### Scenario: No matches
 - **WHEN** the query or filter returns no books
@@ -295,22 +295,32 @@ The library SHALL render only the rows near the viewport when the visible grid i
 
 ### Requirement: Full-text library search
 
-The library SHALL search inside the text of its books on explicit request, run the search without blocking the UI, reuse a bounded in-memory index cache across searches, show progress and results with their source, and open the selected result at the matching passage without persisting an index.
+The library SHALL offer an explicit advanced search over the text of its books, with query modes, book inclusion/exclusion, background execution, a bounded in-memory index cache, progress, results with their source, and opening the selected result at the matching passage without persisting an index.
 
-#### Scenario: Start from the library search
+#### Scenario: Start the advanced search
 
-- **WHEN** the "Contenido" toggle is active, the user types at least 3 characters and presses Enter
-- **THEN** a background search starts across the available books
+- **WHEN** the user opens "Avanzada", writes at least 2 characters and presses "Buscar"
+- **THEN** a background search starts across the included books without blocking the UI
 
-#### Scenario: Toggle starts the search
+#### Scenario: Query modes
 
-- **WHEN** the user activates "Contenido" with a query of at least 3 characters
-- **THEN** the background search starts immediately
+- **WHEN** the user chooses "Frase exacta", "Todas las palabras" or "Cualquiera de las palabras"
+- **THEN** the search applies that mode and returns at most one hit per block for the word modes
+
+#### Scenario: Include or exclude books
+
+- **WHEN** the user unchecks a book in the advanced search list
+- **THEN** that book is excluded from the search and the included count updates
+
+#### Scenario: Scope helpers
+
+- **WHEN** the user presses "Todos", "Ninguno" or "Visibles"
+- **THEN** all, none or the books matching the current library filter/search are included respectively
 
 #### Scenario: Start from an empty metadata result
 
-- **WHEN** the metadata filter has no matches and the query has at least 3 characters
-- **THEN** the empty state offers a "Buscar en el contenido" action
+- **WHEN** the metadata filter has no matches and the query has at least 2 characters
+- **THEN** the empty state offers a "Buscar en el contenido" action that opens the advanced search with the query
 
 #### Scenario: Cache hit
 
@@ -344,13 +354,13 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 #### Scenario: Wide results
 
-- **WHEN** the results panel opens
-- **THEN** its width and height scale with the window, up to 920×760, instead of using the small fixed panel
+- **WHEN** the advanced search window opens
+- **THEN** its width and height scale with the window, up to 1000×820, instead of using a small fixed panel
 
 #### Scenario: Limits
 
 - **WHEN** there are more matches than the configured limits
-- **THEN** Candil stops at 100 results, 20 per book or 120 books and explains that the list is partial
+- **THEN** Candil stops at 300 results, 30 per book or 500 books and explains that the list is partial
 
 #### Scenario: No index on disk
 
@@ -359,8 +369,8 @@ The library SHALL search inside the text of its books on explicit request, run t
 
 #### Scenario: Minimum query
 
-- **WHEN** the query has fewer than 3 characters
-- **THEN** the content search does not start and the panel explains the minimum
+- **WHEN** the query has fewer than 2 characters, or a word mode has no word of at least 2 characters
+- **THEN** the content search does not start and the window explains the minimum
 
 ### Requirement: Google Drive local folder
 

@@ -9,7 +9,7 @@
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
-sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca con toggle, carpeta local de Google Drive, envío a Kobo o dispositivo, anclas internas, progreso estable por bloque,
+sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda general y búsqueda avanzada en el contenido, carpeta local de Google Drive, envío a Kobo o dispositivo, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas, export Markdown, captura de
 citas como imagen (9:16, 4:5, 1:1, 3:4 y 16:9) con plantillas y muestra en
@@ -186,8 +186,8 @@ En macOS, `scripts/make_app.sh` arma un `Candil.app` con el icono y el
 | `H` | destacar la selección |
 | `N` | nota sobre la selección |
 | `Esc` | cerrar panel / salir de la selección; en el lector, volver a la biblioteca |
-| `⌘F` | buscar en la biblioteca / en el libro abierto |
-| `Enter` (biblioteca) | buscar también dentro del contenido de los libros |
+| `⌘F` | enfocar la búsqueda general / buscar en el libro abierto |
+| `Ctrl+Shift+F` (biblioteca) | abrir la búsqueda avanzada |
 | `Enter` (búsqueda) | ir al resultado |
 | `n` / `N` (búsqueda) | siguiente / anterior resultado |
 | `⌘O` | abrir archivo |
@@ -457,9 +457,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M24 — Grilla virtualizada (cerrada):** desde 240 libros visibles solo se
   construyen las filas cercanas al viewport; los encabezados de serie se
   conservan.
-- **M25 — Búsqueda full-text (cerrada):** Enter en el buscador recorre el
-  contenido de los libros en un hilo, muestra resultados y abre el pasaje; no
-  persiste índices.
+- **M25 — Búsqueda full-text (cerrada):** la búsqueda avanzada recorre el
+  contenido de los libros en un hilo, con modos de consulta, inclusión/exclusión
+  de libros, progreso y salto al pasaje; no persiste índices.
 - **M26 — Markdown en IA y notas (cerrada):** renderer propio para encabezados,
   listas, citas, código y énfasis, aplicado a respuestas de IA y notas.
 - **M27 — Etiquetas de marcadores (cerrada):** campo opcional al crear y acción

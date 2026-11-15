@@ -104,21 +104,97 @@ fn deaccent(c: char) -> char {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum QueryMode {
+    #[default]
+    Phrase,
+    AllWords,
+    AnyWord,
+}
+
+impl QueryMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Phrase => "Frase exacta",
+            Self::AllWords => "Todas las palabras",
+            Self::AnyWord => "Cualquiera de las palabras",
+        }
+    }
+}
+
 /// Busca `query` en el índice y devuelve hasta `max` coincidencias.
 /// El segundo valor indica si se cortó la lista porque había más.
 pub fn search(index: &SearchIndex, query: &str, max: usize) -> (Vec<Hit>, bool) {
+    search_mode(index, query, QueryMode::Phrase, max)
+}
+
+/// Búsqueda avanzada: frase, todas las palabras o cualquiera. En los modos de
+/// palabras se devuelve como máximo una coincidencia por bloque.
+pub fn search_mode(
+    index: &SearchIndex,
+    query: &str,
+    mode: QueryMode,
+    max: usize,
+) -> (Vec<Hit>, bool) {
     let needle = normalize(query.trim());
     if needle.chars().count() < 2 {
         return (Vec::new(), false);
     }
+    if mode == QueryMode::Phrase {
+        return search_phrase(index, &needle, max);
+    }
+    let words: Vec<&str> = needle
+        .split_whitespace()
+        .filter(|word| word.chars().count() >= 2)
+        .collect();
+    if words.is_empty() {
+        return (Vec::new(), false);
+    }
+    let mut hits = Vec::new();
+    let mut truncated = false;
+    'chapters: for (chapter, chapter_index) in index.chapters.iter().enumerate() {
+        for text in &chapter_index.blocks {
+            let mut earliest: Option<(usize, usize)> = None;
+            let mut found = 0usize;
+            for word in &words {
+                if let Some(byte) = text.normalized.find(word) {
+                    found += 1;
+                    let start = text.normalized[..byte].chars().count();
+                    let end = start + word.chars().count();
+                    if earliest.is_none_or(|(current, _)| start < current) {
+                        earliest = Some((start, end));
+                    }
+                }
+            }
+            let keep = match mode {
+                QueryMode::AllWords => found == words.len(),
+                QueryMode::AnyWord => found > 0,
+                QueryMode::Phrase => false,
+            };
+            if !keep {
+                continue;
+            }
+            let Some((start, end)) = earliest else {
+                continue;
+            };
+            if hits.len() >= max {
+                truncated = true;
+                break 'chapters;
+            }
+            hits.push(make_hit(chapter, text.block, text, start, end));
+        }
+    }
+    (hits, truncated)
+}
+
+fn search_phrase(index: &SearchIndex, needle: &str, max: usize) -> (Vec<Hit>, bool) {
     let needle_chars = needle.chars().count();
     let mut hits = Vec::new();
     let mut truncated = false;
-
     'chapters: for (chapter, chapter_index) in index.chapters.iter().enumerate() {
         for text in &chapter_index.blocks {
             let mut from = 0usize;
-            while let Some(offset) = text.normalized[from..].find(&needle) {
+            while let Some(offset) = text.normalized[from..].find(needle) {
                 let byte = from + offset;
                 let start = text.normalized[..byte].chars().count();
                 let end = start + needle_chars;
@@ -202,6 +278,21 @@ mod tests {
             normalized.chars().count(),
             "la normalización debe ser 1:1 para mapear offsets"
         );
+    }
+
+    #[test]
+    fn modos_de_palabras_filtran_por_bloque() {
+        let idx = index(vec![(
+            "Uno",
+            vec!["El lobo y la manada", "Solo el lobo", "Solo la manada"],
+        )]);
+        let (all, _) = search_mode(&idx, "lobo manada", QueryMode::AllWords, 10);
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].block, 0);
+        let (any, _) = search_mode(&idx, "lobo manada", QueryMode::AnyWord, 10);
+        assert_eq!(any.len(), 3);
+        let (phrase, _) = search_mode(&idx, "lobo y la", QueryMode::Phrase, 10);
+        assert_eq!(phrase.len(), 1);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Ventana y lectura: barra mínima, columna centrada, scroll continuo.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -207,10 +207,10 @@ fn build_grid_items(
     items
 }
 
-const CONTENT_SEARCH_MIN: usize = 3;
-const CONTENT_SEARCH_MAX_HITS: usize = 100;
-const CONTENT_SEARCH_PER_BOOK: usize = 20;
-const CONTENT_SEARCH_MAX_BOOKS: usize = 120;
+const CONTENT_SEARCH_MIN: usize = 2;
+const CONTENT_SEARCH_MAX_HITS: usize = 300;
+const CONTENT_SEARCH_PER_BOOK: usize = 30;
+const CONTENT_SEARCH_MAX_BOOKS: usize = 500;
 
 #[derive(Debug, Clone)]
 struct LibraryContentHit {
@@ -243,8 +243,13 @@ enum LibraryContentMsg {
 
 struct LibraryContentSearch {
     query: String,
-    rx: Receiver<LibraryContentMsg>,
-    cancel: Arc<AtomicBool>,
+    mode: search::QueryMode,
+    excluded: HashSet<String>,
+    book_filter: String,
+    focus_query: bool,
+    error: Option<String>,
+    rx: Option<Receiver<LibraryContentMsg>>,
+    cancel: Option<Arc<AtomicBool>>,
     hits: Vec<LibraryContentHit>,
     scanned: usize,
     total: usize,
@@ -868,7 +873,6 @@ pub struct Lector {
     library_search: String,
     library_order: LibraryOrder,
     library_filter: LibraryFilter,
-    library_content_enabled: bool,
     library_content: Option<LibraryContentSearch>,
     content_cache: Arc<Mutex<SearchCache>>,
     cfg: Config,
@@ -1147,7 +1151,6 @@ impl Lector {
             library_search: initial_search,
             library_order: LibraryOrder::Recent,
             library_filter: LibraryFilter::All,
-            library_content_enabled: false,
             library_content: None,
             content_cache: Arc::new(Mutex::new(SearchCache::default())),
             cfg,
@@ -1314,9 +1317,8 @@ impl Lector {
         }
         if let Some(query) = app.dev.library_content_query.clone() {
             if !opening_book && app.screen == Screen::Library {
-                app.library_search = query;
-                app.library_content_enabled = true;
-                app.start_library_content_search(&cc.egui_ctx);
+                app.library_search = query.clone();
+                app.open_advanced_search(&cc.egui_ctx, Some(query), true);
             }
         }
         if !opening_book
@@ -6637,38 +6639,86 @@ impl Lector {
         }
     }
 
-    fn start_library_content_search(&mut self, ctx: &egui::Context) {
-        if let Some(previous) = self.library_content.take() {
-            previous.cancel.store(true, Ordering::Relaxed);
+    fn open_advanced_search(
+        &mut self,
+        ctx: &egui::Context,
+        query: Option<String>,
+        start_search: bool,
+    ) {
+        if self.library_content.is_none() {
+            self.library_content = Some(LibraryContentSearch {
+                query: query.clone().unwrap_or_default(),
+                mode: search::QueryMode::Phrase,
+                excluded: HashSet::new(),
+                book_filter: String::new(),
+                focus_query: true,
+                error: None,
+                rx: None,
+                cancel: None,
+                hits: Vec::new(),
+                scanned: 0,
+                total: 0,
+                failed: 0,
+                busy: false,
+                truncated: false,
+            });
+        } else if let Some(state) = &mut self.library_content {
+            if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
+                state.query = query;
+            }
+            state.focus_query = true;
+            state.error = None;
         }
-        let query = self.library_search.trim().to_string();
+        if start_search {
+            self.start_advanced_search(ctx);
+        }
+        ctx.request_repaint();
+    }
+
+    fn start_advanced_search(&mut self, ctx: &egui::Context) {
+        let Some(state) = &mut self.library_content else {
+            return;
+        };
+        if state.busy {
+            return;
+        }
+        let query = state.query.trim().to_string();
+        let mode = state.mode;
         if query.chars().count() < CONTENT_SEARCH_MIN {
-            self.say(format!(
-                "Escribí al menos {CONTENT_SEARCH_MIN} caracteres para buscar en el contenido."
+            state.error = Some(format!(
+                "Escribí al menos {CONTENT_SEARCH_MIN} caracteres para buscar."
             ));
             return;
         }
-        let available = self
-            .library
-            .books
-            .iter()
-            .filter(|book| !book.missing && book.error.is_none())
+        let words = search::normalize(&query)
+            .split_whitespace()
+            .filter(|word| word.chars().count() >= 2)
             .count();
-        let books: Vec<(PathBuf, String)> = self
-            .library
-            .books
-            .iter()
-            .filter(|book| !book.missing && book.error.is_none())
-            .take(CONTENT_SEARCH_MAX_BOOKS)
-            .map(|book| (PathBuf::from(&book.path), book.title.clone()))
-            .collect();
-        if books.is_empty() {
-            self.say("No hay libros disponibles para buscar en el contenido.");
+        if mode != search::QueryMode::Phrase && words == 0 {
+            state.error =
+                Some("Ese modo necesita al menos una palabra de dos caracteres o más.".into());
             return;
         }
-
-        let total = books.len();
+        let candidates: Vec<(PathBuf, String)> = self
+            .library
+            .books
+            .iter()
+            .filter(|book| !book.missing && book.error.is_none())
+            .filter(|book| !state.excluded.contains(&book.path))
+            .map(|book| (PathBuf::from(&book.path), book.title.clone()))
+            .collect();
+        if candidates.is_empty() {
+            state.error = Some("No hay libros seleccionados para buscar.".into());
+            return;
+        }
+        let available = candidates.len();
         let truncated_books = available > CONTENT_SEARCH_MAX_BOOKS;
+        let books: Vec<(PathBuf, String)> = candidates
+            .into_iter()
+            .take(CONTENT_SEARCH_MAX_BOOKS)
+            .collect();
+        let total = books.len();
+
         let (tx, rx) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_thread = cancel.clone();
@@ -6716,7 +6766,7 @@ impl Lector {
                     break;
                 }
                 let per_book = remaining.min(CONTENT_SEARCH_PER_BOOK);
-                let (found, more) = search::search(&index, &query_thread, per_book);
+                let (found, more) = search::search_mode(&index, &query_thread, mode, per_book);
                 if more {
                     truncated = true;
                 }
@@ -6771,27 +6821,30 @@ impl Lector {
             repaint.request_repaint();
         });
 
-        self.library_content = Some(LibraryContentSearch {
-            query,
-            rx,
-            cancel,
-            hits: Vec::new(),
-            scanned: 0,
-            total,
-            failed: 0,
-            busy: true,
-            truncated: truncated_books,
-        });
-        self.say(format!("Buscando en el contenido de {total} libros…"));
+        state.query = query;
+        state.rx = Some(rx);
+        state.cancel = Some(cancel);
+        state.hits.clear();
+        state.scanned = 0;
+        state.total = total;
+        state.failed = 0;
+        state.busy = true;
+        state.truncated = truncated_books;
+        state.error = None;
+        ctx.request_repaint();
     }
 
     fn poll_library_content(&mut self, ctx: &egui::Context) {
         let Some(state) = &mut self.library_content else {
             return;
         };
+        let Some(rx) = state.rx.take() else {
+            return;
+        };
         let mut done = false;
+        let mut keep = true;
         loop {
-            match state.rx.try_recv() {
+            match rx.try_recv() {
                 Ok(LibraryContentMsg::Progress {
                     scanned,
                     total,
@@ -6813,14 +6866,23 @@ impl Lector {
                     state.failed = failed;
                     state.truncated = truncated;
                     state.busy = false;
+                    state.cancel = None;
                     done = true;
+                    keep = false;
+                    break;
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     state.busy = false;
+                    state.cancel = None;
+                    state.error = Some("La búsqueda se interrumpió.".into());
+                    keep = false;
                     break;
                 }
             }
+        }
+        if keep {
+            state.rx = Some(rx);
         }
         if state.busy {
             ctx.request_repaint_after(Duration::from_millis(120));
@@ -6856,213 +6918,370 @@ impl Lector {
     }
 
     fn library_content_window(&mut self, ctx: &egui::Context, th: &Theme) {
-        let Some(state) = &self.library_content else {
-            return;
-        };
-        let query = state.query.clone();
-        let hits = state.hits.clone();
-        let scanned = state.scanned;
-        let total = state.total;
-        let failed = state.failed;
-        let busy = state.busy;
-        let truncated = state.truncated;
-        let progress = if busy {
-            Some(state.cancel.clone())
-        } else {
-            None
-        };
-        let screen = ctx.screen_rect();
-        let window_w = (screen.width() * 0.72).clamp(520.0, 920.0);
-        let window_h = (screen.height() * 0.72).clamp(420.0, 760.0);
+        let all_books: Vec<(String, String, String)> = self
+            .library
+            .books
+            .iter()
+            .filter(|book| !book.missing && book.error.is_none())
+            .map(|book| (book.path.clone(), book.title.clone(), book.author.clone()))
+            .collect();
+        let visible_paths: HashSet<String> = self
+            .visible_books()
+            .into_iter()
+            .filter_map(|index| self.library.books.get(index).map(|book| book.path.clone()))
+            .collect();
 
         let mut open = true;
+        let mut close = false;
+        let mut start = false;
         let mut cancel = false;
         let mut jump: Option<LibraryContentHit> = None;
-        egui::Window::new(
-            RichText::new("Resultados en el contenido")
-                .size(theme::text::TITLE)
-                .strong()
-                .color(th.fg),
-        )
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .min_width(520.0)
-        .default_width(window_w)
-        .max_width(window_w)
-        .default_height(window_h)
-        .max_height(window_h)
-        .frame(widgets::panel_frame(th))
-        .show(ctx, |ui| {
-            ui.label(
-                RichText::new(format!("«{query}» · {} resultados", hits.len()))
-                    .size(theme::text::BODY_SMALL)
+        let screen = ctx.screen_rect();
+        let window_w = (screen.width() * 0.8).clamp(560.0, 1000.0);
+        let window_h = (screen.height() * 0.8).clamp(460.0, 820.0);
+
+        {
+            let Some(state) = self.library_content.as_mut() else {
+                return;
+            };
+            let included_count = all_books
+                .iter()
+                .filter(|(path, _, _)| !state.excluded.contains(path))
+                .count();
+            let book_filter = collate(&state.book_filter);
+
+            egui::Window::new(
+                RichText::new("Búsqueda avanzada")
+                    .size(theme::text::TITLE)
+                    .strong()
                     .color(th.fg),
-            );
-            if busy {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Spinner::new());
+            )
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(window_w)
+            .max_width(window_w)
+            .default_height(window_h)
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                let query = ui.add(
+                    egui::TextEdit::singleline(&mut state.query)
+                        .hint_text("Frase o palabras a buscar…")
+                        .desired_width(f32::INFINITY),
+                );
+                if state.focus_query {
+                    query.request_focus();
+                    state.focus_query = false;
+                }
+                if query.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                    start = true;
+                }
+                if query.changed() {
+                    state.error = None;
+                }
+                ui.horizontal_wrapped(|ui| {
+                    egui::ComboBox::from_id_salt("advanced-mode")
+                        .width(190.0)
+                        .selected_text(state.mode.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut state.mode,
+                                search::QueryMode::Phrase,
+                                search::QueryMode::Phrase.label(),
+                            );
+                            ui.selectable_value(
+                                &mut state.mode,
+                                search::QueryMode::AllWords,
+                                search::QueryMode::AllWords.label(),
+                            );
+                            ui.selectable_value(
+                                &mut state.mode,
+                                search::QueryMode::AnyWord,
+                                search::QueryMode::AnyWord.label(),
+                            );
+                        });
+                    let busy = state.busy;
+                    ui.add_enabled_ui(!busy, |ui| {
+                        if widgets::button(ui, th, "Buscar", widgets::ButtonKind::Primary).clicked()
+                        {
+                            start = true;
+                        }
+                    });
+                    if busy
+                        && widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked()
+                    {
+                        cancel = true;
+                    }
+                    if widgets::button(ui, th, "Cerrar", widgets::ButtonKind::Ghost).clicked() {
+                        close = true;
+                    }
+                });
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "Busca dentro del texto de los libros. {included_count} de {} libros incluidos.",
+                            all_books.len()
+                        ))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                    )
+                    .wrap(),
+                );
+
+                egui::CollapsingHeader::new(
+                    RichText::new(format!("Libros ({included_count}/{})", all_books.len()))
+                        .size(theme::text::BODY_SMALL)
+                        .color(th.fg),
+                )
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if widgets::button(ui, th, "Todos", widgets::ButtonKind::Ghost).clicked() {
+                            state.excluded.clear();
+                        }
+                        if widgets::button(ui, th, "Ninguno", widgets::ButtonKind::Ghost).clicked() {
+                            state.excluded =
+                                all_books.iter().map(|(path, _, _)| path.clone()).collect();
+                        }
+                        if widgets::button(ui, th, "Visibles", widgets::ButtonKind::Ghost).clicked()
+                        {
+                            state.excluded = all_books
+                                .iter()
+                                .filter(|(path, _, _)| !visible_paths.contains(path))
+                                .map(|(path, _, _)| path.clone())
+                                .collect();
+                        }
+                        ui.add(
+                            egui::TextEdit::singleline(&mut state.book_filter)
+                                .hint_text("Filtrar libros…")
+                                .desired_width(180.0),
+                        );
+                    });
+                    ScrollArea::vertical()
+                        .id_salt("advanced-books")
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for (path, title, author) in &all_books {
+                                if !book_filter.is_empty()
+                                    && !collate(title).contains(&book_filter)
+                                    && !collate(author).contains(&book_filter)
+                                {
+                                    continue;
+                                }
+                                let mut included = !state.excluded.contains(path);
+                                let label = if author.trim().is_empty() {
+                                    truncate(title, 70)
+                                } else {
+                                    format!("{} — {}", truncate(title, 54), truncate(author, 28))
+                                };
+                                if ui.checkbox(&mut included, label).changed() {
+                                    if included {
+                                        state.excluded.remove(path);
+                                    } else {
+                                        state.excluded.insert(path.clone());
+                                    }
+                                }
+                            }
+                        });
+                });
+                ui.separator();
+
+                if let Some(error) = &state.error {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(error)
+                                .size(theme::text::META)
+                                .color(th.error),
+                        )
+                        .wrap(),
+                    );
+                }
+                if state.busy {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        ui.label(
+                            RichText::new(format!(
+                                "Buscando en {} de {} libros…",
+                                state.scanned, state.total
+                            ))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                        );
+                    });
+                } else if state.total > 0 {
                     ui.label(
-                        RichText::new(format!("Buscando en {scanned} de {total} libros…"))
+                        RichText::new(format!("{} resultados", state.hits.len()))
+                            .size(theme::text::BODY_SMALL)
+                            .color(th.fg),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new("Elegí el alcance y pulsá Buscar.")
                             .size(theme::text::META)
                             .color(th.dim),
                     );
-                    if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked() {
-                        cancel = true;
-                    }
-                });
-            } else if hits.is_empty() {
-                ui.label(
-                    RichText::new("No se encontró el texto en los libros disponibles.")
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-            }
-            if failed > 0 {
-                ui.label(
-                    RichText::new(format!("{failed} libros no se pudieron abrir."))
-                        .size(theme::text::META)
-                        .color(th.dim),
-                );
-            }
-            if truncated {
-                ui.label(
-                    RichText::new(format!(
-                        "Lista parcial: máximo {CONTENT_SEARCH_MAX_HITS} resultados, {CONTENT_SEARCH_PER_BOOK} por libro y {CONTENT_SEARCH_MAX_BOOKS} libros."
-                    ))
-                    .size(theme::text::META)
-                    .color(th.dim),
-                );
-            }
-            ui.separator();
-            ScrollArea::vertical()
-                .max_height((window_h - 190.0).max(240.0))
-                .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                let body = FontId::new(theme::text::BODY_SMALL, fonts::family(false, false));
-                let body_bold = FontId::new(theme::text::BODY_SMALL, fonts::family(true, false));
-                let meta = FontId::new(theme::text::META, fonts::family(false, false));
-                for (index, hit) in hits.iter().enumerate() {
-                    let mut header = LayoutJob::default();
-                    header.append(
-                        &truncate(&hit.book_title, 42),
-                        0.0,
-                        TextFormat {
-                            font_id: body_bold.clone(),
-                            color: th.fg,
-                            ..Default::default()
-                        },
-                    );
-                    header.append(
-                        &format!("   Cap. {}", hit.chapter + 1),
-                        0.0,
-                        TextFormat {
-                            font_id: meta.clone(),
-                            color: th.dim,
-                            ..Default::default()
-                        },
-                    );
-                    if !hit.chapter_title.trim().is_empty() {
-                        header.append(
-                            &format!("  ·  {}", truncate(&hit.chapter_title, 44)),
-                            0.0,
-                            TextFormat {
-                                font_id: meta.clone(),
-                                color: th.dim,
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    let mut snippet = LayoutJob::default();
-                    snippet.append(
-                        &hit.before,
-                        0.0,
-                        TextFormat {
-                            font_id: body.clone(),
-                            color: th.fg,
-                            ..Default::default()
-                        },
-                    );
-                    snippet.append(
-                        &hit.matched,
-                        0.0,
-                        TextFormat {
-                            font_id: body_bold.clone(),
-                            color: th.accent,
-                            ..Default::default()
-                        },
-                    );
-                    snippet.append(
-                        &hit.after,
-                        0.0,
-                        TextFormat {
-                            font_id: body.clone(),
-                            color: th.fg,
-                            ..Default::default()
-                        },
-                    );
-
-                    let card = egui::Frame::new()
-                        .fill(th.bg)
-                        .stroke(Stroke::new(1.0_f32, th.border))
-                        .corner_radius(theme::radius::SM)
-                        .inner_margin(egui::Margin::symmetric(10, 8))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.add(egui::Label::new(header).wrap());
-                            ui.add_space(4.0);
-                            ui.add(egui::Label::new(snippet).wrap());
-                        });
-                    let rect = card.response.rect;
-                    let id = ui.make_persistent_id(("content-hit", index));
-                    let mut response = ui.interact(rect, id, Sense::click());
-                    if response.has_focus() {
-                        ui.painter().rect_stroke(
-                            rect.expand(2.0),
-                            theme::radius::SM + 1.0,
-                            Stroke::new(2.0_f32, th.accent),
-                            egui::StrokeKind::Inside,
-                        );
-                    } else if response.hovered() {
-                        ui.painter().rect_stroke(
-                            rect.expand(1.0),
-                            theme::radius::SM + 1.0,
-                            Stroke::new(1.0_f32, th.accent.gamma_multiply(0.55)),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
-                    let activated = response.clicked()
-                        || (response.has_focus()
-                            && ui.input(|i| {
-                                i.key_pressed(Key::Enter) || i.key_pressed(Key::Space)
-                            }));
-                    if activated {
-                        jump = Some(hit.clone());
-                    }
-                    response = response
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text("Abrir en el libro");
-                    let _ = response;
-                    ui.add_space(6.0);
                 }
-            });
-        });
+                if state.failed > 0 {
+                    ui.label(
+                        RichText::new(format!("{} libros no se pudieron abrir.", state.failed))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    );
+                }
+                if state.truncated {
+                    ui.label(
+                        RichText::new(format!(
+                            "Lista parcial: máximo {CONTENT_SEARCH_MAX_HITS} resultados, {CONTENT_SEARCH_PER_BOOK} por libro y {CONTENT_SEARCH_MAX_BOOKS} libros."
+                        ))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                    );
+                }
+                if !state.busy && state.total > 0 && state.hits.is_empty() {
+                    ui.label(
+                        RichText::new("No se encontró el texto en los libros incluidos.")
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    );
+                }
 
-        if cancel {
-            if let Some(cancel) = progress {
-                cancel.store(true, Ordering::Relaxed);
-            }
-            if let Some(state) = &mut self.library_content {
-                state.busy = false;
-            }
+                ScrollArea::vertical()
+                    .id_salt("advanced-results")
+                    .max_height((window_h - 380.0).max(180.0))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        let body = FontId::new(theme::text::BODY_SMALL, fonts::family(false, false));
+                        let body_bold =
+                            FontId::new(theme::text::BODY_SMALL, fonts::family(true, false));
+                        let meta = FontId::new(theme::text::META, fonts::family(false, false));
+                        for (index, hit) in state.hits.iter().enumerate() {
+                            let mut header = LayoutJob::default();
+                            header.append(
+                                &truncate(&hit.book_title, 42),
+                                0.0,
+                                TextFormat {
+                                    font_id: body_bold.clone(),
+                                    color: th.fg,
+                                    ..Default::default()
+                                },
+                            );
+                            header.append(
+                                &format!("   Cap. {}", hit.chapter + 1),
+                                0.0,
+                                TextFormat {
+                                    font_id: meta.clone(),
+                                    color: th.dim,
+                                    ..Default::default()
+                                },
+                            );
+                            if !hit.chapter_title.trim().is_empty() {
+                                header.append(
+                                    &format!("  ·  {}", truncate(&hit.chapter_title, 44)),
+                                    0.0,
+                                    TextFormat {
+                                        font_id: meta.clone(),
+                                        color: th.dim,
+                                        ..Default::default()
+                                    },
+                                );
+                            }
+                            let mut snippet = LayoutJob::default();
+                            snippet.append(
+                                &hit.before,
+                                0.0,
+                                TextFormat {
+                                    font_id: body.clone(),
+                                    color: th.fg,
+                                    ..Default::default()
+                                },
+                            );
+                            snippet.append(
+                                &hit.matched,
+                                0.0,
+                                TextFormat {
+                                    font_id: body_bold.clone(),
+                                    color: th.accent,
+                                    ..Default::default()
+                                },
+                            );
+                            snippet.append(
+                                &hit.after,
+                                0.0,
+                                TextFormat {
+                                    font_id: body.clone(),
+                                    color: th.fg,
+                                    ..Default::default()
+                                },
+                            );
+                            let card = egui::Frame::new()
+                                .fill(th.bg)
+                                .stroke(Stroke::new(1.0_f32, th.border))
+                                .corner_radius(theme::radius::SM)
+                                .inner_margin(egui::Margin::symmetric(10, 8))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.add(egui::Label::new(header).wrap());
+                                    ui.add_space(4.0);
+                                    ui.add(egui::Label::new(snippet).wrap());
+                                });
+                            let rect = card.response.rect;
+                            let id = ui.make_persistent_id(("advanced-hit", index));
+                            let mut response = ui.interact(rect, id, Sense::click());
+                            if response.has_focus() {
+                                ui.painter().rect_stroke(
+                                    rect.expand(2.0),
+                                    theme::radius::SM + 1.0,
+                                    Stroke::new(2.0_f32, th.accent),
+                                    egui::StrokeKind::Inside,
+                                );
+                            } else if response.hovered() {
+                                ui.painter().rect_stroke(
+                                    rect.expand(1.0),
+                                    theme::radius::SM + 1.0,
+                                    Stroke::new(1.0_f32, th.accent.gamma_multiply(0.55)),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+                            if response.clicked()
+                                || (response.has_focus()
+                                    && ui.input(|i| {
+                                        i.key_pressed(Key::Enter) || i.key_pressed(Key::Space)
+                                    }))
+                            {
+                                jump = Some(hit.clone());
+                            }
+                            response = response
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text("Abrir en el libro");
+                            let _ = response;
+                            ui.add_space(6.0);
+                        }
+                    });
+            });
         }
-        if !open {
+
+        if !open || close {
             if let Some(state) = &self.library_content {
-                if state.busy {
-                    state.cancel.store(true, Ordering::Relaxed);
+                if let Some(cancel) = &state.cancel {
+                    cancel.store(true, Ordering::Relaxed);
                 }
             }
             self.library_content = None;
+            return;
+        }
+        if cancel {
+            if let Some(state) = &mut self.library_content {
+                if let Some(cancel) = &state.cancel {
+                    cancel.store(true, Ordering::Relaxed);
+                }
+                state.busy = false;
+                state.cancel = None;
+                state.rx = None;
+                state.error = Some("Búsqueda cancelada.".into());
+            }
+        }
+        if start {
+            self.start_advanced_search(ctx);
         }
         if let Some(hit) = jump {
             self.open_library_content_hit(hit, ctx);
@@ -7251,7 +7470,7 @@ impl Lector {
         let mut recover: Option<usize> = None;
         let mut edit: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
-        let mut content_search = false;
+        let mut advanced_search = false;
         let mut send_device: Option<usize> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
@@ -7364,10 +7583,10 @@ impl Lector {
                     } else {
                         0.0
                     };
-                    let content_toggle_reserve = if compact { 58.0 } else { 88.0 };
+                    let advanced_reserve = if compact { 70.0 } else { 92.0 };
                     let reserve = if compact { 130.0 } else { 208.0 }
                         + continue_reserve
-                        + content_toggle_reserve;
+                        + advanced_reserve;
                     let search_w = (ui.available_width() - reserve).max(150.0);
                     let search = egui::Frame::new()
                         .fill(th.bg)
@@ -7378,11 +7597,7 @@ impl Lector {
                             ui.set_min_height(32.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.library_search)
-                                    .hint_text(if compact {
-                                        "Buscar título o autor…"
-                                    } else {
-                                        "Buscar título o autor… · Enter: texto"
-                                    })
+                                    .hint_text("Buscar título, autor o serie…")
                                     .desired_width((search_w - 20.0).max(120.0))
                                     .frame(false),
                             )
@@ -7394,15 +7609,6 @@ impl Lector {
                             Stroke::new(2.0_f32, th.accent),
                             egui::StrokeKind::Inside,
                         );
-                        if self.library_content_enabled && ctx.input(|i| i.key_pressed(Key::Enter))
-                        {
-                            content_search = true;
-                        }
-                    }
-                    if search.inner.changed() {
-                        if let Some(previous) = self.library_content.take() {
-                            previous.cancel.store(true, Ordering::Relaxed);
-                        }
                     }
                     if ctx.input(|i| {
                         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(Key::F)
@@ -7410,23 +7616,21 @@ impl Lector {
                         search.inner.request_focus();
                     }
                     let _ = search.response.on_hover_text(
-                        "Marcá «Contenido» y presioná Enter para buscar dentro de los libros.",
+                        "La búsqueda general filtra por título, autor, serie y ruta.",
                     );
-
-                    let toggle = ui
-                        .add(egui::Checkbox::new(
-                            &mut self.library_content_enabled,
-                            if compact { "Texto" } else { "Contenido" },
-                        ))
-                        .on_hover_text("Buscar también dentro del texto de los libros (Enter)");
-                    if toggle.changed() {
-                        if self.library_content_enabled {
-                            content_search = true;
-                        } else {
-                            if let Some(previous) = self.library_content.take() {
-                                previous.cancel.store(true, Ordering::Relaxed);
-                            }
-                        }
+                    let advanced_shortcut = ui.input(|i| {
+                        (i.modifiers.command || i.modifiers.ctrl)
+                            && i.modifiers.shift
+                            && i.key_pressed(Key::F)
+                    });
+                    if advanced_shortcut
+                        || widgets::button(ui, th, "Avanzada", widgets::ButtonKind::Ghost)
+                            .on_hover_text(
+                                "Buscar dentro del texto, elegir libros y excluir títulos (Ctrl+Shift+F)",
+                            )
+                            .clicked()
+                    {
+                        advanced_search = true;
                     }
 
                     if let Some((path, title, author)) = &recent {
@@ -7567,8 +7771,8 @@ impl Lector {
                 });
             });
 
-        if content_search {
-            self.start_library_content_search(ctx);
+        if advanced_search {
+            self.open_advanced_search(ctx, Some(self.library_search.clone()), false);
         }
 
         if show_second_row {
@@ -7847,8 +8051,11 @@ impl Lector {
                             )
                             .clicked()
                             {
-                                self.library_content_enabled = true;
-                                self.start_library_content_search(ctx);
+                                self.open_advanced_search(
+                                    ctx,
+                                    Some(self.library_search.clone()),
+                                    true,
+                                );
                             }
                         }
                     });
@@ -8640,6 +8847,8 @@ impl Lector {
                 query.is_empty()
                     || collate(&b.title).contains(&query)
                     || collate(&b.author).contains(&query)
+                    || collate(b.series.as_deref().unwrap_or("")).contains(&query)
+                    || collate(&b.lang).contains(&query)
                     || collate(&b.path).contains(&query)
             })
             .map(|(index, _)| index)

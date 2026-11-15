@@ -1,7 +1,7 @@
 ---
 id: roadmap
 status: vigente
-version: 1.16.0
+version: 1.17.0
 updated: 2026-11-14
 ---
 
@@ -47,6 +47,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M32 | Instalar desde la UI | **Hecho** | [app-updates](../openspec/specs/app-updates/spec.md), [ADR-0030](../docs/adr/0030-actualizacion-desde-la-ui.md) | En Linux con binario bajo `$HOME`: re-verificar, backup, `rename` atómico y reiniciar; fuera de eso, descarga asistida |
 | M33 | Compartir citas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0031](../docs/adr/0031-compartir-citas-como-imagen.md) | Capturar guarda el destacado y genera un PNG 9:16/4:5/1:1/3:4/16:9 con plantillas Papel/Noche/Portada/Color/Imagen; muestra en Configuración → Compartir |
 | M34 | Modo estudio | **Hecho** | [study-workspace](../openspec/specs/study-workspace/spec.md), [ADR-0032](../docs/adr/0032-modo-estudio.md) | Varias sesiones por libro en `studies.json`, panel lector/chat, contexto visible y respuestas de IA con “Guardar nota” (`origin: ai`) |
+| M35 | Búsqueda avanzada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Búsqueda general por metadatos y ventana avanzada de contenido con modos, inclusión/exclusión de libros y progreso |
 
 ## M1 — Lector (terminado)
 

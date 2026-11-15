@@ -1,7 +1,7 @@
 ---
 id: handoff
 status: vigente
-version: 1.30.0
+version: 1.31.0
 updated: 2026-11-14
 ---
 
@@ -70,7 +70,9 @@ Color o Imagen, y exporta un PNG local. Configuración → Compartir muestra una
 cita de ejemplo en vivo (ADR-0031). M34 agrega el **modo estudio**: sesiones
 múltiples por libro en `studies.json`, panel dividido lector/chat, bandeja de
 contexto (selección, página, destacado, marcador), conversación multi-turno y
-“Guardar nota” con `origin: ai` (ADR-0032).
+“Guardar nota” con `origin: ai` (ADR-0032). M35 separa la búsqueda general de
+metadatos de una búsqueda avanzada en el contenido, con modos de frase/palabras,
+inclusión/exclusión de libros y progreso/cancelación.
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -123,7 +125,7 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 188 unit (187 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 189 unit (188 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
 | binario `dist` | 7.450.864 B arm64; 8.466.112 B Intel | `cargo build --profile dist` (2026-11-13) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |

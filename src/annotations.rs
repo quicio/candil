@@ -12,7 +12,15 @@ use serde::{Deserialize, Serialize};
 use crate::library::now;
 use crate::store;
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationOrigin {
+    #[default]
+    User,
+    Ai,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -41,6 +49,8 @@ pub struct Annotation {
     pub note: String,
     /// Reservado para varios colores; 0 en el MVP.
     pub color: u8,
+    /// Una nota creada desde el modo estudio y guardada como anotación.
+    pub origin: AnnotationOrigin,
     pub created: i64,
 }
 
@@ -361,11 +371,32 @@ mod tests {
         assert_eq!(a.id, 0);
         assert_eq!(a.color, 0);
         assert_eq!(a.note, "");
+        assert_eq!(a.origin, AnnotationOrigin::User);
         assert!(a.end_block.is_none());
         assert!(a.parts.is_empty());
         let all: Annotations = serde_json::from_str("{}").unwrap();
         assert_eq!(all.schema_version, SCHEMA_VERSION);
         assert!(all.items.is_empty());
+    }
+
+    #[test]
+    fn origen_ia_hace_roundtrip() {
+        let dir = temp_dir("origin");
+        let path = dir.join("annotations.json");
+        let mut all = Annotations::default();
+        all.add(Annotation {
+            book: "/x.epub".into(),
+            quote: "Una cita".into(),
+            note: "Respuesta de la IA".into(),
+            origin: AnnotationOrigin::Ai,
+            ..Annotation::default()
+        });
+        all.save_to(&path).unwrap();
+        let (loaded, warning) = Annotations::load_from(&path);
+        assert!(warning.is_none());
+        assert_eq!(loaded.items[0].origin, AnnotationOrigin::Ai);
+        assert_eq!(loaded.schema_version, SCHEMA_VERSION);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

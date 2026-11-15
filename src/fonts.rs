@@ -9,6 +9,22 @@ pub const SERIF_BOLD: &str = "lit-bold";
 pub const SERIF_ITALIC: &str = "lit-italic";
 pub const SERIF_BOLD_ITALIC: &str = "lit-bold-italic";
 
+pub const REGULAR: &[u8] = include_bytes!("../assets/fonts/Literata-Regular.ttf");
+pub const SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Literata-SemiBold.ttf");
+pub const BOLD: &[u8] = include_bytes!("../assets/fonts/Literata-Bold.ttf");
+pub const ITALIC: &[u8] = include_bytes!("../assets/fonts/Literata-Italic.ttf");
+pub const BOLD_ITALIC: &[u8] = include_bytes!("../assets/fonts/Literata-BoldItalic.ttf");
+
+/// Fuentes de reserva de egui para glifos que Literata no cubre (emoji, CJK).
+pub fn fallback_bytes() -> Vec<Vec<u8>> {
+    let defs = FontDefinitions::default();
+    ["Ubuntu-Light", "NotoEmoji-Regular"]
+        .iter()
+        .filter_map(|name| defs.font_data.get(*name))
+        .map(|data| data.font.to_vec())
+        .collect()
+}
+
 fn add_family(defs: &mut FontDefinitions, key: &str, faces: &[&str]) {
     defs.families.insert(
         FontFamily::Name(key.into()),
@@ -20,26 +36,11 @@ pub fn install(ctx: &Context) {
     let mut defs = FontDefinitions::default();
 
     let faces: [(&str, &[u8]); 5] = [
-        (
-            "lit-regular",
-            include_bytes!("../assets/fonts/Literata-Regular.ttf"),
-        ),
-        (
-            "lit-semibold",
-            include_bytes!("../assets/fonts/Literata-SemiBold.ttf"),
-        ),
-        (
-            "lit-boldf",
-            include_bytes!("../assets/fonts/Literata-Bold.ttf"),
-        ),
-        (
-            "lit-italicf",
-            include_bytes!("../assets/fonts/Literata-Italic.ttf"),
-        ),
-        (
-            "lit-bolditalicf",
-            include_bytes!("../assets/fonts/Literata-BoldItalic.ttf"),
-        ),
+        ("lit-regular", REGULAR),
+        ("lit-semibold", SEMIBOLD),
+        ("lit-boldf", BOLD),
+        ("lit-italicf", ITALIC),
+        ("lit-bolditalicf", BOLD_ITALIC),
     ];
     for (name, bytes) in faces {
         defs.font_data

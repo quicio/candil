@@ -1,7 +1,7 @@
 # app-updates Specification
 
 ## Purpose
-Permitir que Candil compruebe, descargue y verifique una versión nueva desde la propia aplicación, sin reemplazar la instalación ni enviar datos del usuario.
+Permitir que Candil compruebe, descargue, verifique e instale de forma segura una versión nueva desde la propia aplicación, sin enviar datos del usuario. La autoinstalación se limita a Linux con el binario bajo la carpeta personal.
 ## Requirements
 ### Requirement: Comprobación manual
 
@@ -60,18 +60,47 @@ La descarga SHALL ejecutarse en un hilo, SHALL verificar el SHA-256 del asset co
 - **WHEN** la descarga o la escritura falla
 - **THEN** no queda un archivo parcial en Descargas y se puede reintentar
 
-### Requirement: La app no se autoinstala
+#### Scenario: Asset grande
 
-La app SHALL limitar la actualización a comprobar, descargar y verificar; SHALL NOT reemplazar el binario en ejecución, el bundle `.app`, ni ejecutar el archivo descargado.
+- **WHEN** el binario de la release supera los 10 MB
+- **THEN** la descarga lo lee completo hasta el tope de seguridad de 128 MB, sin cortar por el límite por defecto del cliente HTTP
+
+### Requirement: Autoinstalación segura en Linux
+
+En Linux, cuando el binario en ejecución vive bajo la carpeta personal y no es un build de desarrollo, la app SHALL poder instalarlo desde la UI. La instalación SHALL re-verificar el SHA-256, SHALL rechazar un archivo que no sea un ELF, SHALL guardar un backup, SHALL reemplazar el binario con un temporal + `rename` en el mismo directorio y SHALL NOT ejecutar el archivo descargado.
+
+#### Scenario: Instalación disponible
+
+- **WHEN** la descarga termina verificada y el binario actual está bajo `$HOME`
+- **THEN** se ofrece “Instalar actualización” además de mostrar el archivo y abrir el release
+
+#### Scenario: Instalación correcta
+
+- **WHEN** el usuario instala la actualización
+- **THEN** se comprueba de nuevo el hash, se guarda `candil.bak` junto al binario, se escribe un temporal con permisos de ejecución y se mueve con `rename` atómico
+
+#### Scenario: Reinicio
+
+- **WHEN** la instalación termina y el usuario pulsa “Reiniciar ahora”
+- **THEN** se guardan los datos, se lanza la misma ruta con los mismos argumentos y la ventana actual se cierra sin volver a guardar
+
+#### Scenario: Instalación no permitida
+
+- **WHEN** el binario está fuera de `$HOME`, es un build de `target/` o viene de un gestor de paquetes, Flatpak, AppImage o Nix
+- **THEN** no se modifica nada y se explica cómo actualizar con el gestor o compilar desde el repo
+
+### Requirement: Actualización asistida fuera de Linux
+
+En macOS, Windows y cualquier instalación no autoinstalable, la app SHALL limitar la actualización a comprobar, descargar y verificar; SHALL NOT reemplazar el binario en ejecución ni el bundle `.app`, ni ejecutar el archivo descargado.
 
 #### Scenario: Archivo descargado
 
-- **WHEN** la descarga termina correctamente
+- **WHEN** la descarga termina correctamente en una plataforma no autoinstalable
 - **THEN** se ofrece mostrar el archivo en Finder/Explorer y abrir la página del release, pero la instalación queda en manos del usuario
 
 #### Scenario: App en ejecución
 
-- **WHEN** el usuario descarga una versión nueva
+- **WHEN** el usuario descarga una versión nueva en una plataforma no autoinstalable
 - **THEN** la versión instalada y el proceso actual no cambian
 
 ### Requirement: Privacidad de la comprobación
@@ -90,12 +119,17 @@ La comprobación SHALL ser una acción explícita, SHALL NOT ejecutarse al inici
 
 ### Requirement: Estados y errores en la UI
 
-La sección Avanzado SHALL mostrar el estado actual (inactivo, buscando, al día, disponible, descargando, descargado o error) y SHALL mantener las acciones coherentes con ese estado.
+La sección Avanzado SHALL mostrar el estado actual (inactivo, buscando, al día, disponible, descargando, descargado, instalando, instalado o error) y SHALL mantener las acciones coherentes con ese estado.
 
-#### Scenario: Mientras se busca o descarga
+#### Scenario: Mientras se busca, descarga o instala
 
 - **WHEN** hay una operación en curso
 - **THEN** el botón correspondiente queda deshabilitado y se muestra el progreso sin bloquear el resto de la configuración
+
+#### Scenario: Instalado sin reiniciar
+
+- **WHEN** la actualización ya está instalada pero el proceso sigue con la versión anterior
+- **THEN** se muestra que se aplica al reiniciar, la ruta del backup y la acción “Reiniciar ahora”
 
 #### Scenario: Ventana angosta
 

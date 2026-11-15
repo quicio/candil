@@ -520,3 +520,66 @@ The consultation panel and the note editor SHALL render a small, dependency-free
 - **WHEN** an emphasis marker is not closed
 - **THEN** no text is lost; the remaining text is shown with the active style
 
+
+### Requirement: Focus mode
+
+The reader SHALL offer an optional focus mode that keeps the line near the vertical center clear and progressively attenuates text farther from it, without moving content or changing the stored position.
+
+#### Scenario: Enable focus mode
+
+- **WHEN** the user enables "Modo enfoque" in the typography panel or in the reading configuration
+- **THEN** the preference persists with the other typography settings, globally or per book according to "Solo para este libro"
+
+#### Scenario: Scroll in focus mode
+
+- **WHEN** the user scrolls while focus mode is active
+- **THEN** the clear band stays centered and the line crossing it becomes legible smoothly, while lines farther away fade toward the background
+
+#### Scenario: Disable focus mode
+
+- **WHEN** the user turns focus mode off
+- **THEN** the full page returns to its normal contrast immediately
+
+### Requirement: Share quote as image
+
+The reader SHALL let the user turn a selection or saved highlight into a local PNG with the quote, book and author, using a template that can be customized in the share window and previewed with a sample in settings.
+
+#### Scenario: Capture from a selection
+
+- **WHEN** the user selects text and presses "Capturar"
+- **THEN** the selection is saved as a highlight if it was not already saved, and the share window opens with a preview image
+
+#### Scenario: Share a saved highlight
+
+- **WHEN** the user chooses "Compartir" on a saved annotation
+- **THEN** the share window opens for that annotation without creating a duplicate
+
+#### Scenario: Choose format and background
+
+- **WHEN** the user picks story 9:16, post 4:5, square 1:1, portrait 3:4 or landscape 16:9 and a paper, night, cover, solid or custom-image background
+- **THEN** the preview updates and the saved PNG uses the same layout at the selected format's full resolution
+
+#### Scenario: Preview in settings
+
+- **WHEN** the user opens Configuración → Compartir
+- **THEN** a sample quote with a sample book and author is rendered with the saved template, and changing format, background or visibility updates the sample without needing an open book
+
+#### Scenario: Long quote
+
+- **WHEN** the selected quote does not fit even at the minimum font size
+- **THEN** the image keeps the beginning at a word boundary with an ellipsis and the share window explains that the quote was shortened
+
+#### Scenario: Save the image
+
+- **WHEN** the user presses "Guardar imagen"
+- **THEN** a PNG at the selected format's full resolution is written to the pictures directory (or downloads as fallback) with an atomic replace, and the UI offers to reveal it
+
+#### Scenario: Missing cover or background
+
+- **WHEN** the selected background is a book cover that does not exist, or the custom image cannot be loaded
+- **THEN** the image falls back to the paper background and the share window says so
+
+#### Scenario: No network
+
+- **WHEN** the share window is open or an image is saved
+- **THEN** no network request is made and no book data leaves the machine

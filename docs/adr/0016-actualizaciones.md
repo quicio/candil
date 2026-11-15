@@ -1,6 +1,7 @@
 # ADR-0016: Actualización asistida desde la aplicación
 
-- **Estado:** aceptado
+- **Estado:** reemplazado en Linux por ADR-0030; vigente para macOS, Windows y
+  casos no autoinstalables
 - **Fecha:** 2026-11-09
 - **Área:** distribución, configuración, red
 

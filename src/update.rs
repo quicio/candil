@@ -1,8 +1,10 @@
 //! Comprobación de la última release, selección de binario y descarga
-//! verificada. No reemplaza ni ejecuta nada: solo deja el archivo listo.
+//! verificada. En Linux, con el binario bajo la carpeta personal, también puede
+//! instalarlo con backup y `rename` atómico; nunca ejecuta el archivo descargado.
 
 use std::cmp::Ordering;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -10,7 +12,12 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 pub const RELEASES_URL: &str = "https://api.github.com/repos/quicio/candil/releases/latest";
-const TIMEOUT_SECS: u64 = 20;
+const METADATA_TIMEOUT_SECS: u64 = 20;
+const ASSET_TIMEOUT_SECS: u64 = 180;
+/// El JSON de la release y los checksums son chicos; el binario puede superar
+/// los 10 MB (el default de `ureq`), así que se lee con un tope explícito.
+const MAX_METADATA_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_ASSET_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asset {
@@ -147,14 +154,34 @@ pub fn parse_release(json: &str, current: &str) -> Result<Option<ReleaseInfo>, S
 /// Consulta GitHub. Es una operación de red: la UI la llama solo desde un hilo
 /// y a pedido del usuario.
 pub fn check_latest() -> Result<Option<ReleaseInfo>, String> {
-    let bytes = http_get(RELEASES_URL)?;
+    let bytes = http_get(RELEASES_URL, MAX_METADATA_BYTES, METADATA_TIMEOUT_SECS)?;
     let text = String::from_utf8_lossy(&bytes);
     parse_release(&text, current_version())
 }
 
+/// Descarga ya verificada, con el hash que se comprobó.
+#[derive(Debug, Clone)]
+pub struct Downloaded {
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+/// Resultado de reemplazar el binario en ejecución.
+#[derive(Debug, Clone)]
+pub struct Installed {
+    pub backup: PathBuf,
+    /// Ruta del binario ya reemplazado. No se puede volver a usar
+    /// `current_exe()`: el kernel devuelve `… (deleted)` para el inodo viejo.
+    pub target: PathBuf,
+}
+
+/// La autoinstalación se limita a Linux con el binario bajo la carpeta
+/// personal. macOS y Windows conservan la descarga asistida.
+pub const SELF_INSTALL_SUPPORTED: bool = cfg!(target_os = "linux");
+
 /// Descarga el asset y su checksum, verifica SHA-256 y guarda el archivo en
 /// `dir` con un temporal + rename. No lo ejecuta ni lo instala.
-pub fn download_release(release: &ReleaseInfo, dir: &Path) -> Result<PathBuf, String> {
+pub fn download_release(release: &ReleaseInfo, dir: &Path) -> Result<Downloaded, String> {
     let asset = release
         .asset
         .as_ref()
@@ -163,8 +190,8 @@ pub fn download_release(release: &ReleaseInfo, dir: &Path) -> Result<PathBuf, St
         .sums_url
         .as_ref()
         .ok_or_else(|| "El release no publica SHA256SUMS.txt.".to_string())?;
-    let bytes = http_get(&asset.url)?;
-    let sums = http_get(sums_url)?;
+    let bytes = http_get(&asset.url, MAX_ASSET_BYTES, ASSET_TIMEOUT_SECS)?;
+    let sums = http_get(sums_url, MAX_METADATA_BYTES, METADATA_TIMEOUT_SECS)?;
     let sums = String::from_utf8_lossy(&sums);
     let expected = expected_sha(&sums, &asset.name)
         .ok_or_else(|| "No encontré el checksum del binario en SHA256SUMS.txt.".to_string())?;
@@ -200,7 +227,142 @@ pub fn download_release(release: &ReleaseInfo, dir: &Path) -> Result<PathBuf, St
         let _ = fs::remove_file(&temp);
         return Err(format!("No pude guardar la actualización: {error}"));
     }
-    Ok(path)
+    Ok(Downloaded {
+        path,
+        sha256: expected,
+    })
+}
+
+/// Reemplaza el binario en ejecución por la descarga verificada.
+///
+/// Antes de tocar nada vuelve a comprobar el SHA-256 y que sea un ELF. Hace
+/// `candil.bak` junto al binario, escribe un temporal en el mismo directorio y
+/// lo mueve con `rename`, que es atómico. El proceso actual sigue usando el
+/// inodo viejo hasta que se reinicia.
+pub fn install_downloaded(downloaded: &Downloaded, version: &str) -> Result<Installed, String> {
+    if !is_newer(version, current_version()) {
+        return Err("La versión descargada no es más nueva que la instalada.".into());
+    }
+    let target = self_install_target()?;
+    install_verified(downloaded, &target)
+}
+
+fn install_verified(downloaded: &Downloaded, target: &Path) -> Result<Installed, String> {
+    let bytes = fs::read(&downloaded.path).map_err(|e| {
+        format!(
+            "No pude leer la descarga {}: {e}",
+            downloaded.path.display()
+        )
+    })?;
+    verify_bytes(&bytes, &downloaded.sha256)?;
+    ensure_linux_binary(&bytes)?;
+    let backup = install_bytes(target, &bytes)?;
+    Ok(Installed {
+        backup,
+        target: target.to_path_buf(),
+    })
+}
+
+/// Ruta del binario actual si se puede reemplazar sin root ni romper paquetes.
+pub fn self_install_target() -> Result<PathBuf, String> {
+    if !SELF_INSTALL_SUPPORTED {
+        return Err(
+            "La autoinstalación está disponible en Linux; descargá el archivo y reemplazá el binario a mano."
+                .into(),
+        );
+    }
+    let exe =
+        std::env::current_exe().map_err(|e| format!("No pude ubicar el binario de Candil: {e}"))?;
+    let home = dirs::home_dir().ok_or_else(|| "No pude ubicar tu carpeta personal.".to_string())?;
+    install_target_for(&exe, &home)
+}
+
+fn install_target_for(exe: &Path, home: &Path) -> Result<PathBuf, String> {
+    let exe = fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
+    let home = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    if !exe.starts_with(&home) {
+        return Err(format!(
+            "Candil está instalado fuera de tu carpeta personal ({}). Actualizalo con tu gestor de paquetes o reemplazá el binario a mano.",
+            exe.display()
+        ));
+    }
+    let relative = exe.strip_prefix(&home).unwrap_or(&exe);
+    if relative
+        .components()
+        .any(|part| part.as_os_str() == "target")
+    {
+        return Err(
+            "Estás ejecutando un build de desarrollo; no lo autoactualizo. Compilá desde el repo."
+                .into(),
+        );
+    }
+    Ok(exe)
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_linux_binary(bytes: &[u8]) -> Result<(), String> {
+    if bytes.starts_with(b"\x7fELF") {
+        Ok(())
+    } else {
+        Err("El archivo descargado no es un binario Linux válido.".into())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ensure_linux_binary(_bytes: &[u8]) -> Result<(), String> {
+    Err("La autoinstalación está disponible solo en Linux.".into())
+}
+
+fn install_bytes(target: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("Ruta de instalación inválida: {}", target.display()))?;
+    let backup = target.with_file_name("candil.bak");
+    fs::copy(target, &backup).map_err(|e| {
+        format!(
+            "No pude respaldar el binario actual en {}: {e}",
+            backup.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&backup, fs::Permissions::from_mode(0o755));
+    }
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let name = target
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "candil".into());
+    let temp = parent.join(format!(".{name}.update-{}-{stamp}.tmp", std::process::id()));
+    let write = || -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    };
+    if let Err(error) = write() {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("No pude escribir la actualización: {error}"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(error) = fs::set_permissions(&temp, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&temp);
+            return Err(format!(
+                "No pude hacer ejecutable la actualización: {error}"
+            ));
+        }
+    }
+    if let Err(error) = fs::rename(&temp, target) {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("No pude reemplazar el binario: {error}"));
+    }
+    Ok(backup)
 }
 
 pub fn default_download_dir() -> PathBuf {
@@ -209,9 +371,9 @@ pub fn default_download_dir() -> PathBuf {
         .unwrap_or_else(|| crate::store::data_dir().join("updates"))
 }
 
-fn http_get(url: &str) -> Result<Vec<u8>, String> {
+fn http_get(url: &str, max_bytes: u64, timeout_secs: u64) -> Result<Vec<u8>, String> {
     let config = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(TIMEOUT_SECS)))
+        .timeout_global(Some(Duration::from_secs(timeout_secs)))
         .build();
     let agent: ureq::Agent = config.into();
     let mut response = agent
@@ -222,6 +384,8 @@ fn http_get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(http_error)?;
     let bytes = response
         .body_mut()
+        .with_config()
+        .limit(max_bytes)
         .read_to_vec()
         .map_err(|e| format!("No pude leer la respuesta: {e}"))?;
     Ok(bytes)
@@ -426,7 +590,8 @@ mod tests {
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
         let addr = listener.local_addr().expect("addr");
-        let payload = b"candil-test-binary".to_vec();
+        // Más de los 10 MB que `ureq` permite por defecto en `read_to_vec`.
+        let payload = vec![7u8; 11 * 1024 * 1024];
         let hash = sha256_hex(&payload);
         let sums = format!("{hash}  candil-test-asset\n");
         let payload_server = payload.clone();
@@ -468,9 +633,11 @@ mod tests {
             .as_nanos();
         let dir =
             std::env::temp_dir().join(format!("candil-update-test-{}-{stamp}", std::process::id()));
-        let path = download_release(&release, &dir).expect("descarga");
-        assert_eq!(std::fs::read(&path).unwrap(), payload);
-        assert!(path
+        let downloaded = download_release(&release, &dir).expect("descarga");
+        assert_eq!(std::fs::read(&downloaded.path).unwrap(), payload);
+        assert_eq!(downloaded.sha256, hash);
+        assert!(downloaded
+            .path
             .file_name()
             .unwrap()
             .to_string_lossy()
@@ -479,10 +646,125 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(
-                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                std::fs::metadata(&downloaded.path)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
                 0o755
             );
         }
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn solo_instala_binarios_bajo_la_carpeta_personal() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base =
+            std::env::temp_dir().join(format!("candil-target-test-{}-{stamp}", std::process::id()));
+        let home = base.join("home");
+        let exe = home.join(".local/bin/candil");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"binario").unwrap();
+        assert_eq!(
+            install_target_for(&exe, &home).unwrap(),
+            std::fs::canonicalize(&exe).unwrap()
+        );
+
+        let system = base.join("usr/bin/candil");
+        std::fs::create_dir_all(system.parent().unwrap()).unwrap();
+        std::fs::write(&system, b"binario").unwrap();
+        let error = install_target_for(&system, &home).unwrap_err();
+        assert!(error.contains("fuera de tu carpeta personal"));
+
+        let dev = home.join("repo/target/fast/candil");
+        std::fs::create_dir_all(dev.parent().unwrap()).unwrap();
+        std::fs::write(&dev, b"binario").unwrap();
+        let error = install_target_for(&dev, &home).unwrap_err();
+        assert!(error.contains("build de desarrollo"));
+
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn instala_solo_una_descarga_verificada() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("candil-verified-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("candil");
+        std::fs::write(&target, b"binario viejo").unwrap();
+        let payload = b"\x7fELFbinario nuevo".to_vec();
+        let download = dir.join("descarga");
+        std::fs::write(&download, &payload).unwrap();
+
+        let good = Downloaded {
+            path: download.clone(),
+            sha256: sha256_hex(&payload),
+        };
+        let installed = install_verified(&good, &target).expect("instala");
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+        assert_eq!(installed.target, target);
+        assert_eq!(std::fs::read(&installed.backup).unwrap(), b"binario viejo");
+
+        let bad = Downloaded {
+            path: download,
+            sha256: sha256_hex(b"otra cosa"),
+        };
+        assert!(install_verified(&bad, &target).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn instala_con_backup_y_sin_dejar_temporales() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "candil-install-test-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("candil");
+        std::fs::write(&target, b"binario viejo").unwrap();
+
+        let backup = install_bytes(&target, b"\x7fELFbinario nuevo").expect("instala");
+        assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFbinario nuevo");
+        assert_eq!(std::fs::read(&backup).unwrap(), b"binario viejo");
+        assert_eq!(backup.file_name().unwrap(), "candil.bak");
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".update-"))
+            .collect();
+        assert!(leftovers.is_empty(), "no debe quedar el temporal");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rechaza_un_asset_que_no_es_elf() {
+        if cfg!(target_os = "linux") {
+            assert!(ensure_linux_binary(b"\x7fELF...").is_ok());
+        }
+        assert!(ensure_linux_binary(b"#!/bin/sh\n").is_err());
     }
 }

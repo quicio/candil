@@ -1,8 +1,8 @@
 ---
 id: handoff
 status: vigente
-version: 1.26.0
-updated: 2026-11-09
+version: 1.30.0
+updated: 2026-11-14
 ---
 
 # Handoff — estado del proyecto y cómo seguir
@@ -59,6 +59,18 @@ opcionales y editables a los marcadores. M28 agrega el toggle **Contenido**, un
 panel de resultados más amplio y la carpeta local de Google Drive sin OAuth. M29
 agrega el envío por copia a un Kobo montado o a cualquier carpeta/dispositivo. M30
 cachea en memoria los índices full-text (64 MB) para acelerar búsquedas repetidas.
+M31 agrega el **modo enfoque**: un velo vertical deja clara la línea central y
+atenúa suavemente lo que se aleja de ella, configurable en Aa o en Lectura. M32
+agrega la **instalación desde la UI en Linux**: re-verifica el SHA-256, exige un
+ELF, guarda `candil.bak`, reemplaza con `rename` atómico y ofrece reiniciar;
+fuera de una instalación de usuario sigue siendo asistida (ADR-0030). M33 agrega
+**compartir citas como imagen**: Capturar guarda el destacado y abre una vista
+previa con formatos 9:16, 4:5, 1:1, 3:4 y 16:9, fondos Papel, Noche, Portada,
+Color o Imagen, y exporta un PNG local. Configuración → Compartir muestra una
+cita de ejemplo en vivo (ADR-0031). M34 agrega el **modo estudio**: sesiones
+múltiples por libro en `studies.json`, panel dividido lector/chat, bandeja de
+contexto (selección, página, destacado, marcador), conversación multi-turno y
+“Guardar nota” con `origin: ai` (ADR-0032).
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -76,7 +88,7 @@ origen.
 `openspec/` es la fuente de verdad para cambios nuevos. Las specs vigentes
 (`design-system`, `library-experience`, `reading-workspace`,
 `interaction-accessibility`, `ai-providers`, `ai-credentials`, `epub-editing`,
-`app-updates` y `data-backup`) viven en `openspec/specs/`; los cambios
+`app-updates`, `data-backup` y `study-workspace`) viven en `openspec/specs/`; los cambios
 `consolidar-ux-ui`, `proveedores-ia-clave`, `editar-metadata-epub`,
 `seleccion-entre-parrafos`, `notas-al-pie-y-volver`,
 `actualizaciones-desde-la-app`, `biblioteca-continuar-leyendo`,
@@ -111,7 +123,7 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 160 unit (159 + 1 live ignorado) + 10 integración | `cargo test` |
+| tests | 188 unit (187 + 1 live ignorado) + 10 integración | `cargo test` |
 | clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
 | binario `dist` | 7.450.864 B arm64; 8.466.112 B Intel | `cargo build --profile dist` (2026-11-13) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
@@ -142,13 +154,15 @@ src/app.rs     ventana, biblioteca, lector, barra, scroll, paneles, teclado
 src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada (con #ancla)
 src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
-src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes, JSON atómico v2
+src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes + origen, JSON atómico v3
 src/search.rs  índice efímero por libro; búsqueda interna y full-text de biblioteca
+src/share.rs   render local de citas como PNG (Literata + fondos + plantillas)
+src/study.rs   sesiones de estudio por libro, mensajes, contexto e historial de IA
 src/markdown.rs renderer Markdown mínimo para IA y notas, sin dependencias
 src/ai.rs      catálogo de proveedores y protocolos (OpenAI, Anthropic, Gemini)
 src/secrets.rs API key por proveedor en el llavero; `OPENCODE_API_KEY` solo para OpenCode Go
 src/epub_edit.rs edición de metadatos/portada, backup y reemplazo validado
-src/update.rs  consulta de releases, asset por plataforma, descarga y SHA-256
+src/update.rs  releases, asset por plataforma, descarga, SHA-256 e instalación atómica (Linux)
 src/backup.rs  respaldo ZIP de datos, manifiesto, checksums e importación segura
 src/consulta.rs diccionario/traducción (MyMemory u Ollama local)/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
@@ -204,6 +218,10 @@ cargo run --profile fast -- --shot /tmp/p.png --panel search --book-search frase
 cargo run --profile fast -- --shot /tmp/p.png --panel notes --annotations-all libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel goto libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --export-md /tmp/destacados.md libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --panel share --selection libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --screen library --panel share-config
+cargo run --profile fast -- --selection --share-save /tmp/cita.png libro.epub
+cargo run --profile fast -- --shot /tmp/p.png --study-demo libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --panel config libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind diccionario --consulta-run libro.epub
 cargo run --profile fast -- --shot /tmp/p.png --consulta "sleep" --consulta-kind historial libro.epub
@@ -261,7 +279,10 @@ flotante tapando texto) solo aparecieron así.
    existe el parser tolerante. El test `ningun_capitulo_queda_vacio` lo fija.
 4. **Los recursos se resuelven dentro del zip** con rutas normalizadas
    (`resolve()`); aceptar rutas percent-encoded y `..`.
-5. **La UI no bloquea**: parsear un capítulo ocurre al abrirlo, no al arrancar.
+5. **La UI no bloquea**: abrir un libro lee el EPUB completo en un hilo y lo
+   deja en memoria; cambiar de capítulo o cargar una imagen ya no toca el disco.
+   El escaneo usa `Book::open_streaming` y solo lee metadatos/portada. `--shot`
+   sigue abriendo en forma síncrona para que el primer frame tenga el libro.
 6. **El texto no se inventa ni se pega**: el whitespace de frontera entre runs se
    conserva, `<pre>` mantiene saltos/indentación y las entidades conocidas se
    decodifican. Un capítulo con `<svg><image>` raster no queda vacío.
@@ -309,23 +330,26 @@ flotante tapando texto) solo aparecieron así.
     preferencia de reduced motion del SO, así que no se anima nada decorativo.
 21. **Editar un EPUB no es leerlo**: reescribir el ZIP exige backup, validación
     y reemplazo seguro. Nunca se modifica el original sin esas tres cosas.
-22. **Las anotaciones pueden cruzar párrafos**: `annotations.json` v2 guarda
-    `end_block` y una parte de cita por bloque; `block`/`start`/`end` siguen
-    siendo el ancla y siguen siendo válidos para archivos v1. No se convierten a
-    píxeles ni se separan en varias anotaciones.
+22. **Las anotaciones pueden cruzar párrafos**: `annotations.json` v3 guarda
+    `end_block`, una parte de cita por bloque y `origin` (`user`/`ai`);
+    `block`/`start`/`end` siguen siendo el ancla y siguen siendo válidos para
+    archivos v1/v2. No se convierten a píxeles ni se separan en varias
+    anotaciones.
 23. **Un enlace interno no navega solo**: abre una vista previa; “Ir al texto”
     es la acción explícita y guarda un único `Progress` de regreso. Los enlaces
     externos no se abren sin una decisión aparte.
-24. **La actualización es asistida, no automática**: consulta GitHub solo a
-    pedido, verifica SHA-256 y guarda en Descargas; nunca reemplaza el binario ni
-    el `.app` ni ejecuta el archivo descargado (ADR-0016).
+24. **La actualización es explícita y segura**: consulta GitHub solo a pedido y
+    verifica SHA-256. En Linux, si el binario vive bajo `$HOME` y no es un build
+    de `target/`, la UI puede instalarlo con backup + `rename` atómico y ofrecer
+    reiniciar (ADR-0030); en macOS, Windows y paquetes del sistema solo se
+    descarga el archivo y nunca se ejecuta ni se reemplaza nada (ADR-0016).
 25. **La entrega es automática**: no bumpees `Cargo.toml` ni crees tags a mano;
     push a `main` y `auto-release` publica. Si falla, relanzá `release.yml` con
     el tag existente (ADR-0017).
 26. **La biblioteca se refresca al recuperar el foco**, con debounce de 30 s y
     sin bloquear la UI; no es un watcher en tiempo real (ADR-0018). “Continuar
     leyendo” usa el mayor `last_opened` válido, no el orden de la grilla.
-27. **El respaldo de datos incluye solo los cuatro JSON de usuario**; nunca EPUB,
+27. **El respaldo de datos incluye solo los cinco JSON de usuario**; nunca EPUB,
     portadas ni claves. La importación valida manifiesto, checksums y JSON, y
     guarda un `pre-import-*.zip` antes de escribir (ADR-0019).
 28. **La serie sale del OPF**, no del nombre del archivo. `BookEntry.meta_version`
@@ -378,7 +402,8 @@ flotante tapando texto) solo aparecieron así.
     el panel permite crearla o renombrarla sin cambiar el esquema (ADR-0024).
 42. **Google Drive es una carpeta local**, no una cuenta: **Añadir Google Drive…**
     abre el selector en la raíz de Drive para elegir una subcarpeta y se indexa
-    como cualquier otra, sin OAuth, API de Google ni credenciales (ADR-0026). Si
+    como cualquier otra, sin OAuth, API de Google ni credenciales (ADR-0026).
+    Elegir la raíz de Drive se rechaza: indexar todo Drive es demasiado lento. Si
     los archivos están solo en la nube, Drive los descarga al abrirlos; se avisa y
     se recomienda disponible sin conexión. La búsqueda full-text exige el toggle
     **Contenido** y su panel escala con la ventana.
@@ -389,6 +414,20 @@ flotante tapando texto) solo aparecieron así.
     64 MB, clave ruta+tamaño+mtime, `Arc<SearchIndex>` compartido. La primera
     búsqueda de la sesión parsea; las siguientes reutilizan. Un EPUB editado
     invalida su clave y el caché se pierde al cerrar (ADR-0028).
+45. **El modo enfoque es un velo del tema, no un cambio de layout**: se guarda
+    como `Settings.focus_mode` (global o por libro), la banda clara queda fija
+    en el centro del viewport y el texto se atenúa hacia el color de fondo. No
+    mueve el contenido, no altera el progreso ni la selección.
+46. **Compartir una cita es local**: Capturar crea el destacado si falta y
+    renderiza un PNG a 1080 px de ancho con `ab_glyph` + Literata. La imagen
+    nunca se sube a una red social ni a un servidor; se guarda en Imágenes con
+    temporal + `rename`. `Config.share` guarda plantilla y toggles (ADR-0031).
+47. **El estudio es un cuaderno, no una consulta**: vive en `studies.json` con
+    varias sesiones por libro; cada mensaje conserva su contexto visible. Las
+    respuestas de IA viven en la sesión y solo pasan a `annotations.json` si el
+    usuario pulsa “Guardar nota”, con `origin: ai`. No hay envío automático:
+    online apagado bloquea el chat remoto y la bandeja muestra qué se manda
+    (ADR-0032).
 
 ## Definición de terminado (por tarea)
 

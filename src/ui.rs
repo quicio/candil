@@ -39,7 +39,7 @@ pub fn button(ui: &mut Ui, th: &Theme, label: impl Into<String>, kind: ButtonKin
                 visuals.widgets.active.weak_bg_fill = th.accent.gamma_multiply(0.84);
                 visuals.widgets.inactive.bg_stroke = Stroke::NONE;
                 visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-                visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.fg);
+                visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, th.fg);
                 ui.add(
                     egui::Button::new(body.color(th.bg).strong())
                         .min_size(min_height())
@@ -51,7 +51,7 @@ pub fn button(ui: &mut Ui, th: &Theme, label: impl Into<String>, kind: ButtonKin
         ButtonKind::Secondary => ui.add(
             egui::Button::new(body.color(th.fg))
                 .min_size(min_height())
-                .stroke(Stroke::new(1.0, th.border))
+                .stroke(Stroke::new(1.0_f32, th.border))
                 .corner_radius(radius::MD),
         ),
         ButtonKind::Ghost => {
@@ -62,7 +62,7 @@ pub fn button(ui: &mut Ui, th: &Theme, label: impl Into<String>, kind: ButtonKin
                 visuals.widgets.active.weak_bg_fill = th.accent.gamma_multiply(0.20);
                 visuals.widgets.inactive.bg_stroke = Stroke::NONE;
                 visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-                visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.accent);
+                visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, th.accent);
                 ui.add(
                     egui::Button::new(body.color(th.fg))
                         .min_size(min_height())
@@ -77,9 +77,9 @@ pub fn button(ui: &mut Ui, th: &Theme, label: impl Into<String>, kind: ButtonKin
                 visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
                 visuals.widgets.hovered.weak_bg_fill = th.error.gamma_multiply(0.14);
                 visuals.widgets.active.weak_bg_fill = th.error.gamma_multiply(0.24);
-                visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, th.error);
-                visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, th.error);
-                visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.error);
+                visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, th.error);
+                visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, th.error);
+                visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, th.error);
                 ui.add(
                     egui::Button::new(body.color(th.error))
                         .min_size(min_height())
@@ -112,7 +112,7 @@ pub fn panel_frame(th: &Theme) -> egui::Frame {
 pub fn panel_frame_fill(th: &Theme, fill: Color32) -> egui::Frame {
     egui::Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, th.border))
+        .stroke(Stroke::new(1.0_f32, th.border))
         .corner_radius(radius::LG)
         .inner_margin(space::LG)
 }
@@ -142,9 +142,9 @@ pub fn chip(ui: &mut Ui, th: &Theme, label: &str, selected: bool) -> Response {
         th.panel
     };
     let stroke = if selected {
-        Stroke::new(1.0, th.accent)
+        Stroke::new(1.0_f32, th.accent)
     } else {
-        Stroke::new(1.0, th.border)
+        Stroke::new(1.0_f32, th.border)
     };
     let response = ui.add(
         egui::Button::new(RichText::new(label).size(text::META).color(if selected {
@@ -171,9 +171,9 @@ pub fn theme_swatch(ui: &mut Ui, th: &Theme, target: &Theme, selected: bool) -> 
     let rect = response.rect;
     ui.painter().rect_filled(rect, radius::SM, target.bg);
     let stroke = if selected || response.has_focus() {
-        Stroke::new(2.0, th.accent)
+        Stroke::new(2.0_f32, th.accent)
     } else {
-        Stroke::new(1.0, th.dim)
+        Stroke::new(1.0_f32, th.dim)
     };
     ui.painter()
         .rect_stroke(rect, radius::SM, stroke, egui::StrokeKind::Inside);
@@ -207,16 +207,16 @@ pub fn color_swatch(
     ui.painter().circle_filled(center, radius, color);
     if selected {
         ui.painter()
-            .circle_stroke(center, radius + 2.0, Stroke::new(2.0, th.fg));
+            .circle_stroke(center, radius + 2.0, Stroke::new(2.0_f32, th.fg));
     } else if response.has_focus() {
         ui.painter()
-            .circle_stroke(center, radius + 2.0, Stroke::new(2.0, th.accent));
+            .circle_stroke(center, radius + 2.0, Stroke::new(2.0_f32, th.accent));
     } else if response.hovered() {
         ui.painter()
-            .circle_stroke(center, radius + 2.0, Stroke::new(1.0, th.accent));
+            .circle_stroke(center, radius + 2.0, Stroke::new(1.0_f32, th.accent));
     } else {
         ui.painter()
-            .circle_stroke(center, radius + 2.0, Stroke::new(1.0, th.border));
+            .circle_stroke(center, radius + 2.0, Stroke::new(1.0_f32, th.border));
     }
 
     response.on_hover_text(tooltip)

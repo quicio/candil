@@ -146,7 +146,7 @@ impl BookEntry {
             ..Self::default()
         };
 
-        match Book::open(&canonical) {
+        match Book::open_streaming(&canonical) {
             Ok(mut book) => {
                 if !book.title.trim().is_empty() {
                     entry.title = book.title.clone();

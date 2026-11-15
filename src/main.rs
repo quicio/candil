@@ -130,6 +130,14 @@ fn main() -> eframe::Result<()> {
                 dev.export_md = args.get(i + 1).map(PathBuf::from);
                 i += 2;
             }
+            "--share-save" => {
+                dev.share_save = args.get(i + 1).map(PathBuf::from);
+                i += 2;
+            }
+            "--study-demo" => {
+                dev.study_demo = true;
+                i += 1;
+            }
             "--consulta" => {
                 dev.consulta = args.get(i + 1).cloned();
                 i += 2;

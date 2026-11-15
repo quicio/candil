@@ -72,7 +72,7 @@ pub fn show(ui: &mut Ui, th: &Theme, text: &str, size: f32, color: Color32) {
             Block::Quote(text) => {
                 egui::Frame::new()
                     .fill(th.bg)
-                    .stroke(Stroke::new(1.0, th.border))
+                    .stroke(Stroke::new(1.0_f32, th.border))
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .corner_radius(theme::radius::SM)
                     .show(ui, |ui| {
@@ -83,7 +83,7 @@ pub fn show(ui: &mut Ui, th: &Theme, text: &str, size: f32, color: Color32) {
             Block::Code(code) => {
                 egui::Frame::new()
                     .fill(th.bg)
-                    .stroke(Stroke::new(1.0, th.border))
+                    .stroke(Stroke::new(1.0_f32, th.border))
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .corner_radius(theme::radius::SM)
                     .show(ui, |ui| {

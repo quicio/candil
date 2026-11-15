@@ -139,7 +139,7 @@ fn widget(
         weak_bg_fill,
         bg_stroke,
         corner_radius: radius::MD.into(),
-        fg_stroke: Stroke::new(1.0, fg),
+        fg_stroke: Stroke::new(1.0_f32, fg),
         expansion: 0.0,
     }
 }
@@ -174,12 +174,12 @@ impl Theme {
         // Selección y foco. El foco usa el estado `active` de egui: 2 px de
         // acento, visible en los cinco temas.
         visuals.selection.bg_fill = self.selection;
-        visuals.selection.stroke = Stroke::new(1.0, self.fg);
+        visuals.selection.stroke = Stroke::new(1.0_f32, self.fg);
 
         // Superficies planas: tono + borde hairline, sin sombras decorativas.
         visuals.window_corner_radius = radius::LG.into();
         visuals.menu_corner_radius = radius::MD.into();
-        visuals.window_stroke = Stroke::new(1.0, self.border);
+        visuals.window_stroke = Stroke::new(1.0_f32, self.border);
         visuals.window_shadow = egui::epaint::Shadow::NONE;
         visuals.popup_shadow = egui::epaint::Shadow::NONE;
 
@@ -196,27 +196,31 @@ impl Theme {
             self.panel,
             self.panel,
             self.fg,
-            Stroke::new(1.0, self.border),
+            Stroke::new(1.0_f32, self.border),
         );
-        visuals.widgets.inactive =
-            widget(track, self.panel, self.fg, Stroke::new(1.0, self.border));
+        visuals.widgets.inactive = widget(
+            track,
+            self.panel,
+            self.fg,
+            Stroke::new(1.0_f32, self.border),
+        );
         visuals.widgets.hovered = widget(
             hover_track,
             hover_fill,
             self.fg,
-            Stroke::new(1.0, hover_border),
+            Stroke::new(1.0_f32, hover_border),
         );
         visuals.widgets.active = widget(
             active_track,
             active_fill,
             self.fg,
-            Stroke::new(2.0, self.accent),
+            Stroke::new(2.0_f32, self.accent),
         );
         visuals.widgets.open = widget(
             hover_track,
             hover_fill,
             self.fg,
-            Stroke::new(1.0, hover_border),
+            Stroke::new(1.0_f32, hover_border),
         );
 
         let mut style = (*ctx.style()).clone();

@@ -506,6 +506,7 @@ dependencies = [
 name = "candil"
 version = "0.24.1"
 dependencies = [
+ "ab_glyph",
  "dirs",
  "eframe",
  "image",

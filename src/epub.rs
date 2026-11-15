@@ -2,13 +2,24 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 
 use image::GenericImageView;
 use zip::ZipArchive;
 
 use crate::xhtml::{self, Block};
+
+/// Fuente del ZIP de un libro. Los libros del lector se abren en memoria para
+/// que cambiar de capítulo o cargar una imagen no bloquee la UI cuando el
+/// archivo vive en un montaje de red (Drive, rclone, NFS). El escaneo de la
+/// biblioteca usa `Book::open_streaming` y solo lee lo que necesita.
+pub trait ReadSeek: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeek for T {}
+
+/// Los EPUB razonables pesan pocos MB. Arriba de este límite preferimos no
+/// duplicar el archivo en RAM y aceptar lecturas a demanda.
+const MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct TocEntry {
@@ -33,18 +44,41 @@ pub struct Book {
     pub series_index: Option<f32>,
     pub spine: Vec<String>,
     pub toc: Vec<TocEntry>,
-    archive: ZipArchive<File>,
+    archive: ZipArchive<Box<dyn ReadSeek>>,
     titles: HashMap<usize, String>,
     cover_candidates: Vec<String>,
 }
 
 impl Book {
+    /// Abre el libro en memoria. Pensado para el lector: una vez abierto, los
+    /// capítulos y recursos se leen sin volver a tocar el disco.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, String> {
-        let path = path.as_ref().to_path_buf();
-        let file =
-            File::open(&path).map_err(|e| format!("no pude leer {}: {e}", path.display()))?;
+        Self::open_impl(path.as_ref(), true)
+    }
+
+    /// Abre el libro leyendo del archivo a demanda. Pensado para el escaneo de
+    /// la biblioteca, que solo necesita metadatos y portada.
+    pub fn open_streaming(path: impl AsRef<Path>) -> Result<Self, String> {
+        Self::open_impl(path.as_ref(), false)
+    }
+
+    fn open_impl(path: &Path, in_memory: bool) -> Result<Self, String> {
+        let path = path.to_path_buf();
+        let in_memory = in_memory
+            && std::fs::metadata(&path)
+                .map(|meta| meta.len() <= MAX_IN_MEMORY_BYTES)
+                .unwrap_or(false);
+        let source: Box<dyn ReadSeek> = if in_memory {
+            let bytes = std::fs::read(&path)
+                .map_err(|e| format!("no pude leer {}: {e}", path.display()))?;
+            Box::new(Cursor::new(bytes))
+        } else {
+            let file =
+                File::open(&path).map_err(|e| format!("no pude leer {}: {e}", path.display()))?;
+            Box::new(file)
+        };
         let mut archive =
-            ZipArchive::new(file).map_err(|e| format!("no es un EPUB válido: {e}"))?;
+            ZipArchive::new(source).map_err(|e| format!("no es un EPUB válido: {e}"))?;
 
         let container = read_entry(&mut archive, "META-INF/container.xml")
             .ok_or_else(|| "falta META-INF/container.xml".to_string())?;
@@ -461,7 +495,10 @@ fn node_text(n: roxmltree::Node) -> String {
         .join(" ")
 }
 
-pub(crate) fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_entry<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    name: &str,
+) -> Option<Vec<u8>> {
     let candidates = [name.to_string(), format!("./{name}"), format!("/{name}")];
     let mut hit = None;
     for cand in &candidates {
@@ -725,6 +762,24 @@ mod tests {
         assert_eq!(entries[0].anchor.as_deref(), Some("a"));
         assert_eq!(entries[1].anchor.as_deref(), Some("b"));
         assert_eq!(entries[2].anchor, None);
+    }
+
+    #[test]
+    fn open_en_memoria_y_streaming_leen_igual() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/mini.epub");
+        let mut memory = Book::open(path).unwrap();
+        let mut streaming = Book::open_streaming(path).unwrap();
+        assert_eq!(memory.title, streaming.title);
+        assert_eq!(memory.chapter_count(), streaming.chapter_count());
+        for index in 0..memory.chapter_count() {
+            let a = memory.chapter_blocks(index);
+            let b = streaming.chapter_blocks(index);
+            assert_eq!(a.len(), b.len());
+            assert_eq!(
+                a.iter().map(Block::text).collect::<Vec<_>>(),
+                b.iter().map(Block::text).collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]

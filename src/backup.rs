@@ -1,7 +1,7 @@
 //! Respaldo local de los datos de usuario en un ZIP.
 //!
-//! Incluye `config.json`, `library.json`, `annotations.json` y
-//! `consultas.json`. No incluye los EPUB, las portadas cacheadas ni las claves
+//! Incluye `config.json`, `library.json`, `annotations.json`,
+//! `consultas.json` y `studies.json`. No incluye los EPUB, las portadas ni las claves
 //! (que viven en el llavero). La importación valida el manifiesto y cada JSON,
 //! y guarda un respaldo del estado actual antes de reemplazar nada.
 
@@ -28,6 +28,7 @@ pub const DATA_FILES: &[&str] = &[
     "library.json",
     "annotations.json",
     "consultas.json",
+    "studies.json",
 ];
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 
@@ -205,6 +206,7 @@ fn validate_json(name: &str, bytes: &[u8]) -> Result<(), String> {
         "library.json" => serde_json::from_slice::<Library>(bytes).map(|_| ()),
         "annotations.json" => serde_json::from_slice::<Annotations>(bytes).map(|_| ()),
         "consultas.json" => serde_json::from_slice::<ConsultaHistory>(bytes).map(|_| ()),
+        "studies.json" => serde_json::from_slice::<crate::study::StudyStore>(bytes).map(|_| ()),
         _ => return Err(format!("Archivo no permitido: {name}")),
     };
     result.map_err(|e| format!("{name} inválido: {e}"))
@@ -259,10 +261,15 @@ mod tests {
             serde_json::to_vec(&ConsultaHistory::default()).unwrap(),
         )
         .unwrap();
+        fs::write(
+            dir.join("studies.json"),
+            serde_json::to_vec(&crate::study::StudyStore::default()).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]
-    fn exporta_e_importa_los_cuatro_archivos() {
+    fn exporta_e_importa_los_cinco_archivos() {
         let data = temp_dir("export");
         let restore = temp_dir("restore");
         write_data(&data);
@@ -272,11 +279,11 @@ mod tests {
             now_nanos()
         ));
         let exported = export(&data, &archive).expect("exportar");
-        assert_eq!(exported.files, 4);
+        assert_eq!(exported.files, 5);
         assert!(archive.is_file());
 
         let imported = import(&archive, &restore).expect("importar");
-        assert_eq!(imported.files, 4);
+        assert_eq!(imported.files, 5);
         assert!(imported.backup.is_none());
         for name in DATA_FILES {
             assert!(restore.join(name).is_file(), "falta {name}");

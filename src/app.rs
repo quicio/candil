@@ -15,7 +15,7 @@ use eframe::egui::{
 };
 
 use crate::ai;
-use crate::annotations::{Annotation, Annotations};
+use crate::annotations::{Annotation, AnnotationOrigin, Annotations};
 use crate::backup;
 use crate::config::{self, Config, Progress, Settings};
 use crate::consulta::{
@@ -28,6 +28,8 @@ use crate::library::{BookEntry, Bookmark, Library, ScanStats};
 use crate::markdown;
 use crate::search;
 use crate::secrets;
+use crate::share;
+use crate::study;
 use crate::theme::{self, Theme, THEMES};
 use crate::ui as widgets;
 use crate::update;
@@ -669,6 +671,7 @@ struct AnnRow {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConfigTab {
     Lectura,
+    Compartir,
     Biblioteca,
     Anotaciones,
     Consultas,
@@ -689,7 +692,14 @@ enum UpdateState {
     Downloading(update::ReleaseInfo),
     Downloaded {
         release: update::ReleaseInfo,
-        path: PathBuf,
+        download: update::Downloaded,
+        error: Option<String>,
+    },
+    Installing(update::ReleaseInfo),
+    Installed {
+        release: update::ReleaseInfo,
+        backup: PathBuf,
+        target: PathBuf,
     },
     Error(String),
 }
@@ -699,7 +709,13 @@ enum UpdateMsg {
     Checked(Result<Option<update::ReleaseInfo>, String>),
     Downloaded {
         release: update::ReleaseInfo,
-        result: Result<PathBuf, String>,
+        result: Result<update::Downloaded, String>,
+        install_after: bool,
+    },
+    Installed {
+        release: update::ReleaseInfo,
+        download: update::Downloaded,
+        result: Result<update::Installed, String>,
     },
 }
 
@@ -744,8 +760,95 @@ enum ScanUpdate {
     },
 }
 
+/// Libro que se está abriendo en segundo plano. `Book::open` lee el archivo
+/// completo, así que se hace fuera del hilo de UI para no perder los pings de
+/// Wayland cuando el EPUB vive en un montaje lento (rclone/Drive/NFS).
+struct Opening {
+    path: PathBuf,
+    action: Option<OpenAction>,
+    rx: Receiver<Result<Book, String>>,
+}
+
+#[derive(Clone)]
+enum OpenAction {
+    Annotation(u64),
+    ConsultaHistory(Box<ConsultaEntry>),
+    ContentHit(LibraryContentHit),
+}
+
+type ShareImage = Arc<image::RgbaImage>;
+type ShareImageRx = Receiver<(PathBuf, Result<ShareImage, String>)>;
+
+struct StudyUi {
+    show: bool,
+    session_id: Option<String>,
+    draft: String,
+    contexts: Vec<study::StudyContext>,
+    busy: bool,
+    rx: Option<Receiver<(String, Result<consulta::ChatAnswer, String>)>>,
+    error: Option<String>,
+    scroll_bottom: bool,
+    scroll_hold: u8,
+    confirm_delete: bool,
+}
+
+impl Default for StudyUi {
+    fn default() -> Self {
+        Self {
+            show: false,
+            session_id: None,
+            draft: String::new(),
+            contexts: Vec::new(),
+            busy: false,
+            rx: None,
+            error: None,
+            scroll_bottom: true,
+            scroll_hold: 0,
+            confirm_delete: false,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ShareActions {
+    changed: bool,
+    save: bool,
+    choose_image: bool,
+    clear_image: bool,
+    close: bool,
+    reveal: bool,
+}
+
+struct ShareState {
+    data: share::ShareData,
+    settings: share::ShareSettings,
+    theme: share::ThemeColors,
+    preview_name: String,
+    preview: Option<egui::TextureHandle>,
+    preview_rx: Option<Receiver<(u64, Result<share::Rendered, String>)>>,
+    preview_gen: u64,
+    preview_dirty: bool,
+    last_edit: Instant,
+    custom_bg: Option<ShareImage>,
+    bg_rx: Option<ShareImageRx>,
+    bg_loading: bool,
+    bg_error: Option<String>,
+    save_rx: Option<Receiver<Result<PathBuf, String>>>,
+    saving: bool,
+    saved: Option<PathBuf>,
+    error: Option<String>,
+    truncated: bool,
+    fallback: bool,
+    highlight_saved: bool,
+}
+
 pub struct Lector {
     screen: Screen,
+    opening: Option<Opening>,
+    share: Option<ShareState>,
+    share_sample: Option<ShareState>,
+    study_store: study::StudyStore,
+    study: StudyUi,
     book: Option<Book>,
     chapter: usize,
     blocks: Vec<Block>,
@@ -789,6 +892,8 @@ pub struct Lector {
     back_spot: Option<Progress>,
     update_state: UpdateState,
     update_rx: Option<Receiver<UpdateMsg>>,
+    /// Evita que `on_exit` vuelva a guardar después de relanzar el binario.
+    restarting: bool,
     data_notice: Option<String>,
     note: Option<NoteEditor>,
     epub_editor: Option<EpubEditor>,
@@ -818,6 +923,7 @@ pub struct Lector {
     show_config: bool,
     config_tab: ConfigTab,
     config_confirm_clear: bool,
+    config_confirm_study: bool,
     config_confirm_reset: bool,
     show_help: bool,
     show_search: bool,
@@ -905,6 +1011,10 @@ pub struct DevOpts {
     pub consulta_run: bool,
     /// Exporta las anotaciones a esta ruta sin abrir el diálogo (dev/capturas).
     pub export_md: Option<PathBuf>,
+    /// Genera el PNG de la cita actual en esta ruta y cierra (dev/capturas).
+    pub share_save: Option<PathBuf>,
+    /// Abre el modo estudio con una sesión de ejemplo (capturas/dev).
+    pub study_demo: bool,
     /// Salta a un ancla del libro al abrir (capturas/dev).
     pub anchor: Option<String>,
     /// `recent`, `title`, `author`, `series` o `added` (capturas/dev).
@@ -929,6 +1039,7 @@ impl Lector {
         let (mut cfg, cfg_warning) = Config::load_with_report();
         let (annotations, ann_warning) = Annotations::load();
         let (consulta_history, history_warning) = ConsultaHistory::load();
+        let (study_store, study_warning) = study::StudyStore::load();
         let (mut library, library_warning) = if let Some(path) = dev.library_path.as_ref() {
             Library::load_with_report_from(path)
         } else {
@@ -938,7 +1049,8 @@ impl Lector {
         let mut warning = cfg_warning
             .or(library_warning)
             .or(ann_warning)
-            .or(history_warning);
+            .or(history_warning)
+            .or(study_warning);
         if migrated > 0 {
             if let Err(e) = library.save() {
                 warning = Some(format!("no pude guardar la biblioteca: {e}"));
@@ -1008,6 +1120,11 @@ impl Lector {
         };
         let mut app = Self {
             screen: Screen::Library,
+            opening: None,
+            share: None,
+            share_sample: None,
+            study_store,
+            study: StudyUi::default(),
             book: None,
             chapter: 0,
             blocks: Vec::new(),
@@ -1052,6 +1169,7 @@ impl Lector {
             back_spot: None,
             update_state,
             update_rx: None,
+            restarting: false,
             data_notice: None,
             note: None,
             epub_editor: None,
@@ -1080,6 +1198,7 @@ impl Lector {
             show_config: false,
             config_tab: ConfigTab::Consultas,
             config_confirm_clear: false,
+            config_confirm_study: false,
             config_confirm_reset: false,
             show_help: dev.help,
             show_search: false,
@@ -1121,18 +1240,36 @@ impl Lector {
                 }
             })
         };
+        let opening_book = target.is_some();
         if let Some(p) = target {
             if p.exists() {
-                app.open(p);
+                if app.dev.shot.is_some() {
+                    app.open_now(&cc.egui_ctx, p);
+                } else {
+                    app.open(p);
+                }
             }
         }
-        if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("config") {
+        if !opening_book
+            && app.screen == Screen::Library
+            && app.dev.panel.as_deref() == Some("config")
+        {
             app.show_config = true;
             app.config_tab = ConfigTab::Biblioteca;
         }
-        if app.screen == Screen::Library && app.dev.panel.as_deref() == Some("advanced") {
+        if !opening_book
+            && app.screen == Screen::Library
+            && app.dev.panel.as_deref() == Some("advanced")
+        {
             app.show_config = true;
             app.config_tab = ConfigTab::Avanzado;
+        }
+        if !opening_book
+            && app.screen == Screen::Library
+            && app.dev.panel.as_deref() == Some("share-config")
+        {
+            app.show_config = true;
+            app.config_tab = ConfigTab::Compartir;
         }
         if app.dev.update_demo {
             app.show_config = true;
@@ -1141,7 +1278,7 @@ impl Lector {
         if app.dev.external_link_demo {
             app.external_link = Some("https://example.com/candil".to_string());
         }
-        if app.screen == Screen::Library && app.dev.edit {
+        if !opening_book && app.screen == Screen::Library && app.dev.edit {
             if let Some(index) = app
                 .library
                 .books
@@ -1149,23 +1286,6 @@ impl Lector {
                 .position(|book| !book.missing && book.error.is_none())
             {
                 app.open_epub_editor(index, &cc.egui_ctx);
-            }
-        }
-        if app.book.is_some() {
-            if let Some(anchor) = app.dev.anchor.clone() {
-                let spine = app.book.as_ref().and_then(|book| {
-                    book.toc
-                        .iter()
-                        .find(|entry| entry.anchor.as_deref() == Some(anchor.as_str()))
-                        .map(|entry| entry.spine)
-                });
-                app.jump_to(spine.unwrap_or(app.chapter), Some(anchor));
-            }
-            if app.dev.selection {
-                app.seed_dev_selection();
-            }
-            if app.dev.link_preview {
-                app.seed_dev_link_preview();
             }
         }
         if let Some(order) = app.dev.library_order.as_deref() {
@@ -1188,22 +1308,18 @@ impl Lector {
                 _ => LibraryFilter::All,
             };
         }
-        if app.dev.bookmarks && app.book.is_some() {
-            app.show_bookmarks = true;
-            app.show_toc = false;
-            app.show_settings = false;
-            app.show_annotations = false;
-            app.show_search = false;
-            app.show_goto = false;
-        }
         if let Some(query) = app.dev.library_content_query.clone() {
-            if app.screen == Screen::Library {
+            if !opening_book && app.screen == Screen::Library {
                 app.library_search = query;
                 app.library_content_enabled = true;
                 app.start_library_content_search(&cc.egui_ctx);
             }
         }
-        if app.dev.send_device && app.screen == Screen::Library && !app.library.books.is_empty() {
+        if !opening_book
+            && app.dev.send_device
+            && app.screen == Screen::Library
+            && !app.library.books.is_empty()
+        {
             app.device_send = Some(0);
         }
         app
@@ -1212,8 +1328,119 @@ impl Lector {
     // -- libro ---------------------------------------------------------------
 
     fn open(&mut self, path: PathBuf) {
+        self.start_open(path, None);
+    }
+
+    fn open_with(&mut self, path: PathBuf, action: OpenAction) {
+        self.start_open(path, Some(action));
+    }
+
+    fn start_open(&mut self, path: PathBuf, action: Option<OpenAction>) {
+        if self.opening.is_some() {
+            return;
+        }
         let path = std::fs::canonicalize(&path).unwrap_or(path);
-        match Book::open(&path) {
+        let (tx, rx) = mpsc::channel();
+        self.opening = Some(Opening {
+            path: path.clone(),
+            action,
+            rx,
+        });
+        std::thread::spawn(move || {
+            let result = Book::open(&path);
+            let _ = tx.send(result);
+        });
+    }
+
+    fn poll_open(&mut self, ctx: &egui::Context) {
+        let received = self.opening.as_ref().map(|opening| opening.rx.try_recv());
+        let Some(received) = received else {
+            return;
+        };
+        match received {
+            Ok(result) => {
+                let action = self.opening.take().and_then(|opening| opening.action);
+                self.finish_open(ctx, result, action);
+                ctx.request_repaint();
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.opening = None;
+                self.say("La apertura del libro se interrumpió.");
+            }
+        }
+    }
+
+    fn opening_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        let Some(opening) = &self.opening else {
+            return;
+        };
+        let name = opening
+            .path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| opening.path.display().to_string());
+        let mut cancel = false;
+        let _ = egui::Modal::new(egui::Id::new("opening-book"))
+            .backdrop_color(Color32::from_black_alpha(40))
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(
+                        RichText::new("Abriendo libro…")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                });
+                ui.add_space(theme::space::XS);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(truncate(&name, 64))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                    )
+                    .wrap(),
+                );
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Si el archivo está en la nube puede tardar; la ventana sigue respondiendo.",
+                        )
+                        .size(theme::text::META)
+                        .color(th.dim),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(theme::space::SM);
+                if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked() {
+                    cancel = true;
+                }
+            });
+        if cancel {
+            self.opening = None;
+        }
+    }
+
+    /// Abre un EPUB de forma síncrona. Solo para capturas y dev, donde el
+    /// primer frame necesita el libro ya cargado.
+    fn open_now(&mut self, ctx: &egui::Context, path: PathBuf) {
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
+        let result = Book::open(&path);
+        self.finish_open(ctx, result, None);
+    }
+
+    fn finish_open(
+        &mut self,
+        ctx: &egui::Context,
+        result: Result<Book, String>,
+        action: Option<OpenAction>,
+    ) {
+        match result {
             Ok(book) => {
                 let key = book.path.to_string_lossy().to_string();
                 let library_progress = self
@@ -1230,6 +1457,12 @@ impl Lector {
                 self.chapter = prog.chapter.min(n.saturating_sub(1));
                 self.book = Some(book);
                 self.screen = Screen::Reader;
+                self.share = None;
+                self.study.session_id = None;
+                self.study.contexts.clear();
+                self.study.draft.clear();
+                self.study.error = None;
+                self.study.confirm_delete = false;
                 self.selection = None;
                 self.note = None;
                 self.show_annotations = false;
@@ -1299,6 +1532,10 @@ impl Lector {
                     Some("config") => {
                         self.show_config = true;
                         self.config_tab = ConfigTab::Consultas;
+                    }
+                    Some("share-config") => {
+                        self.show_config = true;
+                        self.config_tab = ConfigTab::Compartir;
                     }
                     Some("note") => {
                         if let Some(a) = self
@@ -1381,11 +1618,903 @@ impl Lector {
                         self.run_consulta(kind);
                     }
                 }
+                self.apply_dev_open_extras();
+                self.dev_share(ctx);
+                if self.dev.study_demo {
+                    self.seed_study_demo();
+                }
+                self.apply_open_action(ctx, action);
                 self.dirty = true;
             }
             Err(e) => {
                 self.status = Some((format!("No pude abrir el archivo: {e}"), Instant::now()));
             }
+        }
+    }
+
+    fn apply_dev_open_extras(&mut self) {
+        if let Some(anchor) = self.dev.anchor.clone() {
+            let spine = self.book.as_ref().and_then(|book| {
+                book.toc
+                    .iter()
+                    .find(|entry| entry.anchor.as_deref() == Some(anchor.as_str()))
+                    .map(|entry| entry.spine)
+            });
+            self.jump_to(spine.unwrap_or(self.chapter), Some(anchor));
+        }
+        if self.dev.selection {
+            self.seed_dev_selection();
+        }
+        if self.dev.link_preview {
+            self.seed_dev_link_preview();
+        }
+        if self.dev.bookmarks {
+            self.show_bookmarks = true;
+            self.show_toc = false;
+            self.show_settings = false;
+            self.show_annotations = false;
+            self.show_search = false;
+            self.show_goto = false;
+        }
+    }
+
+    fn apply_open_action(&mut self, ctx: &egui::Context, action: Option<OpenAction>) {
+        match action {
+            None => {}
+            Some(OpenAction::Annotation(id)) => {
+                if let Some(annotation) = self.annotations.get(id).cloned() {
+                    self.jump_to_annotation(&annotation);
+                }
+            }
+            Some(OpenAction::ConsultaHistory(entry)) => {
+                self.jump_to_consulta_history_now(&entry);
+            }
+            Some(OpenAction::ContentHit(hit)) => {
+                self.finish_library_content_hit(hit, ctx);
+            }
+        }
+    }
+
+    // -- compartir cita ------------------------------------------------------
+
+    fn dev_share(&mut self, ctx: &egui::Context) {
+        if self.dev.panel.as_deref() == Some("share") {
+            if let Some(selection) = self.selection.clone() {
+                if let Some(book) = self.book_key() {
+                    let annotation = annotation_from_selection(
+                        &selection,
+                        book,
+                        String::new(),
+                        self.active_color.min(2),
+                    );
+                    self.open_share(annotation, ctx);
+                }
+            }
+        }
+        let Some(path) = self.dev.share_save.clone() else {
+            return;
+        };
+        let annotation = if let Some(selection) = self.selection.clone() {
+            self.book_key().map(|book| {
+                annotation_from_selection(&selection, book, String::new(), self.active_color.min(2))
+            })
+        } else {
+            self.annotations.items.first().cloned()
+        };
+        let Some(annotation) = annotation else {
+            eprintln!("share error: no hay una selección ni un destacado para exportar");
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        };
+        let data = self.share_data_for(&annotation);
+        let settings = self.cfg.share.clone();
+        let theme = share::ThemeColors::from_theme(&theme::theme(self.effective_settings().theme));
+        let custom = if settings.background == share::ShareBackground::Image {
+            settings
+                .image_path
+                .as_deref()
+                .and_then(|path| load_share_image(path).ok())
+        } else {
+            None
+        };
+        match share::render(&data, &settings, &theme, custom.as_deref(), 1.0)
+            .and_then(|rendered| share::save_png_to(&rendered.image, &path))
+        {
+            Ok(()) => eprintln!("share -> {}", path.display()),
+            Err(error) => eprintln!("share error: {error}"),
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    fn share_selection(&mut self, ctx: &egui::Context) {
+        let Some(selection) = self.selection.clone() else {
+            return;
+        };
+        let Some(book_key) = self.book_key() else {
+            return;
+        };
+        let existing = self
+            .annotations
+            .items
+            .iter()
+            .find(|annotation| {
+                annotation.book == book_key
+                    && annotation.chapter == selection.chapter
+                    && annotation.block == selection.start_block()
+                    && annotation.start == selection.start_offset()
+                    && annotation.end == selection.end_offset()
+                    && annotation.end_block() == selection.end_block()
+            })
+            .map(|annotation| annotation.id);
+        let (id, created) = match existing {
+            Some(id) => (id, false),
+            None => {
+                let id = self.annotations.add(annotation_from_selection(
+                    &selection,
+                    book_key,
+                    String::new(),
+                    self.active_color.min(2),
+                ));
+                self.save_annotations();
+                (id, true)
+            }
+        };
+        if let Some(annotation) = self.annotations.get(id).cloned() {
+            self.open_share(annotation, ctx);
+            if created {
+                if let Some(state) = &mut self.share {
+                    state.highlight_saved = true;
+                }
+            }
+        }
+    }
+
+    fn open_share(&mut self, annotation: Annotation, ctx: &egui::Context) {
+        let data = self.share_data_for(&annotation);
+        let settings = self.cfg.share.clone();
+        let theme = share::ThemeColors::from_theme(&theme::theme(self.effective_settings().theme));
+        let state = ShareState {
+            data,
+            settings,
+            theme,
+            preview_name: "share-preview".into(),
+            preview: None,
+            preview_rx: None,
+            preview_gen: 0,
+            preview_dirty: true,
+            last_edit: Instant::now() - Duration::from_millis(200),
+            custom_bg: None,
+            bg_rx: None,
+            bg_loading: false,
+            bg_error: None,
+            save_rx: None,
+            saving: false,
+            saved: None,
+            error: None,
+            truncated: false,
+            fallback: false,
+            highlight_saved: false,
+        };
+        let image_path = if state.settings.background == share::ShareBackground::Image {
+            state.settings.image_path.clone()
+        } else {
+            None
+        };
+        self.surrender_reader_focus(ctx);
+        self.selection = None;
+        self.show_annotations = false;
+        self.share = Some(state);
+        if let Some(path) = image_path {
+            self.load_share_background(path);
+        }
+        self.poll_share(ctx);
+    }
+
+    fn ensure_share_sample(&mut self, th: &Theme) {
+        let theme = share::ThemeColors::from_theme(th);
+        if self.share_sample.is_none() {
+            let cover = image::load_from_memory(include_bytes!("../assets/candil-icon-256.png"))
+                .ok()
+                .map(|image| Arc::new(image.to_rgba8()));
+            self.share_sample = Some(ShareState {
+                data: share::ShareData {
+                    quote: "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha mucho tiempo que vivía un hidalgo.".into(),
+                    book: "Don Quijote de la Mancha".into(),
+                    author: "Miguel de Cervantes".into(),
+                    chapter: None,
+                    cover,
+                },
+                settings: self.cfg.share.clone(),
+                theme,
+                preview_name: "share-sample-preview".into(),
+                preview: None,
+                preview_rx: None,
+                preview_gen: 0,
+                preview_dirty: true,
+                last_edit: Instant::now() - Duration::from_millis(200),
+                custom_bg: None,
+                bg_rx: None,
+                bg_loading: false,
+                bg_error: None,
+                save_rx: None,
+                saving: false,
+                saved: None,
+                error: None,
+                truncated: false,
+                fallback: false,
+                highlight_saved: false,
+            });
+        }
+        let Some(state) = &mut self.share_sample else {
+            return;
+        };
+        if state.settings != self.cfg.share {
+            state.settings = self.cfg.share.clone();
+            state.preview_gen = state.preview_gen.wrapping_add(1);
+            state.preview_dirty = true;
+            state.last_edit = Instant::now();
+        }
+        if state.theme != theme {
+            state.theme = theme;
+            state.preview_gen = state.preview_gen.wrapping_add(1);
+            state.preview_dirty = true;
+            state.last_edit = Instant::now();
+        }
+        if state.settings.background == share::ShareBackground::Image
+            && state.custom_bg.is_none()
+            && state.bg_rx.is_none()
+        {
+            if let Some(path) = state.settings.image_path.clone() {
+                start_share_background(state, path);
+            }
+        }
+    }
+
+    fn share_data_for(&mut self, annotation: &Annotation) -> share::ShareData {
+        let key = annotation.book.as_str();
+        let entry = self
+            .library
+            .books
+            .iter()
+            .find(|book| book.path == key)
+            .cloned();
+        let (book, author, cover_rel) = if let Some(entry) = entry {
+            (entry.title, entry.author, entry.cover)
+        } else if self.book_key().as_deref() == Some(key) {
+            let title = self
+                .book
+                .as_ref()
+                .map(|book| book.title.clone())
+                .unwrap_or_else(|| book_title_for(&self.library, key));
+            let author = self
+                .book
+                .as_ref()
+                .map(|book| book.author.clone())
+                .unwrap_or_default();
+            (title, author, None)
+        } else {
+            (book_title_for(&self.library, key), String::new(), None)
+        };
+        let cover = cover_rel.and_then(|relative| {
+            let path = self.library.data_dir.join(relative);
+            std::fs::read(&path)
+                .ok()
+                .and_then(|bytes| image::load_from_memory(&bytes).ok())
+                .map(|image| Arc::new(image.to_rgba8()))
+        });
+        let chapter = if self.book_key().as_deref() == Some(key) {
+            self.book
+                .as_mut()
+                .map(|book| book.chapter_title(annotation.chapter))
+                .filter(|title| !title.trim().is_empty())
+        } else {
+            Some(format!("Cap. {}", annotation.chapter + 1))
+        };
+        share::ShareData {
+            quote: annotation.quote.clone(),
+            book,
+            author,
+            chapter,
+            cover,
+        }
+    }
+
+    fn load_share_background(&mut self, path: PathBuf) {
+        if let Some(state) = &mut self.share {
+            start_share_background(state, path);
+        }
+    }
+
+    fn poll_share(&mut self, ctx: &egui::Context) {
+        if let Some(state) = &mut self.share {
+            poll_share_state(state, ctx);
+        }
+    }
+
+    fn save_share(&mut self) {
+        let Some(state) = &mut self.share else {
+            return;
+        };
+        if state.saving || state.bg_loading {
+            return;
+        }
+        let data = state.data.clone();
+        let settings = state.settings.clone();
+        let theme = state.theme;
+        let custom = state.custom_bg.clone();
+        let (tx, rx) = mpsc::channel();
+        state.save_rx = Some(rx);
+        state.saving = true;
+        state.saved = None;
+        state.error = None;
+        std::thread::spawn(move || {
+            let result = share::render(
+                &data,
+                &settings,
+                &theme,
+                custom.as_ref().map(|image| image.as_ref()),
+                1.0,
+            )
+            .and_then(|rendered| {
+                share::save_png(&rendered.image, &share::default_dir(), &data.book)
+            });
+            let _ = tx.send(result);
+        });
+    }
+
+    // -- modo estudio --------------------------------------------------------
+
+    fn toggle_study(&mut self, ctx: &egui::Context) {
+        self.study.show = !self.study.show;
+        if self.study.show {
+            self.show_toc = false;
+            self.show_settings = false;
+            self.show_annotations = false;
+            self.show_bookmarks = false;
+            self.show_search = false;
+            self.show_goto = false;
+            self.show_consulta = false;
+            self.show_config = false;
+            self.note = None;
+            self.link_preview = None;
+            self.external_link = None;
+            self.ensure_study_session();
+            self.study.scroll_bottom = true;
+            self.study.scroll_hold = 4;
+        }
+        ctx.request_repaint();
+    }
+
+    fn save_study_store(&mut self) {
+        if let Err(error) = self.study_store.save() {
+            self.study.error = Some(format!("No pude guardar las sesiones: {error}"));
+        }
+    }
+
+    fn ensure_study_session(&mut self) -> Option<String> {
+        let book = self.book_key()?;
+        if let Some(id) = self.study.session_id.clone() {
+            if self
+                .study_store
+                .session(&id)
+                .is_some_and(|session| session.book == book)
+            {
+                return Some(id);
+            }
+        }
+        let existing = self
+            .study_store
+            .latest_for_book(&book)
+            .map(|session| session.id.clone());
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let (title, author) = self
+                    .book
+                    .as_ref()
+                    .map(|book| (book.title.clone(), book.author.clone()))
+                    .unwrap_or_default();
+                let id = self.study_store.create_session(&book, &title, &author);
+                self.save_study_store();
+                id
+            }
+        };
+        self.study.session_id = Some(id.clone());
+        Some(id)
+    }
+
+    fn new_study_session(&mut self) {
+        let Some(book) = self.book_key() else {
+            return;
+        };
+        let (title, author) = self
+            .book
+            .as_ref()
+            .map(|book| (book.title.clone(), book.author.clone()))
+            .unwrap_or_default();
+        let id = self.study_store.create_session(&book, &title, &author);
+        self.save_study_store();
+        self.study.session_id = Some(id);
+        self.study.contexts.clear();
+        self.study.draft.clear();
+        self.study.error = None;
+        self.study.scroll_bottom = true;
+        self.study.scroll_hold = 4;
+        self.study.confirm_delete = false;
+    }
+
+    fn study_selection_context(&mut self) -> Option<study::StudyContext> {
+        let selection = self.selection.clone()?;
+        let start = selection.start_block();
+        let end = selection.end_block();
+        let chapter_title = self
+            .book
+            .as_mut()
+            .map(|book| book.chapter_title(selection.chapter))
+            .unwrap_or_default();
+        let before = if start > 0 {
+            self.blocks
+                .get(start - 1)
+                .map(Block::text)
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let after = self
+            .blocks
+            .get(end + 1)
+            .map(Block::text)
+            .unwrap_or_default();
+        let start_offset = selection.start_offset();
+        let end_offset = selection.end_offset();
+        let end_block = selection.is_multi_block().then_some(end);
+        Some(study::StudyContext {
+            kind: study::ContextKind::Selection,
+            chapter: selection.chapter,
+            chapter_title,
+            quote: selection.quote,
+            parts: selection.parts,
+            block: start,
+            start: start_offset,
+            end: end_offset,
+            end_block,
+            before: study::truncate_chars(&before, 1_200),
+            after: study::truncate_chars(&after, 1_200),
+            ..study::StudyContext::default()
+        })
+    }
+
+    fn study_page_context(&mut self) -> Option<study::StudyContext> {
+        if self.blocks.is_empty() {
+            return None;
+        }
+        let top = top_block(self.scroll, &self.block_positions).unwrap_or(0);
+        let index = (top..self.blocks.len())
+            .find(|index| !self.blocks[*index].text().trim().is_empty())
+            .or_else(|| {
+                self.blocks
+                    .iter()
+                    .position(|block| !block.text().trim().is_empty())
+            })?;
+        let text = self.blocks[index].text();
+        if text.trim().is_empty() {
+            return None;
+        }
+        let chapter_title = self
+            .book
+            .as_mut()
+            .map(|book| book.chapter_title(self.chapter))
+            .unwrap_or_default();
+        let before = index
+            .checked_sub(1)
+            .and_then(|index| self.blocks.get(index))
+            .map(Block::text)
+            .unwrap_or_default();
+        let after = self
+            .blocks
+            .get(index + 1)
+            .map(Block::text)
+            .unwrap_or_default();
+        Some(study::StudyContext {
+            kind: study::ContextKind::Page,
+            chapter: self.chapter,
+            chapter_title,
+            quote: text.clone(),
+            parts: vec![text.clone()],
+            block: index,
+            start: 0,
+            end: text.chars().count(),
+            before: study::truncate_chars(&before, 1_200),
+            after: study::truncate_chars(&after, 1_200),
+            ..study::StudyContext::default()
+        })
+    }
+
+    fn study_annotation_context(&mut self, annotation: &Annotation) -> study::StudyContext {
+        let chapter_title = self
+            .book
+            .as_mut()
+            .map(|book| book.chapter_title(annotation.chapter))
+            .unwrap_or_default();
+        let (before, after) = if annotation.chapter == self.chapter {
+            (
+                annotation
+                    .block
+                    .checked_sub(1)
+                    .and_then(|index| self.blocks.get(index))
+                    .map(Block::text)
+                    .unwrap_or_default(),
+                self.blocks
+                    .get(annotation.end_block() + 1)
+                    .map(Block::text)
+                    .unwrap_or_default(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+        study::StudyContext {
+            kind: study::ContextKind::Highlight,
+            chapter: annotation.chapter,
+            chapter_title,
+            quote: annotation.quote.clone(),
+            parts: annotation.parts.clone(),
+            note: annotation.note.clone(),
+            block: annotation.block,
+            start: annotation.start,
+            end: annotation.end,
+            end_block: annotation.end_block,
+            before: study::truncate_chars(&before, 1_200),
+            after: study::truncate_chars(&after, 1_200),
+            annotation_id: Some(annotation.id),
+            label: "Destacado".into(),
+            ..study::StudyContext::default()
+        }
+    }
+
+    fn study_bookmark_context(&mut self, bookmark: &Bookmark) -> study::StudyContext {
+        let progress = &bookmark.progress;
+        let chapter_title = self
+            .book
+            .as_mut()
+            .map(|book| book.chapter_title(progress.chapter))
+            .unwrap_or_default();
+        let block = progress.anchor.unwrap_or(0);
+        let text = if progress.chapter == self.chapter {
+            self.blocks.get(block).map(Block::text).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let label = if bookmark.label.trim().is_empty() {
+            "Marcador".to_string()
+        } else {
+            format!(
+                "Marcador: {}",
+                study::truncate_chars(bookmark.label.trim(), 42)
+            )
+        };
+        let before = if text.is_empty() {
+            format!(
+                "Marcador en el capítulo {} al {:.0}% del libro.",
+                progress.chapter + 1,
+                progress.ratio * 100.0
+            )
+        } else {
+            String::new()
+        };
+        study::StudyContext {
+            kind: study::ContextKind::Bookmark,
+            chapter: progress.chapter,
+            chapter_title,
+            quote: text.clone(),
+            parts: if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![text.clone()]
+            },
+            block,
+            start: 0,
+            end: text.chars().count(),
+            before,
+            bookmark_id: Some(bookmark.id),
+            label,
+            ..study::StudyContext::default()
+        }
+    }
+
+    fn attach_study_context(&mut self, context: study::StudyContext) {
+        if !context.has_text() {
+            return;
+        }
+        if self.study.contexts.len() >= 8 {
+            self.study.error = Some("Máximo 8 contextos por pregunta.".into());
+            return;
+        }
+        let duplicate = self.study.contexts.iter().any(|current| {
+            (context.annotation_id.is_some() && current.annotation_id == context.annotation_id)
+                || (context.bookmark_id.is_some() && current.bookmark_id == context.bookmark_id)
+                || (current.kind == context.kind
+                    && current.block == context.block
+                    && current.start == context.start
+                    && current.end == context.end
+                    && current.quote == context.quote)
+        });
+        if !duplicate {
+            self.study.contexts.push(context);
+        }
+    }
+
+    fn study_online_gate(&self) -> Result<(), String> {
+        let provider = self.cfg.consulta.ai_provider.as_str();
+        if provider != "ollama" && !self.cfg.consulta.online_enabled {
+            return Err("Las consultas online están apagadas. Activalas en Configuración o usá Ollama local.".into());
+        }
+        if ai::requires_key(provider) && self.ai_key.key.is_none() {
+            return Err(format!(
+                "Falta la API key de {}: guardala en Configuración.",
+                ai::provider(provider).label
+            ));
+        }
+        Ok(())
+    }
+
+    fn send_study(&mut self, ctx: &egui::Context) {
+        if self.study.busy {
+            return;
+        }
+        let Some(session_id) = self.ensure_study_session() else {
+            return;
+        };
+        if let Err(error) = self.study_online_gate() {
+            self.study.error = Some(error);
+            return;
+        }
+        let text = self.study.draft.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+        let mut contexts = std::mem::take(&mut self.study.contexts);
+        if contexts.is_empty() {
+            if let Some(context) = self.study_selection_context() {
+                contexts.push(context);
+            }
+        }
+        let message = study::StudyMessage {
+            role: study::StudyRole::User,
+            text,
+            contexts,
+            ..study::StudyMessage::default()
+        };
+        if self
+            .study_store
+            .push_message(&session_id, message)
+            .is_none()
+        {
+            self.study.error = Some("No pude agregar el mensaje a la sesión.".into());
+            return;
+        }
+        self.save_study_store();
+        self.study.draft.clear();
+        self.study.error = None;
+        self.study.scroll_bottom = true;
+        self.study.scroll_hold = 4;
+        self.start_study_request(ctx, &session_id);
+    }
+
+    fn start_study_request(&mut self, ctx: &egui::Context, session_id: &str) {
+        let Some(session) = self.study_store.session(session_id).cloned() else {
+            return;
+        };
+        let history = self.study_store.history(session_id);
+        if history.is_empty() {
+            return;
+        }
+        let settings = self.cfg.consulta.clone();
+        let system = study::system_prompt(&session.book_title, &session.book_author);
+        let key = self.ai_key.key.clone();
+        let provider_session = self.consulta_session.clone();
+        let (tx, rx) = mpsc::channel();
+        self.study.rx = Some(rx);
+        self.study.busy = true;
+        self.study.error = None;
+        let id = session_id.to_string();
+        std::thread::spawn(move || {
+            let transport = consulta::HttpTransport::new(settings.ai_timeout_secs);
+            let result = consulta::run_chat(
+                &transport,
+                &settings,
+                key.as_deref(),
+                &provider_session,
+                &system,
+                &history,
+            );
+            let _ = tx.send((id, result));
+        });
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
+
+    fn retry_study(&mut self, ctx: &egui::Context) {
+        if self.study.busy {
+            return;
+        }
+        let Some(session_id) = self.study.session_id.clone() else {
+            return;
+        };
+        if let Err(error) = self.study_online_gate() {
+            self.study.error = Some(error);
+            return;
+        }
+        let retryable = self
+            .study_store
+            .session(&session_id)
+            .and_then(|session| session.messages.last())
+            .is_some_and(|message| message.role == study::StudyRole::User);
+        if !retryable {
+            return;
+        }
+        self.study.error = None;
+        self.start_study_request(ctx, &session_id);
+    }
+
+    fn seed_study_demo(&mut self) {
+        let Some(book) = self.book_key() else {
+            return;
+        };
+        let (title, author) = self
+            .book
+            .as_ref()
+            .map(|book| (book.title.clone(), book.author.clone()))
+            .unwrap_or_default();
+        let session_id = self.study_store.create_session(&book, &title, &author);
+        let context = self.study_page_context();
+        let first = study::StudyMessage {
+            role: study::StudyRole::User,
+            text: "¿Cómo se relaciona este pasaje con lo que veníamos leyendo?".into(),
+            contexts: context.into_iter().collect(),
+            ..study::StudyMessage::default()
+        };
+        self.study_store.push_message(&session_id, first);
+        let answer = "Sí, pero haría una distinción: el pasaje no responde con una identidad fija, sino que desplaza la pregunta hacia la posición que alguien ocupa dentro de una multiplicidad.\n\n1. **No se puede ser un lobo**: la pregunta inicial presupone un individuo aislado; la respuesta habla de lobos que solo existen en relaciones.\n2. **La posición en la manada**: importan la distancia, la pertenencia y las conexiones, no la cantidad de elementos.\n\nLa pregunta se corre de «qué soy» a «cómo estoy unido a una multiplicidad».";
+        let second = study::StudyMessage {
+            role: study::StudyRole::Assistant,
+            text: answer.into(),
+            provider: Some("OpenCode Go".into()),
+            model: Some("deepseek-v4.1-flash".into()),
+            ..study::StudyMessage::default()
+        };
+        self.study_store.push_message(&session_id, second);
+        self.save_study_store();
+        self.study.show = true;
+        self.study.session_id = Some(session_id);
+        self.study.contexts = self.study_page_context().into_iter().collect();
+        self.study.draft = "¿Y cómo se conecta con la meseta anterior?".into();
+        self.study.error = None;
+        self.study.scroll_bottom = true;
+        self.study.scroll_hold = 4;
+    }
+
+    fn poll_study(&mut self, ctx: &egui::Context) {
+        let event = self.study.rx.as_ref().map(|rx| rx.try_recv());
+        let Some(event) = event else {
+            return;
+        };
+        match event {
+            Ok((session_id, result)) => {
+                self.study.rx = None;
+                self.study.busy = false;
+                let active = self.study.session_id.as_deref() == Some(session_id.as_str());
+                match result {
+                    Ok(answer) => {
+                        let cut_short = answer.cut_short;
+                        let message = study::StudyMessage {
+                            role: study::StudyRole::Assistant,
+                            text: answer.content,
+                            provider: Some(answer.provider),
+                            model: Some(answer.model),
+                            ..study::StudyMessage::default()
+                        };
+                        self.study_store.push_message(&session_id, message);
+                        self.save_study_store();
+                        if active {
+                            self.study.scroll_bottom = true;
+                            self.study.scroll_hold = 4;
+                            if cut_short {
+                                self.study.error = Some(format!(
+                                    "La respuesta se cortó por el límite de {} tokens. Subí «máx. tokens» en Configuración.",
+                                    self.cfg.consulta.ai_max_tokens
+                                ));
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        if active {
+                            self.study.error = Some(error);
+                        }
+                    }
+                }
+                ctx.request_repaint();
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.study.rx = None;
+                self.study.busy = false;
+                self.study.error = Some("La conversación se interrumpió.".into());
+            }
+        }
+    }
+
+    fn save_study_answer_as_note(&mut self, message_index: usize) {
+        let Some(session_id) = self.study.session_id.clone() else {
+            return;
+        };
+        let Some(session) = self.study_store.session(&session_id).cloned() else {
+            return;
+        };
+        let Some(answer) = session.messages.get(message_index) else {
+            return;
+        };
+        if answer.role != study::StudyRole::Assistant || answer.text.trim().is_empty() {
+            return;
+        }
+        let Some(user) = session.messages[..message_index]
+            .iter()
+            .rev()
+            .find(|message| message.role == study::StudyRole::User && !message.contexts.is_empty())
+        else {
+            self.study.error =
+                Some("Esta respuesta no tiene un pasaje adjunto para anclar la nota.".into());
+            return;
+        };
+        let Some(context) = user
+            .contexts
+            .iter()
+            .find(|context| !context.quote.trim().is_empty())
+        else {
+            self.study.error = Some("El contexto adjunto no tiene un pasaje con texto.".into());
+            return;
+        };
+        let parts = if context.parts.is_empty() {
+            vec![context.quote.clone()]
+        } else {
+            context.parts.clone()
+        };
+        let annotation = Annotation {
+            book: session.book.clone(),
+            chapter: context.chapter,
+            block: context.block,
+            start: context.start,
+            end: context.end,
+            end_block: context.end_block,
+            parts,
+            quote: context.quote.clone(),
+            note: answer.text.clone(),
+            color: self.active_color.min(2),
+            origin: AnnotationOrigin::Ai,
+            ..Annotation::default()
+        };
+        let annotation_id = self.annotations.add(annotation);
+        self.save_annotations();
+        if let Some(session) = self.study_store.session_mut(&session_id) {
+            if !session.annotation_refs.contains(&annotation_id) {
+                session.annotation_refs.push(annotation_id);
+            }
+            session.updated = crate::library::now();
+        }
+        self.save_study_store();
+        self.say("Respuesta guardada como nota de IA.");
+    }
+
+    fn delete_study_session(&mut self, session_id: &str) {
+        self.study_store.delete_session(session_id);
+        self.save_study_store();
+        if self.study.session_id.as_deref() == Some(session_id) {
+            self.study.session_id = None;
+            self.study.contexts.clear();
+            self.study.draft.clear();
+            self.study.error = None;
+            self.study.scroll_bottom = true;
+            self.study.scroll_hold = 4;
         }
     }
 
@@ -1527,7 +2656,7 @@ impl Lector {
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(th.panel)
-                    .stroke(egui::Stroke::new(1.0, th.border))
+                    .stroke(egui::Stroke::new(1.0_f32, th.border))
                     .corner_radius(theme::radius::MD)
                     .inner_margin(egui::Margin::symmetric(12, 10))
                     .show(ui, |ui| {
@@ -1938,6 +3067,10 @@ impl Lector {
                     if changed > 0 {
                         self.save_annotations();
                     }
+                    let study_changed = self.study_store.rekey(&old_path, &new_path);
+                    if study_changed > 0 {
+                        self.save_study_store();
+                    }
                     if let Some(recent) =
                         self.cfg.recent.iter_mut().find(|p| p.as_str() == old_path)
                     {
@@ -1972,6 +3105,7 @@ impl Lector {
     fn go_library(&mut self) {
         self.persist();
         self.screen = Screen::Library;
+        self.share = None;
         self.book = None;
         self.blocks.clear();
         self.textures.clear();
@@ -2315,6 +3449,7 @@ impl Lector {
                         ("B", "Guardar marcador"),
                         ("Mayús+B", "Marcadores"),
                         ("S", "Tipografía"),
+                        ("E", "Modo estudio"),
                         ("⌘,", "Configuración"),
                         ("F1 / ?", "Esta ayuda"),
                     ],
@@ -2363,15 +3498,29 @@ impl Lector {
         let mut open_data = false;
         let mut reset_config = false;
         let mut clear_history = false;
+        let mut clear_study = false;
         let mut changed = false;
         let mut save_ai_key = false;
         let mut delete_ai_key = false;
         let mut check_update = false;
         let mut download_update: Option<update::ReleaseInfo> = None;
+        let mut download_and_install = false;
+        let mut install_update: Option<(update::ReleaseInfo, update::Downloaded)> = None;
+        let mut restart_target: Option<PathBuf> = None;
         let mut open_release: Option<String> = None;
         let mut reveal_download: Option<PathBuf> = None;
         let mut export_data = false;
         let mut import_data = false;
+        let mut share_choose_image = false;
+        let mut share_clear_image = false;
+        let mut share_changed = false;
+
+        if self.config_tab == ConfigTab::Compartir {
+            self.ensure_share_sample(th);
+            if let Some(state) = &mut self.share_sample {
+                poll_share_state(state, ctx);
+            }
+        }
 
         let win_w = (ctx.screen_rect().width() - 40.0).clamp(560.0, widgets::PANEL_LG);
         let content_min = (win_w - 220.0).max(420.0);
@@ -2398,6 +3547,7 @@ impl Lector {
                         ui.set_min_width(120.0);
                         for (tab, label) in [
                             (ConfigTab::Lectura, "Lectura"),
+                            (ConfigTab::Compartir, "Compartir"),
                             (ConfigTab::Biblioteca, "Biblioteca"),
                             (ConfigTab::Anotaciones, "Anotaciones"),
                             (ConfigTab::Consultas, "Consultas"),
@@ -2495,6 +3645,15 @@ impl Lector {
                                             .step_by(0.05),
                                         )
                                         .changed();
+                                    changed |= ui
+                                        .checkbox(
+                                            &mut self.cfg.settings.focus_mode,
+                                            "Modo enfoque",
+                                        )
+                                        .on_hover_text(
+                                            "Deja clara la línea del centro y difumina el texto que se aleja de ella.",
+                                        )
+                                        .changed();
                                     ui.add_space(6.0);
                                     if self.book.is_some() {
                                         if widgets::button(ui, th, "Tipografía de este libro…", widgets::ButtonKind::Secondary).clicked() {
@@ -2508,6 +3667,46 @@ impl Lector {
                                             .size(theme::text::META)
                                             .color(th.dim),
                                         );
+                                    }
+                                }
+                                ConfigTab::Compartir => {
+                                    widgets::section_header(ui, th, "Compartir citas");
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Así se verá una cita al usar Capturar. Los cambios se guardan y se aplican a la próxima captura.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                    ui.add_space(6.0);
+                                    if let Some(state) = self.share_sample.as_mut() {
+                                        if ui.available_width() >= 620.0 {
+                                            ui.horizontal_top(|ui| {
+                                                share_preview_ui(ui, th, state, 220.0, 390.0);
+                                                ui.add_space(18.0);
+                                                ui.vertical(|ui| {
+                                                    ui.set_width(390.0);
+                                                    let actions =
+                                                        share_template_controls_ui(ui, th, state);
+                                                    share_changed |= actions.changed;
+                                                    share_choose_image |= actions.choose_image;
+                                                    share_clear_image |= actions.clear_image;
+                                                });
+                                            });
+                                        } else {
+                                            ui.vertical(|ui| {
+                                                share_preview_ui(ui, th, state, 200.0, 356.0);
+                                                ui.add_space(8.0);
+                                                let actions =
+                                                    share_template_controls_ui(ui, th, state);
+                                                share_changed |= actions.changed;
+                                                share_choose_image |= actions.choose_image;
+                                                share_clear_image |= actions.clear_image;
+                                            });
+                                        }
                                     }
                                 }
                                 ConfigTab::Biblioteca => {
@@ -3005,6 +4204,33 @@ impl Lector {
                                     } else if widgets::button(ui, th, "Limpiar historial", widgets::ButtonKind::Destructive).clicked() {
                                         self.config_confirm_clear = true;
                                     }
+                                    ui.add_space(theme::space::SM);
+                                    ui.separator();
+                                    widgets::section_header(ui, th, "Sesiones de estudio");
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Las sesiones de estudio se guardan solo en tu disco y entran en el respaldo. No se envían a ningún proveedor hasta que mandás una pregunta con online activo.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                    if self.config_confirm_study {
+                                        ui.horizontal(|ui| {
+                                            ui.label("¿Borrar todas las sesiones de estudio?");
+                                            if widgets::button(ui, th, "Confirmar", widgets::ButtonKind::Destructive).clicked() {
+                                                clear_study = true;
+                                                self.config_confirm_study = false;
+                                            }
+                                            if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Secondary).clicked() {
+                                                self.config_confirm_study = false;
+                                            }
+                                        });
+                                    } else if widgets::button(ui, th, "Borrar sesiones de estudio", widgets::ButtonKind::Destructive).clicked() {
+                                        self.config_confirm_study = true;
+                                    }
                                 }
                                 ConfigTab::Avanzado => {
                                     widgets::section_header(ui, th, "Avanzado");
@@ -3013,6 +4239,7 @@ impl Lector {
                                         ("library.json", Library::file()),
                                         ("annotations.json", Annotations::file()),
                                         ("consultas.json", ConsultaHistory::file()),
+                                        ("studies.json", study::StudyStore::file()),
                                     ] {
                                         ui.label(
                                             RichText::new(format!(
@@ -3033,7 +4260,8 @@ impl Lector {
                                         egui::Label::new(
                                             RichText::new(
                                                 "Respaldo local de biblioteca, progreso, anotaciones, \
-                                                 historial y ajustes. No incluye EPUB, portadas ni claves.",
+                                                 historial, sesiones de estudio y ajustes. No incluye \
+                                                 EPUB, portadas ni claves.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -3085,7 +4313,9 @@ impl Lector {
                                         egui::Label::new(
                                             RichText::new(
                                                 "Consulta la API pública de GitHub sólo cuando lo pedís. \
-                                                 No envía datos del libro ni de la biblioteca.",
+                                                 No envía datos del libro ni de la biblioteca. En Linux, \
+                                                 si Candil vive en tu carpeta personal, también podés \
+                                                 instalar la actualización desde acá.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -3174,16 +4404,27 @@ impl Lector {
                                                         .size(theme::text::META)
                                                         .color(th.dim),
                                                     );
-                                                } else if widgets::button(
-                                                    ui,
-                                                    th,
-                                                    "Descargar",
-                                                    widgets::ButtonKind::Primary,
-                                                )
-                                                .clicked()
-                                                    && !update_busy
-                                                {
-                                                    download_update = Some(release.clone());
+                                                } else {
+                                                    let can_install =
+                                                        update::self_install_target().is_ok();
+                                                    let label = if can_install {
+                                                        "Descargar e instalar"
+                                                    } else {
+                                                        "Descargar"
+                                                    };
+                                                    if widgets::button(
+                                                        ui,
+                                                        th,
+                                                        label,
+                                                        widgets::ButtonKind::Primary,
+                                                    )
+                                                    .clicked()
+                                                        && !update_busy
+                                                    {
+                                                        download_update =
+                                                            Some(release.clone());
+                                                        download_and_install = can_install;
+                                                    }
                                                 }
                                                 if widgets::button(
                                                     ui,
@@ -3208,7 +4449,11 @@ impl Lector {
                                                 .color(th.dim),
                                             );
                                         }
-                                        UpdateState::Downloaded { release, path } => {
+                                        UpdateState::Downloaded {
+                                            release,
+                                            download,
+                                            error,
+                                        } => {
                                             ui.label(
                                                 RichText::new(format!(
                                                     "Candil v{} descargado y verificado.",
@@ -3220,7 +4465,7 @@ impl Lector {
                                             ui.add(
                                                 egui::Label::new(
                                                     RichText::new(truncate(
-                                                        &path.to_string_lossy(),
+                                                        &download.path.to_string_lossy(),
                                                         90,
                                                     ))
                                                     .size(theme::text::META)
@@ -3228,7 +4473,31 @@ impl Lector {
                                                 )
                                                 .wrap(),
                                             );
+                                            if let Some(error) = error {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(error)
+                                                            .size(theme::text::META)
+                                                            .color(th.error),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                            let no_install = update::self_install_target().err();
                                             ui.horizontal(|ui| {
+                                                if no_install.is_none()
+                                                    && widgets::button(
+                                                        ui,
+                                                        th,
+                                                        "Instalar actualización",
+                                                        widgets::ButtonKind::Primary,
+                                                    )
+                                                    .clicked()
+                                                    && !update_busy
+                                                {
+                                                    install_update =
+                                                        Some((release.clone(), download.clone()));
+                                                }
                                                 if widgets::button(
                                                     ui,
                                                     th,
@@ -3237,7 +4506,7 @@ impl Lector {
                                                 )
                                                 .clicked()
                                                 {
-                                                    reveal_download = Some(path.clone());
+                                                    reveal_download = Some(download.path.clone());
                                                 }
                                                 if widgets::button(
                                                     ui,
@@ -3249,6 +4518,63 @@ impl Lector {
                                                 {
                                                     open_release =
                                                         Some(release.page_url.clone());
+                                                }
+                                            });
+                                            if let Some(reason) = no_install {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(reason)
+                                                            .size(theme::text::META)
+                                                            .color(th.dim),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                        }
+                                        UpdateState::Installing(release) => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Instalando Candil v{}…",
+                                                    release.version
+                                                ))
+                                                .size(theme::text::BODY_SMALL)
+                                                .color(th.dim),
+                                            );
+                                        }
+                                        UpdateState::Installed {
+                                            release,
+                                            backup,
+                                            target,
+                                        } => {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Candil v{} instalado.",
+                                                    release.version
+                                                ))
+                                                .strong()
+                                                .color(th.fg),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(format!(
+                                                        "Se aplica al reiniciar. Copia de seguridad: {}",
+                                                        backup.display()
+                                                    ))
+                                                    .size(theme::text::META)
+                                                    .color(th.dim),
+                                                )
+                                                .wrap(),
+                                            );
+                                            ui.horizontal(|ui| {
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Reiniciar ahora",
+                                                    widgets::ButtonKind::Primary,
+                                                )
+                                                .clicked()
+                                                {
+                                                    restart_target = Some(target.clone());
                                                 }
                                             });
                                         }
@@ -3263,7 +4589,9 @@ impl Lector {
                                             );
                                         }
                                     }
-                                    if !update_busy {
+                                    if !update_busy
+                                        && !matches!(update_state, UpdateState::Installed { .. })
+                                    {
                                         let label = if matches!(
                                             &update_state,
                                             UpdateState::Idle | UpdateState::Error(_)
@@ -3326,6 +4654,63 @@ impl Lector {
         }
         if changed {
             self.dirty = true;
+        }
+        if share_choose_image {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Imagen", &["png", "jpg", "jpeg", "webp", "gif"])
+                .pick_file()
+            {
+                let mut settings = None;
+                if let Some(state) = &mut self.share_sample {
+                    state.settings.background = share::ShareBackground::Image;
+                    state.settings.image_path = Some(path.clone());
+                    state.custom_bg = None;
+                    state.bg_error = None;
+                    state.preview_gen = state.preview_gen.wrapping_add(1);
+                    state.preview_dirty = true;
+                    state.last_edit = Instant::now();
+                    settings = Some(state.settings.clone());
+                }
+                if let Some(settings) = settings {
+                    self.cfg.share = settings;
+                    self.dirty = true;
+                }
+                if let Some(state) = &mut self.share_sample {
+                    start_share_background(state, path);
+                }
+            }
+        }
+        if share_clear_image {
+            if let Some(state) = &mut self.share_sample {
+                state.settings.image_path = None;
+                state.settings.background = share::ShareBackground::Paper;
+                state.custom_bg = None;
+                state.bg_error = None;
+            }
+            share_changed = true;
+        }
+        if share_changed {
+            let mut settings = None;
+            let mut load = None;
+            if let Some(state) = &mut self.share_sample {
+                settings = Some(state.settings.clone());
+                state.preview_gen = state.preview_gen.wrapping_add(1);
+                state.preview_dirty = true;
+                state.last_edit = Instant::now();
+                if state.settings.background == share::ShareBackground::Image
+                    && state.custom_bg.is_none()
+                    && state.bg_rx.is_none()
+                {
+                    load = state.settings.image_path.clone();
+                }
+            }
+            if let Some(settings) = settings {
+                self.cfg.share = settings;
+                self.dirty = true;
+            }
+            if let (Some(path), Some(state)) = (load, self.share_sample.as_mut()) {
+                start_share_background(state, path);
+            }
         }
         if !self.cfg.consulta.online_enabled && self.consulta_busy {
             let local = self
@@ -3413,11 +4798,25 @@ impl Lector {
             }
             self.config_confirm_clear = false;
         }
+        if clear_study {
+            self.study_store.clear_all();
+            self.save_study_store();
+            self.study.session_id = None;
+            self.study.contexts.clear();
+            self.study.error = None;
+            self.say("Sesiones de estudio borradas.");
+        }
         if check_update {
             self.check_for_updates();
         }
         if let Some(release) = download_update {
-            self.download_update(release);
+            self.download_update(release, download_and_install);
+        }
+        if let Some((release, download)) = install_update {
+            self.install_update(release, download);
+        }
+        if let Some(target) = restart_target {
+            self.restart_app(ctx, &target);
         }
         if let Some(url) = open_release {
             open_external(&url);
@@ -3444,6 +4843,7 @@ impl Lector {
         if !self.show_config {
             self.config_confirm_clear = false;
             self.config_confirm_reset = false;
+            self.config_confirm_study = false;
         }
     }
 
@@ -4179,11 +5579,15 @@ impl Lector {
                 ));
                 return;
             }
-            self.open(target);
-            if self.book_key().as_deref() != Some(target_key.as_str()) {
-                return;
-            }
+            self.open_with(target, OpenAction::ConsultaHistory(Box::new(entry.clone())));
+            ctx.request_repaint();
+            return;
         }
+        self.jump_to_consulta_history_now(entry);
+        ctx.request_repaint();
+    }
+
+    fn jump_to_consulta_history_now(&mut self, entry: &ConsultaEntry) {
         if entry.chapter != self.chapter {
             self.load_chapter(entry.chapter, None);
         }
@@ -4212,7 +5616,6 @@ impl Lector {
         self.selection = None;
         self.note = None;
         self.back_spot = None;
-        ctx.request_repaint();
     }
 
     fn open_annotation(&mut self, annotation: &Annotation) {
@@ -4227,10 +5630,8 @@ impl Lector {
                 ));
                 return;
             }
-            self.open(target);
-            if self.book_key().as_deref() != Some(target_key.as_str()) {
-                return;
-            }
+            self.open_with(target, OpenAction::Annotation(annotation.id));
+            return;
         }
         if let Some(a) = self.annotations.get(annotation.id).cloned() {
             self.jump_to_annotation(&a);
@@ -4489,14 +5890,14 @@ impl Lector {
                             ui.painter().rect_stroke(
                                 row_frame.response.rect,
                                 theme::radius::SM,
-                                Stroke::new(2.0, th.accent),
+                                Stroke::new(2.0_f32, th.accent),
                                 egui::StrokeKind::Inside,
                             );
                         } else if response.hovered() || active {
                             ui.painter().rect_stroke(
                                 row_frame.response.rect,
                                 theme::radius::SM,
-                                Stroke::new(1.0, th.accent.gamma_multiply(0.55)),
+                                Stroke::new(1.0_f32, th.accent.gamma_multiply(0.55)),
                                 egui::StrokeKind::Inside,
                             );
                         }
@@ -4533,6 +5934,9 @@ impl Lector {
     // -- entrada -------------------------------------------------------------
 
     fn handle_input(&mut self, ctx: &egui::Context) {
+        if self.opening.is_some() || self.share.is_some() {
+            return;
+        }
         let dropped: Option<PathBuf> = ctx.input(|i| {
             i.raw
                 .dropped_files
@@ -4576,6 +5980,7 @@ impl Lector {
             key_k,
             key_b,
             key_comma,
+            key_e,
         ) = ctx.input(|i| {
             (
                 i.key_pressed(Key::Space),
@@ -4603,6 +6008,7 @@ impl Lector {
                 i.key_pressed(Key::K),
                 i.key_pressed(Key::B),
                 i.key_pressed(Key::Comma),
+                i.key_pressed(Key::E),
             )
         });
 
@@ -4639,6 +6045,10 @@ impl Lector {
                 };
                 self.open_config(ctx, tab);
             }
+        }
+
+        if key_e && !typing && self.book.is_some() && self.note.is_none() {
+            self.toggle_study(ctx);
         }
 
         if key_k && self.book.is_some() && self.note.is_none() && self.selection.is_some() {
@@ -4727,6 +6137,8 @@ impl Lector {
                 self.consulta_confirm_clear = false;
             } else if self.show_config {
                 self.show_config = false;
+            } else if self.study.show {
+                self.study.show = false;
             } else if self.selection.is_some() || self.reader_focus.is_some() {
                 self.surrender_reader_focus(ctx);
             } else if self.show_toc || self.show_settings {
@@ -4850,12 +6262,47 @@ impl Lector {
                 };
                 ctx.request_repaint();
             }
-            Ok(UpdateMsg::Downloaded { release, result }) => {
+            Ok(UpdateMsg::Downloaded {
+                release,
+                result,
+                install_after,
+            }) => {
+                self.update_rx = None;
+                match result {
+                    Ok(download) if install_after => {
+                        self.install_update(release, download);
+                    }
+                    Ok(download) => {
+                        self.update_state = UpdateState::Downloaded {
+                            release,
+                            download,
+                            error: None,
+                        };
+                    }
+                    Err(error) => {
+                        self.update_state = UpdateState::Available {
+                            release,
+                            error: Some(error),
+                        };
+                    }
+                }
+                ctx.request_repaint();
+            }
+            Ok(UpdateMsg::Installed {
+                release,
+                download,
+                result,
+            }) => {
                 self.update_rx = None;
                 self.update_state = match result {
-                    Ok(path) => UpdateState::Downloaded { release, path },
-                    Err(error) => UpdateState::Available {
+                    Ok(installed) => UpdateState::Installed {
                         release,
+                        backup: installed.backup,
+                        target: installed.target,
+                    },
+                    Err(error) => UpdateState::Downloaded {
+                        release,
+                        download,
                         error: Some(error),
                     },
                 };
@@ -4885,7 +6332,7 @@ impl Lector {
         });
     }
 
-    fn download_update(&mut self, release: update::ReleaseInfo) {
+    fn download_update(&mut self, release: update::ReleaseInfo, install_after: bool) {
         if self.update_rx.is_some() {
             return;
         }
@@ -4895,8 +6342,41 @@ impl Lector {
         std::thread::spawn(move || {
             let dir = update::default_download_dir();
             let result = update::download_release(&release, &dir);
-            let _ = tx.send(UpdateMsg::Downloaded { release, result });
+            let _ = tx.send(UpdateMsg::Downloaded {
+                release,
+                result,
+                install_after,
+            });
         });
+    }
+
+    fn install_update(&mut self, release: update::ReleaseInfo, download: update::Downloaded) {
+        if self.update_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.update_rx = Some(rx);
+        self.update_state = UpdateState::Installing(release.clone());
+        std::thread::spawn(move || {
+            let result = update::install_downloaded(&download, &release.version);
+            let _ = tx.send(UpdateMsg::Installed {
+                release,
+                download,
+                result,
+            });
+        });
+    }
+
+    fn restart_app(&mut self, ctx: &egui::Context, exe: &Path) {
+        self.persist();
+        let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+        match std::process::Command::new(exe).args(args).spawn() {
+            Ok(_) => {
+                self.restarting = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Err(error) => self.say(format!("No pude reiniciar Candil: {error}")),
+        }
     }
 
     fn reload_user_data(&mut self) {
@@ -4904,6 +6384,10 @@ impl Lector {
         self.library = Library::load();
         self.annotations = Annotations::load().0;
         self.consulta_history = ConsultaHistory::load().0;
+        self.study_store = study::StudyStore::load().0;
+        self.study.session_id = None;
+        self.study.contexts.clear();
+        self.study.error = None;
         self.library_textures.clear();
         self.applied_theme = None;
         self.dirty = false;
@@ -5289,7 +6773,11 @@ impl Lector {
 
     fn open_library_content_hit(&mut self, hit: LibraryContentHit, ctx: &egui::Context) {
         self.library_content = None;
-        self.open(hit.path);
+        self.open_with(hit.path.clone(), OpenAction::ContentHit(hit));
+        ctx.request_repaint();
+    }
+
+    fn finish_library_content_hit(&mut self, hit: LibraryContentHit, ctx: &egui::Context) {
         if self.screen != Screen::Reader {
             return;
         }
@@ -5458,7 +6946,7 @@ impl Lector {
 
                     let card = egui::Frame::new()
                         .fill(th.bg)
-                        .stroke(Stroke::new(1.0, th.border))
+                        .stroke(Stroke::new(1.0_f32, th.border))
                         .corner_radius(theme::radius::SM)
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
@@ -5474,14 +6962,14 @@ impl Lector {
                         ui.painter().rect_stroke(
                             rect.expand(2.0),
                             theme::radius::SM + 1.0,
-                            Stroke::new(2.0, th.accent),
+                            Stroke::new(2.0_f32, th.accent),
                             egui::StrokeKind::Inside,
                         );
                     } else if response.hovered() {
                         ui.painter().rect_stroke(
                             rect.expand(1.0),
                             theme::radius::SM + 1.0,
-                            Stroke::new(1.0, th.accent.gamma_multiply(0.55)),
+                            Stroke::new(1.0_f32, th.accent.gamma_multiply(0.55)),
                             egui::StrokeKind::Inside,
                         );
                     }
@@ -5537,6 +7025,16 @@ impl Lector {
         else {
             return;
         };
+        let same_as_root = match (std::fs::canonicalize(&dir), std::fs::canonicalize(&root)) {
+            (Ok(dir), Ok(root)) => dir == root,
+            _ => dir == root,
+        };
+        if same_as_root {
+            self.say(
+                "Elegí una subcarpeta de Google Drive, no la raíz: indexar todo Drive puede tardar mucho.",
+            );
+            return;
+        }
         let key = dir.to_string_lossy().to_string();
         if self.library.folders.iter().any(|folder| folder == &key) {
             self.say("Esa carpeta de Google Drive ya está en la biblioteca.");
@@ -5815,7 +7313,7 @@ impl Lector {
                     let search_w = (ui.available_width() - reserve).max(150.0);
                     let search = egui::Frame::new()
                         .fill(th.bg)
-                        .stroke(Stroke::new(1.0, th.border))
+                        .stroke(Stroke::new(1.0_f32, th.border))
                         .corner_radius(theme::radius::MD)
                         .inner_margin(egui::Margin::symmetric(10, 5))
                         .show(ui, |ui| {
@@ -5835,7 +7333,7 @@ impl Lector {
                         ui.painter().rect_stroke(
                             search.response.rect,
                             theme::radius::MD,
-                            Stroke::new(2.0, th.accent),
+                            Stroke::new(2.0_f32, th.accent),
                             egui::StrokeKind::Inside,
                         );
                         if self.library_content_enabled && ctx.input(|i| i.key_pressed(Key::Enter))
@@ -5911,7 +7409,7 @@ impl Lector {
                         visuals.widgets.inactive.bg_stroke = Stroke::NONE;
                         visuals.widgets.hovered.weak_bg_fill = th.accent.gamma_multiply(0.12);
                         visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-                        visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.accent);
+                        visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, th.accent);
                         ui.menu_button(
                             RichText::new("…").size(theme::text::TITLE).color(th.fg),
                             |ui| {
@@ -6040,7 +7538,7 @@ impl Lector {
                                 let name = truncate(&name, if wide { 28 } else { 16 });
                                 egui::Frame::new()
                                     .fill(th.panel)
-                                    .stroke(Stroke::new(1.0, th.border))
+                                    .stroke(Stroke::new(1.0_f32, th.border))
                                     .corner_radius(theme::radius::SM)
                                     .inner_margin(egui::Margin::symmetric(8, 4))
                                     .show(ui, |ui| {
@@ -7273,6 +8771,22 @@ impl Lector {
                         self.selection = None;
                         self.note = None;
                     }
+                    if !compact
+                        && widgets::button(
+                            ui,
+                            th,
+                            "Estudio",
+                            if self.study.show {
+                                widgets::ButtonKind::Secondary
+                            } else {
+                                widgets::ButtonKind::Ghost
+                            },
+                        )
+                        .on_hover_text("Modo estudio (E)")
+                        .clicked()
+                    {
+                        self.toggle_study(ctx);
+                    }
                     if widgets::button(
                         ui,
                         th,
@@ -7336,10 +8850,14 @@ impl Lector {
                                 visuals.widgets.hovered.weak_bg_fill =
                                     th.accent.gamma_multiply(0.12);
                                 visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-                                visuals.widgets.active.bg_stroke = Stroke::new(2.0, th.accent);
+                                visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, th.accent);
                                 ui.menu_button(
                                     RichText::new("…").size(theme::text::TITLE).color(th.fg),
                                     |ui| {
+                                        if ui.button("Estudio").clicked() {
+                                            self.toggle_study(ctx);
+                                            ui.close();
+                                        }
                                         if ui.button("Configuración").clicked() {
                                             self.open_config(ctx, ConfigTab::Consultas);
                                             ui.close();
@@ -7798,13 +9316,23 @@ impl Lector {
                 )
                 .changed();
 
+            ui.add_space(4.0);
+            changed |= ui
+                .checkbox(&mut settings.focus_mode, "Modo enfoque")
+                .on_hover_text(
+                    "Deja clara la línea del centro y difumina el texto que se aleja de ella.",
+                )
+                .changed();
+
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if widgets::button(ui, th, "Restablecer", widgets::ButtonKind::Secondary).clicked()
                 {
                     let theme_keep = settings.theme;
+                    let focus_keep = settings.focus_mode;
                     settings = Settings::default();
                     settings.theme = theme_keep;
+                    settings.focus_mode = focus_keep;
                     changed = true;
                 }
                 widgets::meta(ui, th, "Space / ← → / T / S");
@@ -7852,19 +9380,20 @@ impl Lector {
         }
         pos.x = pos.x.clamp(
             screen.left() + 8.0,
-            (screen.right() - 400.0).max(screen.left() + 8.0),
+            (screen.right() - 500.0).max(screen.left() + 8.0),
         );
 
         let mut highlight = false;
         let mut note = false;
         let mut consultar = false;
+        let mut capture = false;
         egui::Area::new(egui::Id::new("selection_bar"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(th.panel)
-                    .stroke(egui::Stroke::new(1.0, th.border))
+                    .stroke(egui::Stroke::new(1.0_f32, th.border))
                     .corner_radius(theme::radius::MD)
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .show(ui, |ui| {
@@ -7906,6 +9435,12 @@ impl Lector {
                             {
                                 consultar = true;
                             }
+                            if widgets::button(ui, th, "Capturar", widgets::ButtonKind::Secondary)
+                                .on_hover_text("Crear una imagen de la cita y guardar el destacado")
+                                .clicked()
+                            {
+                                capture = true;
+                            }
                         });
                     });
             });
@@ -7918,6 +9453,9 @@ impl Lector {
         }
         if consultar {
             self.open_consulta(ctx);
+        }
+        if capture {
+            self.share_selection(ctx);
         }
     }
 
@@ -8007,9 +9545,12 @@ impl Lector {
         let mut remove = None;
         let mut edit = None;
         let mut jump = None;
+        let mut share = None;
         let mut recolor = None;
         let mut export = false;
 
+        let max_w = (ctx.screen_rect().width() - 40.0).max(360.0);
+        let win_w = widgets::PANEL_MD.min(max_w);
         egui::Window::new(
             RichText::new("Destacados y notas")
                 .size(theme::text::TITLE)
@@ -8019,7 +9560,8 @@ impl Lector {
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .default_width(widgets::PANEL_MD)
+        .default_width(win_w)
+        .max_width(max_w)
         .frame(widgets::panel_frame(th))
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
@@ -8081,7 +9623,7 @@ impl Lector {
                     }
                 } else {
                     ui.label(
-                        RichText::new("Seleccioná una frase y usá Destacar o Nota.")
+                        RichText::new("Seleccioná una frase y usá Destacar, Nota o Capturar.")
                             .size(theme::text::META)
                             .color(th.dim),
                     );
@@ -8105,13 +9647,16 @@ impl Lector {
                             if color_button.clicked() {
                                 recolor = Some((a.id, (a.color + 1) % 3));
                             }
-                            ui.label(
-                                RichText::new(format!(
-                                    "“{}”",
-                                    truncate(&quote_inline(&a.quote), 150)
-                                ))
-                                .size(theme::text::BODY)
-                                .color(th.fg),
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(format!(
+                                        "“{}”",
+                                        truncate(&quote_inline(&a.quote), 150)
+                                    ))
+                                    .size(theme::text::BODY)
+                                    .color(th.fg),
+                                )
+                                .wrap(),
                             );
                         });
                         if row.missing {
@@ -8151,6 +9696,14 @@ impl Lector {
                                 place
                             };
                             ui.label(RichText::new(place).size(theme::text::META).color(th.dim));
+                            if a.origin == AnnotationOrigin::Ai {
+                                ui.label(
+                                    RichText::new("IA")
+                                        .size(theme::text::META)
+                                        .strong()
+                                        .color(th.accent),
+                                );
+                            }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
                                     .on_hover_text("Borrar destacado")
@@ -8163,6 +9716,12 @@ impl Lector {
                                     .clicked()
                                 {
                                     edit = Some(a.id);
+                                }
+                                if widgets::button(ui, th, "Compartir", widgets::ButtonKind::Ghost)
+                                    .on_hover_text("Crear una imagen de esta cita")
+                                    .clicked()
+                                {
+                                    share = Some(a.id);
                                 }
                                 if widgets::button(
                                     ui,
@@ -8182,7 +9741,11 @@ impl Lector {
         });
 
         self.show_annotations = open;
-        let acted = remove.is_some() || edit.is_some() || jump.is_some() || recolor.is_some();
+        let acted = remove.is_some()
+            || edit.is_some()
+            || jump.is_some()
+            || share.is_some()
+            || recolor.is_some();
         if let Some(id) = remove {
             self.confirm_delete_annotation = Some(id);
         }
@@ -8211,11 +9774,681 @@ impl Lector {
                 self.open_annotation(&a);
             }
         }
+        if let Some(id) = share {
+            if let Some(a) = self.annotations.get(id).cloned() {
+                self.open_share(a, ctx);
+            }
+        }
         if export {
             self.export_annotations();
         }
         if acted || export {
             ctx.request_repaint();
+        }
+    }
+
+    fn share_window(&mut self, ctx: &egui::Context, th: &Theme) {
+        if self.share.is_none() {
+            return;
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.share = None;
+            return;
+        }
+        self.poll_share(ctx);
+        let mut open = true;
+        let mut actions = ShareActions::default();
+        {
+            let Some(state) = self.share.as_mut() else {
+                return;
+            };
+            let screen = ctx.screen_rect();
+            let narrow = screen.width() < 580.0;
+            let compact = screen.width() < 900.0;
+            let width = if narrow {
+                (screen.width() - 32.0).max(420.0)
+            } else if compact {
+                (screen.width() - 32.0).max(560.0)
+            } else {
+                920.0
+            };
+            egui::Window::new(
+                RichText::new("Compartir cita")
+                    .size(theme::text::TITLE)
+                    .strong()
+                    .color(th.fg),
+            )
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(width)
+            .max_width(width)
+            .frame(widgets::panel_frame(th))
+            .show(ctx, |ui| {
+                if narrow {
+                    let body_h = (screen.height() - 300.0).clamp(160.0, 280.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(body_h)
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                        )
+                        .show(ui, |ui| {
+                            share_preview_ui(ui, th, state, 140.0, 250.0);
+                            ui.add_space(8.0);
+                            actions = share_window_controls_ui(ui, th, state);
+                        });
+                } else {
+                    ui.horizontal_top(|ui| {
+                        share_preview_ui(
+                            ui,
+                            th,
+                            state,
+                            if compact { 140.0 } else { 300.0 },
+                            if compact { 250.0 } else { 520.0 },
+                        );
+                        ui.add_space(18.0);
+                        ui.vertical(|ui| {
+                            ui.set_width(if compact { 390.0 } else { 430.0 });
+                            actions = share_window_controls_ui(ui, th, state);
+                        });
+                    });
+                }
+            });
+        }
+        if !open || actions.close {
+            self.share = None;
+            return;
+        }
+        if actions.choose_image {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Imagen", &["png", "jpg", "jpeg", "webp", "gif"])
+                .pick_file()
+            {
+                if let Some(state) = &mut self.share {
+                    state.settings.background = share::ShareBackground::Image;
+                    state.settings.image_path = Some(path.clone());
+                    state.custom_bg = None;
+                    state.bg_error = None;
+                    state.preview_gen = state.preview_gen.wrapping_add(1);
+                    state.preview_dirty = true;
+                    state.last_edit = Instant::now();
+                }
+                if let Some(state) = &self.share {
+                    self.cfg.share = state.settings.clone();
+                }
+                self.dirty = true;
+                self.load_share_background(path);
+            }
+        }
+        if actions.clear_image {
+            if let Some(state) = &mut self.share {
+                state.settings.image_path = None;
+                state.settings.background = share::ShareBackground::Paper;
+                state.custom_bg = None;
+                state.bg_error = None;
+            }
+            actions.changed = true;
+        }
+        if actions.changed {
+            if let Some(state) = &self.share {
+                self.cfg.share = state.settings.clone();
+            }
+            self.dirty = true;
+            if let Some(state) = &mut self.share {
+                state.preview_gen = state.preview_gen.wrapping_add(1);
+                state.preview_dirty = true;
+                state.last_edit = Instant::now();
+            }
+            let should_load = self.share.as_ref().is_some_and(|state| {
+                state.settings.background == share::ShareBackground::Image
+                    && state.custom_bg.is_none()
+                    && state.bg_rx.is_none()
+            });
+            if should_load {
+                if let Some(path) = self
+                    .share
+                    .as_ref()
+                    .and_then(|state| state.settings.image_path.clone())
+                {
+                    self.load_share_background(path);
+                }
+            }
+        }
+        if actions.save {
+            self.save_share();
+        }
+        if actions.reveal {
+            if let Some(path) = self.share.as_ref().and_then(|state| state.saved.clone()) {
+                reveal_path(&path);
+            }
+        }
+    }
+
+    fn study_panel(&mut self, ctx: &egui::Context, th: &Theme) {
+        if !self.study.show {
+            return;
+        }
+        let Some(book_key) = self.book_key() else {
+            return;
+        };
+        let Some(session_id) = self.ensure_study_session() else {
+            return;
+        };
+        let session = self
+            .study_store
+            .session(&session_id)
+            .cloned()
+            .unwrap_or_default();
+        let sessions: Vec<(String, String)> = self
+            .study_store
+            .sessions_for_book(&book_key)
+            .into_iter()
+            .map(|session| (session.id.clone(), session.display_title()))
+            .collect();
+        let book_annotations: Vec<(u64, String)> = self
+            .annotations
+            .sorted_for_book(&book_key)
+            .into_iter()
+            .map(|annotation| {
+                (
+                    annotation.id,
+                    study::truncate_chars(&quote_inline(&annotation.quote), 70),
+                )
+            })
+            .collect();
+        let bookmarks: Vec<Bookmark> = self
+            .library
+            .books
+            .iter()
+            .find(|book| book.path == book_key)
+            .map(|book| book.bookmarks.clone())
+            .unwrap_or_default();
+        let gate = self.study_online_gate();
+        let provider_label = ai::provider(&self.cfg.consulta.ai_provider).label;
+
+        let mut close = false;
+        let mut new_session = false;
+        let mut delete_session = false;
+        let mut select_session: Option<String> = None;
+        let mut send = false;
+        let mut retry = false;
+        let mut attach_selection = false;
+        let mut attach_page = false;
+        let mut attach_annotation: Option<u64> = None;
+        let mut attach_bookmark: Option<u64> = None;
+        let mut remove_context: Option<usize> = None;
+        let mut save_note: Option<usize> = None;
+        let mut copy_text: Option<String> = None;
+
+        let mut selected_session = session_id.clone();
+        let full = ctx.screen_rect().width() < 820.0;
+        let max_width = if full {
+            ctx.screen_rect().width()
+        } else {
+            620.0
+        };
+        let default_width = if full {
+            ctx.screen_rect().width()
+        } else {
+            430.0
+        };
+        egui::SidePanel::right("study-panel")
+            .resizable(!full)
+            .default_width(default_width)
+            .width_range(320.0..=max_width)
+            .frame(
+                egui::Frame::new()
+                    .fill(th.bg)
+                    .inner_margin(egui::Margin::symmetric(12, 8)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Estudio")
+                            .size(theme::text::TITLE)
+                            .strong()
+                            .color(th.fg),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if widgets::button(ui, th, "×", widgets::ButtonKind::Ghost)
+                            .on_hover_text("Cerrar estudio")
+                            .clicked()
+                        {
+                            close = true;
+                        }
+                    });
+                });
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "{} — {}",
+                            truncate(&session.book_title, 48),
+                            truncate(&session.book_author, 32)
+                        ))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                    )
+                    .wrap(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    egui::ComboBox::from_id_salt("study-session")
+                        .width(210.0)
+                        .selected_text(session.display_title())
+                        .show_ui(ui, |ui| {
+                            for (id, title) in &sessions {
+                                ui.selectable_value(&mut selected_session, id.clone(), title);
+                            }
+                        });
+                    if widgets::button(ui, th, "Nueva", widgets::ButtonKind::Secondary).clicked() {
+                        new_session = true;
+                    }
+                    if self.study.confirm_delete {
+                        ui.label(
+                            RichText::new("¿Borrar esta sesión?")
+                                .size(theme::text::META)
+                                .color(th.dim),
+                        );
+                        if widgets::button(ui, th, "Borrar", widgets::ButtonKind::Destructive)
+                            .clicked()
+                        {
+                            delete_session = true;
+                            self.study.confirm_delete = false;
+                        }
+                        if widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost).clicked()
+                        {
+                            self.study.confirm_delete = false;
+                        }
+                    } else if widgets::button(ui, th, "Borrar", widgets::ButtonKind::Ghost).clicked()
+                    {
+                        self.study.confirm_delete = true;
+                    }
+                });
+                if selected_session != session_id {
+                    select_session = Some(selected_session.clone());
+                }
+                ui.separator();
+
+                egui::TopBottomPanel::bottom("study-composer")
+                    .show_separator_line(false)
+                    .frame(egui::Frame::new().fill(th.bg))
+                    .show_inside(ui, |ui| {
+                        ui.add_space(theme::space::XS);
+                        if !self.study.contexts.is_empty() {
+                            ui.horizontal_wrapped(|ui| {
+                                for (index, context) in self.study.contexts.iter().enumerate() {
+                                    egui::Frame::new()
+                                        .fill(th.panel)
+                                        .corner_radius(theme::radius::SM)
+                                        .inner_margin(egui::Margin::symmetric(6, 3))
+                                        .show(ui, |ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    RichText::new(context.label())
+                                                        .size(theme::text::META)
+                                                        .strong()
+                                                        .color(th.accent),
+                                                );
+                                                ui.label(
+                                                    RichText::new(truncate(&context.preview(), 60))
+                                                        .size(theme::text::META)
+                                                        .color(th.dim),
+                                                );
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "×",
+                                                    widgets::ButtonKind::Ghost,
+                                                )
+                                                .clicked()
+                                                {
+                                                    remove_context = Some(index);
+                                                }
+                                            });
+                                        });
+                                }
+                            });
+                            ui.add_space(theme::space::XS);
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            ui.menu_button("Adjuntar…", |ui| {
+                                if ui
+                                    .add_enabled(
+                                        self.selection.is_some(),
+                                        egui::Button::new("Selección actual"),
+                                    )
+                                    .clicked()
+                                {
+                                    attach_selection = true;
+                                    ui.close();
+                                }
+                                if ui.button("Página actual").clicked() {
+                                    attach_page = true;
+                                    ui.close();
+                                }
+                                ui.menu_button("Destacado", |ui| {
+                                    if book_annotations.is_empty() {
+                                        ui.label("No hay destacados en este libro.");
+                                    }
+                                    for (id, label) in &book_annotations {
+                                        if ui.button(label).clicked() {
+                                            attach_annotation = Some(*id);
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                                ui.menu_button("Marcador", |ui| {
+                                    if bookmarks.is_empty() {
+                                        ui.label("No hay marcadores en este libro.");
+                                    }
+                                    for bookmark in &bookmarks {
+                                        let label = if bookmark.label.trim().is_empty() {
+                                            format!("Cap. {} · {:.0}%", bookmark.progress.chapter + 1, bookmark.progress.ratio * 100.0)
+                                        } else {
+                                            format!(
+                                                "{} · Cap. {}",
+                                                truncate(&bookmark.label, 42),
+                                                bookmark.progress.chapter + 1
+                                            )
+                                        };
+                                        if ui.button(label).clicked() {
+                                            attach_bookmark = Some(bookmark.id);
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            });
+                            if self.study.contexts.is_empty() && self.selection.is_some() {
+                                ui.label(
+                                    RichText::new("Se adjuntará la selección actual.")
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                );
+                            }
+                        });
+                        ui.add_space(theme::space::XS);
+                        let send_shortcut = ui.input(|input| {
+                            (input.modifiers.command || input.modifiers.ctrl)
+                                && input.key_pressed(Key::Enter)
+                        });
+                        let response = ui.add(
+                            egui::TextEdit::multiline(&mut self.study.draft)
+                                .desired_rows(3)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Preguntá sobre el pasaje, el capítulo o lo anterior…"),
+                        );
+                        if response.has_focus() && send_shortcut {
+                            send = true;
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            let send_enabled = !self.study.busy
+                                && gate.is_ok()
+                                && !self.study.draft.trim().is_empty();
+                            let label = if self.study.busy {
+                                "Pensando…"
+                            } else {
+                                "Enviar"
+                            };
+                            if widgets::button(
+                                ui,
+                                th,
+                                label,
+                                widgets::ButtonKind::Primary,
+                            )
+                            .clicked()
+                                && send_enabled
+                            {
+                                send = true;
+                            }
+                            ui.label(
+                                RichText::new(provider_label)
+                                    .size(theme::text::META)
+                                    .italics()
+                                    .color(th.dim),
+                            )
+                            .on_hover_text("Proveedor configurado para IA");
+                            let retryable = self
+                                .study_store
+                                .session(&session_id)
+                                .and_then(|session| session.messages.last())
+                                .is_some_and(|message| message.role == study::StudyRole::User);
+                            if retryable
+                                && !self.study.busy
+                                && widgets::button(
+                                    ui,
+                                    th,
+                                    "Reintentar",
+                                    widgets::ButtonKind::Secondary,
+                                )
+                                .clicked()
+                            {
+                                retry = true;
+                            }
+                            if let Err(error) = &gate {
+                                ui.label(
+                                    RichText::new(error)
+                                        .size(theme::text::META)
+                                        .color(th.error),
+                                );
+                            }
+                        });
+                        if let Some(error) = &self.study.error {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(error)
+                                        .size(theme::text::META)
+                                        .color(th.error),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        ui.add_space(theme::space::XS);
+                    });
+
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().fill(th.bg))
+                    .show_inside(ui, |ui| {
+                        let stick = self.study.scroll_bottom || self.study.scroll_hold > 0;
+                        egui::ScrollArea::vertical()
+                            .id_salt("study-messages")
+                            .auto_shrink([false, false])
+                            .stick_to_bottom(stick)
+                            .show(ui, |ui| {
+                                if session.messages.is_empty() {
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Seleccioná un pasaje y preguntá. La conversación queda guardada en este libro.",
+                                            )
+                                            .size(theme::text::BODY_SMALL)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                                for (index, message) in session.messages.iter().enumerate() {
+                                    match message.role {
+                                        study::StudyRole::User => {
+                                            ui.label(
+                                                RichText::new("Vos")
+                                                    .size(theme::text::META)
+                                                    .strong()
+                                                    .color(th.dim),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&message.text)
+                                                        .size(theme::text::BODY)
+                                                        .color(th.fg),
+                                                )
+                                                .wrap(),
+                                            );
+                                            for context in &message.contexts {
+                                                egui::Frame::new()
+                                                    .fill(th.panel)
+                                                    .inner_margin(egui::Margin::symmetric(8, 4))
+                                                    .corner_radius(theme::radius::SM)
+                                                    .show(ui, |ui| {
+                                                        ui.label(
+                                                            RichText::new(format!(
+                                                                "{} · Cap. {}",
+                                                                context.kind.label(),
+                                                                context.chapter + 1
+                                                            ))
+                                                            .size(theme::text::META)
+                                                            .strong()
+                                                            .color(th.accent),
+                                                        );
+                                                        ui.add(
+                                                            egui::Label::new(
+                                                                RichText::new(context.preview())
+                                                                    .size(theme::text::BODY_SMALL)
+                                                                    .italics()
+                                                                    .color(th.dim),
+                                                            )
+                                                            .wrap(),
+                                                        );
+                                                    });
+                                            }
+                                        }
+                                        study::StudyRole::Assistant => {
+                                            let provider = message
+                                                .provider
+                                                .as_deref()
+                                                .unwrap_or("IA");
+                                            let model = message
+                                                .model
+                                                .as_deref()
+                                                .map(|model| format!(" · {model}"))
+                                                .unwrap_or_default();
+                                            ui.label(
+                                                RichText::new(format!("IA · {provider}{model}"))
+                                                    .size(theme::text::META)
+                                                    .strong()
+                                                    .color(th.accent),
+                                            );
+                                            markdown::show(
+                                                ui,
+                                                th,
+                                                &message.text,
+                                                theme::text::BODY,
+                                                th.fg,
+                                            );
+                                            let has_context = session.messages[..index]
+                                                .iter()
+                                                .rev()
+                                                .find(|message| {
+                                                    message.role == study::StudyRole::User
+                                                })
+                                                .is_some_and(|message| {
+                                                    message.contexts.iter().any(|context| {
+                                                        !context.quote.trim().is_empty()
+                                                    })
+                                                });
+                                            ui.horizontal(|ui| {
+                                                if widgets::button(
+                                                    ui,
+                                                    th,
+                                                    "Copiar",
+                                                    widgets::ButtonKind::Ghost,
+                                                )
+                                                .clicked()
+                                                {
+                                                    copy_text = Some(message.text.clone());
+                                                }
+                                                if has_context
+                                                    && widgets::button(
+                                                        ui,
+                                                        th,
+                                                        "Guardar nota",
+                                                        widgets::ButtonKind::Secondary,
+                                                    )
+                                                    .on_hover_text(
+                                                        "Guarda la respuesta como nota de IA en el pasaje adjunto",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    save_note = Some(index);
+                                                }
+                                            });
+                                        }
+                                    }
+                                    ui.separator();
+                                }
+                                if self.study.busy {
+                                    ui.horizontal(|ui| {
+                                        ui.add(egui::Spinner::new());
+                                        ui.label(
+                                            RichText::new("Pensando…")
+                                                .size(theme::text::META)
+                                                .color(th.dim),
+                                        );
+                                    });
+                                }
+                                if stick {
+                                    ui.scroll_to_rect(ui.min_rect(), Some(Align::BOTTOM));
+                                }
+                            });
+                        self.study.scroll_bottom = false;
+                        self.study.scroll_hold = self.study.scroll_hold.saturating_sub(1);
+                    });
+            });
+
+        if close {
+            self.study.show = false;
+            return;
+        }
+        if let Some(id) = select_session {
+            self.study.session_id = Some(id);
+            self.study.contexts.clear();
+            self.study.error = None;
+            self.study.scroll_bottom = true;
+            self.study.scroll_hold = 4;
+            self.study.confirm_delete = false;
+        }
+        if new_session {
+            self.new_study_session();
+        }
+        if delete_session {
+            self.delete_study_session(&session_id);
+        }
+        if attach_selection {
+            if let Some(context) = self.study_selection_context() {
+                self.attach_study_context(context);
+            }
+        }
+        if attach_page {
+            if let Some(context) = self.study_page_context() {
+                self.attach_study_context(context);
+            }
+        }
+        if let Some(id) = attach_annotation {
+            if let Some(annotation) = self.annotations.get(id).cloned() {
+                let context = self.study_annotation_context(&annotation);
+                self.attach_study_context(context);
+            }
+        }
+        if let Some(id) = attach_bookmark {
+            if let Some(bookmark) = bookmarks.iter().find(|bookmark| bookmark.id == id).cloned() {
+                let context = self.study_bookmark_context(&bookmark);
+                self.attach_study_context(context);
+            }
+        }
+        if let Some(index) = remove_context {
+            if index < self.study.contexts.len() {
+                self.study.contexts.remove(index);
+            }
+        }
+        if let Some(index) = save_note {
+            self.save_study_answer_as_note(index);
+        }
+        if let Some(text) = copy_text {
+            ctx.copy_text(text);
+        }
+        if send {
+            self.send_study(ctx);
+        }
+        if retry {
+            self.retry_study(ctx);
         }
     }
 
@@ -8348,7 +10581,7 @@ impl Lector {
                 );
                 egui::Frame::new()
                     .fill(th.bg)
-                    .stroke(Stroke::new(1.0, th.border))
+                    .stroke(Stroke::new(1.0_f32, th.border))
                     .corner_radius(theme::radius::SM)
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .show(ui, |ui| {
@@ -8488,7 +10721,7 @@ impl Lector {
                 ui.set_max_width(max_w);
                 egui::Frame::new()
                     .fill(th.panel)
-                    .stroke(Stroke::new(1.0, th.border))
+                    .stroke(Stroke::new(1.0_f32, th.border))
                     .corner_radius(theme::radius::MD)
                     .inner_margin(egui::Margin::symmetric(14, 8))
                     .show(ui, |ui| {
@@ -8503,6 +10736,12 @@ impl Lector {
     fn reader(&mut self, ctx: &egui::Context, th: &Theme) {
         self.top_bar(ctx, th);
         if self.screen == Screen::Library {
+            return;
+        }
+
+        let full_study = self.study.show && ctx.screen_rect().width() < 820.0;
+        self.study_panel(ctx, th);
+        if full_study {
             return;
         }
 
@@ -8756,6 +10995,10 @@ impl Lector {
                         ctx.request_repaint();
                     }
                 }
+
+                if s.focus_mode {
+                    paint_focus_mask(ui, th, &s);
+                }
             });
 
         if (self.scroll - offset).abs() > 0.5 {
@@ -8792,6 +11035,7 @@ impl Lector {
         self.confirm_delete_annotation_window(ctx, th);
         self.consulta_ui(ctx, th);
         self.note_window(ctx, th);
+        self.share_window(ctx, th);
     }
 
     fn screenshot(&mut self, ctx: &egui::Context) {
@@ -8804,7 +11048,20 @@ impl Lector {
             .library_content
             .as_ref()
             .is_some_and(|state| state.busy);
-        if self.shot_frames >= 12 && !self.consulta_busy && !content_busy && !self.shot_requested {
+        let share_busy = self
+            .share
+            .as_ref()
+            .is_some_and(|state| state.preview_rx.is_some() || state.bg_rx.is_some())
+            || self
+                .share_sample
+                .as_ref()
+                .is_some_and(|state| state.preview_rx.is_some() || state.bg_rx.is_some());
+        if self.shot_frames >= 12
+            && !self.consulta_busy
+            && !content_busy
+            && !share_busy
+            && !self.shot_requested
+        {
             self.shot_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -9170,11 +11427,13 @@ impl eframe::App for Lector {
             self.refresh_library_on_focus(ctx);
         }
         self.was_focused = focused;
+        self.poll_open(ctx);
         self.poll_scan(ctx);
         self.poll_library_content(ctx);
         self.poll_consulta();
+        self.poll_study(ctx);
         self.poll_update(ctx);
-        if self.consulta_busy {
+        if self.consulta_busy || self.study.busy {
             ctx.request_repaint_after(Duration::from_millis(120));
         }
 
@@ -9183,6 +11442,7 @@ impl eframe::App for Lector {
             Screen::Reader => self.reader(ctx, &th),
         }
 
+        self.opening_window(ctx, &th);
         self.config_window(ctx, &th);
         self.library_content_window(ctx, &th);
         self.send_to_device_window(ctx, &th);
@@ -9198,7 +11458,9 @@ impl eframe::App for Lector {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.persist();
+        if !self.restarting {
+            self.persist();
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -9300,6 +11562,395 @@ fn open_path(path: &str) {
     {
         let _ = std::process::Command::new("xdg-open").arg(path).spawn();
     }
+}
+
+fn share_preview_ui(ui: &mut Ui, th: &Theme, state: &ShareState, max_w: f32, max_h: f32) {
+    let (base_w, base_h) = state.settings.format.size();
+    let scale = (max_w / base_w as f32).min(max_h / base_h as f32);
+    let size = egui::vec2(base_w as f32 * scale, base_h as f32 * scale);
+    ui.vertical(|ui| {
+        ui.set_width(size.x.max(120.0));
+        egui::Frame::new()
+            .stroke(egui::Stroke::new(1.0_f32, th.border))
+            .show(ui, |ui| {
+                if let Some(texture) = &state.preview {
+                    ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                        texture.id(),
+                        size,
+                    )));
+                } else {
+                    ui.allocate_ui_with_layout(
+                        size,
+                        egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                        |ui| {
+                            ui.add(egui::Spinner::new());
+                        },
+                    );
+                }
+            });
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new(format!("{base_w}×{base_h}"))
+                .size(theme::text::META)
+                .color(th.dim),
+        );
+    });
+}
+
+fn share_template_controls_ui(ui: &mut Ui, th: &Theme, state: &mut ShareState) -> ShareActions {
+    let mut actions = ShareActions::default();
+    ui.spacing_mut().item_spacing.y = 8.0;
+
+    if state.highlight_saved {
+        ui.label(
+            RichText::new("Destacado guardado.")
+                .size(theme::text::META)
+                .color(th.dim),
+        );
+    }
+    widgets::label(ui, th, "Formato");
+    ui.horizontal_wrapped(|ui| {
+        for &format in share::ShareFormat::all() {
+            let selected = state.settings.format == format;
+            if ui
+                .selectable_label(
+                    selected,
+                    RichText::new(format.label()).size(theme::text::BODY_SMALL),
+                )
+                .clicked()
+                && !selected
+            {
+                state.settings.format = format;
+                actions.changed = true;
+            }
+        }
+    });
+
+    ui.add_space(2.0);
+    widgets::label(ui, th, "Fondo");
+    ui.horizontal_wrapped(|ui| {
+        for background in [
+            share::ShareBackground::Paper,
+            share::ShareBackground::Night,
+            share::ShareBackground::Cover,
+            share::ShareBackground::Solid,
+            share::ShareBackground::Image,
+        ] {
+            let selected = state.settings.background == background;
+            if ui
+                .selectable_label(
+                    selected,
+                    RichText::new(background.label()).size(theme::text::BODY_SMALL),
+                )
+                .clicked()
+                && !selected
+            {
+                state.settings.background = background;
+                actions.changed = true;
+            }
+        }
+    });
+
+    if state.settings.background == share::ShareBackground::Solid {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("Color de fondo")
+                    .size(theme::text::LABEL)
+                    .color(th.dim),
+            );
+            if ui
+                .color_edit_button_srgb(&mut state.settings.solid_color)
+                .changed()
+            {
+                actions.changed = true;
+            }
+        });
+    }
+
+    if state.settings.background == share::ShareBackground::Image {
+        ui.horizontal(|ui| {
+            if widgets::button(ui, th, "Elegir imagen…", widgets::ButtonKind::Secondary).clicked()
+            {
+                actions.choose_image = true;
+            }
+            if state.settings.image_path.is_some()
+                && widgets::button(ui, th, "Quitar", widgets::ButtonKind::Ghost).clicked()
+            {
+                actions.clear_image = true;
+            }
+        });
+        if state.bg_loading {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label(
+                    RichText::new("Cargando imagen…")
+                        .size(theme::text::META)
+                        .color(th.dim),
+                );
+            });
+        } else if let Some(error) = &state.bg_error {
+            ui.add(
+                egui::Label::new(RichText::new(error).size(theme::text::META).color(th.error))
+                    .wrap(),
+            );
+        } else if let Some(path) = &state.settings.image_path {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(truncate(&path.to_string_lossy(), 70))
+                        .size(theme::text::META)
+                        .color(th.dim),
+                )
+                .wrap(),
+            );
+        } else {
+            ui.label(
+                RichText::new("Elegí una imagen del disco.")
+                    .size(theme::text::META)
+                    .color(th.dim),
+            );
+        }
+    }
+
+    if state.settings.background == share::ShareBackground::Cover && state.data.cover.is_none() {
+        ui.label(
+            RichText::new("Este libro no tiene portada; se usará Papel.")
+                .size(theme::text::META)
+                .color(th.dim),
+        );
+    }
+
+    ui.add_space(2.0);
+    widgets::label(ui, th, "Mostrar");
+    ui.horizontal_wrapped(|ui| {
+        actions.changed |= ui
+            .checkbox(&mut state.settings.show_book, "Libro")
+            .changed();
+        actions.changed |= ui
+            .checkbox(&mut state.settings.show_author, "Autor")
+            .changed();
+        actions.changed |= ui
+            .checkbox(&mut state.settings.show_chapter, "Capítulo")
+            .changed();
+        actions.changed |= ui
+            .checkbox(&mut state.settings.show_mark, "Marca")
+            .changed();
+    });
+
+    if state.truncated {
+        ui.add(
+            egui::Label::new(
+                RichText::new("La cita es larga: se recortó para que entre en la imagen.")
+                    .size(theme::text::META)
+                    .color(th.error),
+            )
+            .wrap(),
+        );
+    }
+    if state.fallback && !state.bg_loading {
+        ui.add(
+            egui::Label::new(
+                RichText::new("El fondo elegido no está disponible; se usó Papel.")
+                    .size(theme::text::META)
+                    .color(th.dim),
+            )
+            .wrap(),
+        );
+    }
+    if let Some(error) = &state.error {
+        ui.add(
+            egui::Label::new(RichText::new(error).size(theme::text::META).color(th.error)).wrap(),
+        );
+    }
+
+    actions
+}
+fn share_window_controls_ui(ui: &mut Ui, th: &Theme, state: &mut ShareState) -> ShareActions {
+    let mut actions = share_template_controls_ui(ui, th, state);
+
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        let label = if state.saving {
+            "Guardando…"
+        } else {
+            "Guardar imagen"
+        };
+        if widgets::button(ui, th, label, widgets::ButtonKind::Primary).clicked()
+            && !state.saving
+            && !state.bg_loading
+        {
+            actions.save = true;
+        }
+        if widgets::button(ui, th, "Cerrar", widgets::ButtonKind::Ghost).clicked() {
+            actions.close = true;
+        }
+    });
+    if let Some(path) = &state.saved {
+        ui.add(
+            egui::Label::new(
+                RichText::new(format!(
+                    "Guardado en {}",
+                    truncate(&path.to_string_lossy(), 80)
+                ))
+                .size(theme::text::META)
+                .color(th.fg),
+            )
+            .wrap(),
+        );
+        if widgets::button(ui, th, "Mostrar archivo", widgets::ButtonKind::Secondary).clicked() {
+            actions.reveal = true;
+        }
+    }
+
+    actions
+}
+
+fn start_share_background(state: &mut ShareState, path: PathBuf) {
+    state.bg_loading = true;
+    state.bg_error = None;
+    let (tx, rx) = mpsc::channel();
+    state.bg_rx = Some(rx);
+    std::thread::spawn(move || {
+        let result = load_share_image(&path);
+        let _ = tx.send((path, result));
+    });
+}
+
+fn poll_share_state(state: &mut ShareState, ctx: &egui::Context) {
+    let save_event = state.save_rx.as_ref().map(|rx| rx.try_recv());
+    if let Some(event) = save_event {
+        match event {
+            Ok(result) => {
+                state.save_rx = None;
+                state.saving = false;
+                match result {
+                    Ok(path) => {
+                        state.saved = Some(path);
+                        state.error = None;
+                    }
+                    Err(error) => state.error = Some(error),
+                }
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                state.save_rx = None;
+                state.saving = false;
+                state.error = Some("El guardado de la imagen se interrumpió.".into());
+            }
+        }
+    }
+
+    let bg_event = state.bg_rx.as_ref().map(|rx| rx.try_recv());
+    if let Some(event) = bg_event {
+        match event {
+            Ok((path, result)) => {
+                state.bg_rx = None;
+                state.bg_loading = false;
+                if state.settings.image_path.as_deref() == Some(path.as_path()) {
+                    match result {
+                        Ok(image) => {
+                            state.custom_bg = Some(image);
+                            state.bg_error = None;
+                            state.preview_gen = state.preview_gen.wrapping_add(1);
+                            state.preview_dirty = true;
+                        }
+                        Err(error) => {
+                            state.custom_bg = None;
+                            state.bg_error = Some(error);
+                            state.preview_gen = state.preview_gen.wrapping_add(1);
+                            state.preview_dirty = true;
+                        }
+                    }
+                }
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                state.bg_rx = None;
+                state.bg_loading = false;
+                state.bg_error = Some("La carga de la imagen se interrumpió.".into());
+                state.preview_gen = state.preview_gen.wrapping_add(1);
+                state.preview_dirty = true;
+            }
+        }
+    }
+
+    let preview_event = state.preview_rx.as_ref().map(|rx| rx.try_recv());
+    if let Some(event) = preview_event {
+        match event {
+            Ok((generation, result)) => {
+                state.preview_rx = None;
+                if generation == state.preview_gen {
+                    match result {
+                        Ok(rendered) => {
+                            let (width, height) = rendered.image.dimensions();
+                            let color = egui::ColorImage::from_rgba_unmultiplied(
+                                [width as usize, height as usize],
+                                rendered.image.as_raw(),
+                            );
+                            state.preview = Some(ctx.load_texture(
+                                state.preview_name.clone(),
+                                color,
+                                egui::TextureOptions::LINEAR,
+                            ));
+                            state.truncated = rendered.truncated;
+                            state.fallback = rendered.fallback;
+                            state.error = None;
+                        }
+                        Err(error) => state.error = Some(error),
+                    }
+                }
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                state.preview_rx = None;
+                state.error = Some("La vista previa se interrumpió.".into());
+            }
+        }
+    }
+
+    let should_start = state.preview_dirty
+        && state.preview_rx.is_none()
+        && state.last_edit.elapsed() >= Duration::from_millis(120);
+    if should_start {
+        let generation = state.preview_gen;
+        let data = state.data.clone();
+        let settings = state.settings.clone();
+        let theme = state.theme;
+        let custom = state.custom_bg.clone();
+        let (tx, rx) = mpsc::channel();
+        state.preview_rx = Some(rx);
+        state.preview_dirty = false;
+        std::thread::spawn(move || {
+            let result = share::render(
+                &data,
+                &settings,
+                &theme,
+                custom.as_ref().map(|image| image.as_ref()),
+                0.5,
+            );
+            let _ = tx.send((generation, result));
+        });
+    }
+
+    if state.preview_rx.is_some() || state.bg_rx.is_some() || state.save_rx.is_some() {
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
+}
+
+fn load_share_image(path: &Path) -> Result<ShareImage, String> {
+    let image = image::open(path).map_err(|e| format!("No pude abrir {}: {e}", path.display()))?;
+    let mut rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let longest = width.max(height);
+    if longest > 2000 {
+        let scale = 2000.0 / longest as f32;
+        rgba = image::imageops::resize(
+            &rgba,
+            (width as f32 * scale).max(1.0) as u32,
+            (height as f32 * scale).max(1.0) as u32,
+            image::imageops::FilterType::Triangle,
+        );
+    }
+    Ok(Arc::new(rgba))
 }
 
 fn book_title_for(library: &Library, path: &str) -> String {
@@ -9794,7 +12445,7 @@ fn cover_texture(
 /// Carpetas típicas de Google Drive para escritorio. La app indexa la carpeta
 /// local; no habla con la API de Google ni guarda credenciales.
 fn google_drive_candidates(home: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(8);
     #[cfg(target_os = "macos")]
     {
         let cloud = home.join("Library/CloudStorage");
@@ -9993,7 +12644,7 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
             ui.painter().rect_stroke(
                 cover_rect,
                 7.0,
-                Stroke::new(1.0, th.dim.gamma_multiply(0.18)),
+                Stroke::new(1.0_f32, th.dim.gamma_multiply(0.18)),
                 egui::StrokeKind::Inside,
             );
             if card.duplicate_count > 0 {
@@ -10117,14 +12768,14 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
         ui.painter().rect_stroke(
             rect.expand(2.0),
             theme::radius::LG,
-            Stroke::new(2.0, th.accent),
+            Stroke::new(2.0_f32, th.accent),
             egui::StrokeKind::Inside,
         );
     } else if response.hovered() {
         ui.painter().rect_stroke(
             rect.expand(3.0),
             theme::radius::LG + 1.0,
-            Stroke::new(1.0, th.accent.gamma_multiply(0.45)),
+            Stroke::new(1.0_f32, th.accent.gamma_multiply(0.45)),
             egui::StrokeKind::Inside,
         );
     }
@@ -10186,6 +12837,51 @@ fn library_card(ui: &mut Ui, card: &CardData, th: &Theme, focus: bool) -> Option
     action
 }
 
+/// Opacidad del velo de enfoque según la distancia a la línea central.
+fn focus_alpha(distance: f32, band: f32, fade: f32) -> f32 {
+    const MAX_ALPHA: f32 = 0.9;
+    let t = ((distance.abs() - band) / fade).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t) * MAX_ALPHA
+}
+
+/// Velo vertical sobre el texto: transparente en la banda central y cada vez
+/// más cercano al fondo hacia los bordes. Se recalcula por frame, así que la
+/// línea enfocada cambia suavemente con el scroll.
+fn paint_focus_mask(ui: &egui::Ui, th: &Theme, s: &Settings) {
+    const STEPS: usize = 48;
+    let rect = ui.max_rect();
+    if rect.height() <= 4.0 || rect.width() <= 1.0 {
+        return;
+    }
+    let line = (s.font_size * s.line_height).max(1.0);
+    let band = line * 0.65;
+    let fade = ((rect.height() * 0.5 - band) * 0.6).max(40.0);
+    let center = rect.center().y;
+    // Deja visible la barra de scroll: el texto nunca llega a ese margen.
+    let right = (rect.right() - 14.0).max(rect.left() + 1.0);
+
+    let mut mesh = egui::Mesh::default();
+    for step in 0..=STEPS {
+        let t = step as f32 / STEPS as f32;
+        let y = rect.top() + rect.height() * t;
+        let alpha = focus_alpha(y - center, band, fade);
+        let color = Color32::from_rgba_unmultiplied(
+            th.bg.r(),
+            th.bg.g(),
+            th.bg.b(),
+            (alpha * 255.0).round() as u8,
+        );
+        mesh.colored_vertex(egui::pos2(rect.left(), y), color);
+        mesh.colored_vertex(egui::pos2(right, y), color);
+    }
+    for step in 0..STEPS {
+        let base = (step * 2) as u32;
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base + 1, base + 3, base + 2);
+    }
+    ui.painter().add(egui::Shape::mesh(mesh));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_block(
     ui: &mut Ui,
@@ -10221,8 +12917,11 @@ fn draw_block(
             ui.horizontal(|ui| {
                 ui.add_space(colw * 0.32);
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(colw * 0.36, 1.0), Sense::hover());
-                ui.painter()
-                    .hline(rect.x_range(), rect.center().y, Stroke::new(1.0, th.dim));
+                ui.painter().hline(
+                    rect.x_range(),
+                    rect.center().y,
+                    Stroke::new(1.0_f32, th.dim),
+                );
             });
             ui.add_space(base * 0.8);
             return;
@@ -10389,7 +13088,7 @@ fn draw_block(
                 ui.painter().vline(
                     x + 3.0,
                     resp.rect.y_range(),
-                    Stroke::new(2.0, th.accent.gamma_multiply(0.45)),
+                    Stroke::new(2.0_f32, th.accent.gamma_multiply(0.45)),
                 );
             });
         }
@@ -10467,6 +13166,13 @@ mod tests {
             anchor_ratio: None,
             legacy_offset: None,
         }
+    }
+
+    #[test]
+    fn enfoque_claro_al_centro_y_maximo_en_los_bordes() {
+        assert_eq!(focus_alpha(0.0, 20.0, 200.0), 0.0);
+        assert!(focus_alpha(30.0, 20.0, 200.0) > 0.0);
+        assert!((focus_alpha(400.0, 20.0, 200.0) - 0.9).abs() < 0.001);
     }
 
     #[test]

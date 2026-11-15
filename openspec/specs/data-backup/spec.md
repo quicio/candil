@@ -1,7 +1,7 @@
 # data-backup Specification
 
 ## Purpose
-Permitir que el usuario guarde y restaure localmente su biblioteca, progreso, anotaciones, historial y ajustes en un archivo portable, sin depender de la nube ni incluir secretos.
+Permitir que el usuario guarde y restaure localmente su biblioteca, progreso, anotaciones, historial, sesiones de estudio y ajustes en un archivo portable, sin depender de la nube ni incluir secretos.
 ## Requirements
 ### Requirement: Exportación local
 
@@ -10,7 +10,7 @@ La app SHALL exportar los datos de usuario a un ZIP elegido por el usuario, con 
 #### Scenario: Exportar con datos
 
 - **WHEN** el usuario elige “Exportar datos…” y un destino
-- **THEN** se crea un ZIP con `config.json`, `library.json`, `annotations.json`, `consultas.json` y el manifiesto, y se informa la ruta
+- **THEN** se crea un ZIP con `config.json`, `library.json`, `annotations.json`, `consultas.json`, `studies.json` y el manifiesto, y se informa la ruta
 
 #### Scenario: Sin datos
 
@@ -29,7 +29,7 @@ La importación SHALL validar el manifiesto, la lista blanca de archivos, los ch
 #### Scenario: Respaldo válido
 
 - **WHEN** el usuario importa un ZIP generado por Candil
-- **THEN** los datos se reemplazan, la app recarga biblioteca, ajustes, anotaciones e historial, vuelve a la biblioteca y lanza un escaneo incremental
+- **THEN** los datos se reemplazan, la app recarga biblioteca, ajustes, anotaciones, historial y sesiones de estudio, vuelve a la biblioteca y lanza un escaneo incremental
 
 #### Scenario: Checksum incorrecto
 
@@ -45,6 +45,11 @@ La importación SHALL validar el manifiesto, la lista blanca de archivos, los ch
 
 - **WHEN** el manifiesto menciona un archivo fuera de la lista de datos de Candil
 - **THEN** la importación se rechaza para evitar rutas arbitrarias
+
+#### Scenario: Respaldo anterior sin sesiones de estudio
+
+- **WHEN** se importa un respaldo generado antes de `studies.json`
+- **THEN** las sesiones de estudio actuales se conservan y el resto de los datos se restaura con normalidad
 
 ### Requirement: Backup previo e integridad
 
@@ -67,12 +72,12 @@ Antes de reemplazar datos existentes, la importación SHALL crear un respaldo de
 
 ### Requirement: Contenido y privacidad
 
-El respaldo SHALL incluir solo los cuatro JSON de usuario y SHALL NOT incluir EPUB, portadas cacheadas, backups de EPUB ni claves de IA.
+El respaldo SHALL incluir solo los cinco JSON de usuario y SHALL NOT incluir EPUB, portadas cacheadas, backups de EPUB ni claves de IA.
 
 #### Scenario: Inspeccionar el ZIP
 
 - **WHEN** el usuario abre el ZIP exportado
-- **THEN** solo encuentra el manifiesto y los cuatro JSON permitidos
+- **THEN** solo encuentra el manifiesto y los cinco JSON permitidos
 
 #### Scenario: Clave de IA
 

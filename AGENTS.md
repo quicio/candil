@@ -15,7 +15,7 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 160 unit (1 live ignorado) + 10 integración
+cargo test                                  # 188 unit (1 live ignorado) + 10 integración
 cargo clippy --all-targets -- -D warnings   # cero warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
@@ -51,14 +51,20 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Nada de `unwrap()` en rutas de datos de usuario (EPUB roto, archivo faltante).
 - Los destacados y notas se guardan como **offsets de caracteres + cita** en
   `annotations.json`; no los conviertas a píxeles ni los mezcles con
-  `library.json`. El formato v2 admite rangos entre párrafos (`end_block` +
-  `parts`); mantené la lectura de archivos v1 (ADR-0014).
+  `library.json`. El formato v3 admite rangos entre párrafos (`end_block` +
+  `parts`) y `origin` (`user`/`ai`); mantené la lectura de archivos v1/v2
+  (ADR-0014, ADR-0032).
+- Compartir una cita genera un PNG **local** con `ab_glyph` (ADR-0031). No lo
+  subas a ninguna red ni servicio; guardalo con temporal + `rename`. La captura
+  no reemplaza al destacado: si falta, lo crea una sola vez.
 - Un enlace interno abre una **vista previa**; no navegues hasta “Ir al texto”.
   El regreso guarda un único `Progress` y se limpia con la navegación manual
   (ADR-0015). Los enlaces externos no se abren todavía.
-- La actualización es **asistida**: consulta GitHub solo a pedido, verifica
-  SHA-256 y guarda en Descargas; nunca reemplaza el binario/.app ni ejecuta el
-  archivo descargado (ADR-0016). No agregues chequeo automático al iniciar.
+- La actualización se consulta solo a pedido y verifica SHA-256. En Linux, si
+  el binario vive bajo `$HOME` y no es un build de `target/`, la UI puede
+  instalarlo con backup + `rename` atómico y ofrecer reiniciar (ADR-0030); el
+  resto de los casos sigue siendo asistido y nunca se ejecuta el archivo
+  descargado. No agregues chequeo automático al iniciar.
 - Las consultas online están **apagadas por defecto** (`online_enabled=false`) y
   nunca salen sin una acción explícita. Las peticiones van en un hilo; no
   bloquees la UI.
@@ -80,10 +86,15 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Al iniciar manda `StartupMode`: último libro por defecto, biblioteca opcional;
   si falta el archivo, biblioteca. Los enlaces externos se abren solo con
   confirmación y esquemas `http`/`https`/`mailto`/`tel` (ADR-0021).
-- El respaldo de datos incluye solo los cuatro JSON de usuario (`config`,
-  `library`, `annotations`, `consultas`); nunca EPUB, portadas ni claves. La
-  importación valida manifiesto/checksums/JSON y guarda un backup previo
-  (ADR-0019).
+- El respaldo de datos incluye solo los cinco JSON de usuario (`config`,
+  `library`, `annotations`, `consultas`, `studies`); nunca EPUB, portadas ni
+  claves. La importación valida manifiesto/checksums/JSON y guarda un backup
+  previo (ADR-0019).
+- El estudio vive en `studies.json`, separado de `consultas.json`: varias
+  sesiones por libro, mensajes/contextos y referencias a anotaciones. Las
+  respuestas de IA se guardan como mensajes; si el usuario las convierte en
+  nota, la anotación lleva `origin: ai`. Nada se envía sin una acción de enviar
+  y online sigue apagado por defecto (ADR-0032).
 - Cada tarea termina con: `cargo test` verde, `cargo fmt`, `cargo clippy
   --all-targets -- -D warnings`, y verificación visual con `--shot` si tocó UI.
   Si tocó el parser, correr también `--inspect tests/fixtures/edge.epub`.

@@ -99,6 +99,26 @@ pub struct ConsultaRequest {
     pub author: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatMessage {
+    pub role: ChatRole,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatAnswer {
+    pub provider: String,
+    pub model: String,
+    pub content: String,
+    pub cut_short: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Section {
     pub title: String,
@@ -944,13 +964,40 @@ fn ai_prompt_texts(request: &ConsultaRequest, prompt: AiPrompt) -> (String, Stri
     (system, user)
 }
 
-fn openai_body(system: &str, user: &str, settings: &ConsultaSettings) -> String {
+/// Anthropic exige turnos alternados; si el usuario mandó dos preguntas
+/// seguidas (por ejemplo, tras un error), las unimos en un solo mensaje.
+fn coalesce_chat(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+    let mut out: Vec<ChatMessage> = Vec::new();
+    for message in messages {
+        if let Some(last) = out.last_mut() {
+            if last.role == message.role {
+                last.content.push_str("\n\n");
+                last.content.push_str(&message.content);
+                continue;
+            }
+        }
+        out.push(message.clone());
+    }
+    out
+}
+
+fn openai_body(system: &str, messages: &[ChatMessage], settings: &ConsultaSettings) -> String {
+    let mut all = vec![serde_json::json!({
+        "role": "system",
+        "content": system,
+    })];
+    all.extend(messages.iter().map(|message| {
+        serde_json::json!({
+            "role": match message.role {
+                ChatRole::User => "user",
+                ChatRole::Assistant => "assistant",
+            },
+            "content": message.content,
+        })
+    }));
     let payload = serde_json::json!({
         "model": settings.ai_model,
-        "messages": [
-            { "role": "system", "content": system },
-            { "role": "user", "content": user },
-        ],
+        "messages": all,
         "max_tokens": settings.ai_max_tokens,
         "temperature": 0.2,
         "stream": false,
@@ -958,28 +1005,48 @@ fn openai_body(system: &str, user: &str, settings: &ConsultaSettings) -> String 
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
-fn anthropic_body(system: &str, user: &str, settings: &ConsultaSettings) -> String {
+fn anthropic_body(system: &str, messages: &[ChatMessage], settings: &ConsultaSettings) -> String {
+    let messages = coalesce_chat(messages);
+    let turns: Vec<_> = messages
+        .iter()
+        .map(|message| {
+            serde_json::json!({
+                "role": match message.role {
+                    ChatRole::User => "user",
+                    ChatRole::Assistant => "assistant",
+                },
+                "content": message.content,
+            })
+        })
+        .collect();
     let payload = serde_json::json!({
         "model": settings.ai_model,
         "max_tokens": settings.ai_max_tokens,
         "system": system,
-        "messages": [
-            { "role": "user", "content": user },
-        ],
+        "messages": turns,
         "temperature": 0.2,
     });
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
-fn gemini_body(system: &str, user: &str, settings: &ConsultaSettings) -> String {
+fn gemini_body(system: &str, messages: &[ChatMessage], settings: &ConsultaSettings) -> String {
+    let turns: Vec<_> = messages
+        .iter()
+        .map(|message| {
+            serde_json::json!({
+                "role": match message.role {
+                    ChatRole::User => "user",
+                    ChatRole::Assistant => "model",
+                },
+                "parts": [{ "text": message.content }],
+            })
+        })
+        .collect();
     let payload = serde_json::json!({
         "system_instruction": {
             "parts": [{ "text": system }],
         },
-        "contents": [{
-            "role": "user",
-            "parts": [{ "text": user }],
-        }],
+        "contents": turns,
         "generationConfig": {
             "maxOutputTokens": settings.ai_max_tokens,
             "temperature": 0.2,
@@ -988,14 +1055,21 @@ fn gemini_body(system: &str, user: &str, settings: &ConsultaSettings) -> String 
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
-fn ai(
+struct AiAnswer {
+    provider: String,
+    model: String,
+    content: String,
+    cut_short: bool,
+}
+
+fn ai_request(
     transport: &dyn Transport,
-    request: &ConsultaRequest,
     settings: &ConsultaSettings,
-    prompt: AiPrompt,
     api_key: Option<&str>,
     session_id: &str,
-) -> Result<ConsultaResponse, String> {
+    system: &str,
+    messages: &[ChatMessage],
+) -> Result<AiAnswer, String> {
     let provider = ai::provider(&settings.ai_provider);
     let key = api_key.map(str::trim).filter(|key| !key.is_empty());
     if provider.needs_key && key.is_none() {
@@ -1005,20 +1079,19 @@ fn ai(
         ));
     }
 
-    let (system, user) = ai_prompt_texts(request, prompt);
     let base = settings.ai_base_url.trim_end_matches('/');
     let (url, body) = match provider.protocol {
         Protocol::OpenAi => (
             format!("{base}/chat/completions"),
-            openai_body(&system, &user, settings),
+            openai_body(system, messages, settings),
         ),
         Protocol::Anthropic => (
             format!("{base}/messages"),
-            anthropic_body(&system, &user, settings),
+            anthropic_body(system, messages, settings),
         ),
         Protocol::Gemini => (
             format!("{base}/models/{}:generateContent", settings.ai_model.trim()),
-            gemini_body(&system, &user, settings),
+            gemini_body(system, messages, settings),
         ),
     };
 
@@ -1055,12 +1128,33 @@ fn ai(
         Protocol::Anthropic => parse_anthropic(&response, provider.label)?,
         Protocol::Gemini => parse_gemini(&response, provider.label)?,
     };
-    let cut_short = response_cut_by_tokens(&response, provider.protocol);
+    Ok(AiAnswer {
+        provider: provider.label.into(),
+        model: settings.ai_model.clone(),
+        cut_short: response_cut_by_tokens(&response, provider.protocol),
+        content,
+    })
+}
+
+fn ai(
+    transport: &dyn Transport,
+    request: &ConsultaRequest,
+    settings: &ConsultaSettings,
+    prompt: AiPrompt,
+    api_key: Option<&str>,
+    session_id: &str,
+) -> Result<ConsultaResponse, String> {
+    let (system, user) = ai_prompt_texts(request, prompt);
+    let messages = vec![ChatMessage {
+        role: ChatRole::User,
+        content: user,
+    }];
+    let answer = ai_request(transport, settings, api_key, session_id, &system, &messages)?;
     let mut sections = vec![Section {
         title: prompt.label().into(),
-        body: content.clone(),
+        body: answer.content.clone(),
     }];
-    if cut_short {
+    if answer.cut_short {
         sections.push(Section {
             title: "Aviso".into(),
             body: format!(
@@ -1071,11 +1165,39 @@ fn ai(
     }
     Ok(ConsultaResponse {
         kind: ConsultaKind::Ia,
-        provider: provider.label.into(),
-        model: Some(settings.ai_model.clone()),
-        source_url: Some(provider.source_url.into()),
+        provider: answer.provider,
+        model: Some(answer.model),
+        source_url: Some(ai::provider(&settings.ai_provider).source_url.into()),
         sections,
-        raw: truncate_chars(&content, MAX_RESPONSE_CHARS),
+        raw: truncate_chars(&answer.content, MAX_RESPONSE_CHARS),
+    })
+}
+
+/// Ejecuta una conversación multi-turno de estudio. El llamador debe correrla
+/// en un hilo de trabajo y recortar el historial según su presupuesto.
+pub fn run_chat(
+    transport: &dyn Transport,
+    settings: &ConsultaSettings,
+    api_key: Option<&str>,
+    session_id: &str,
+    system: &str,
+    messages: &[ChatMessage],
+) -> Result<ChatAnswer, String> {
+    if messages.is_empty() {
+        return Err("No hay mensajes para la conversación.".into());
+    }
+    if messages
+        .last()
+        .is_none_or(|message| message.role != ChatRole::User || message.content.trim().is_empty())
+    {
+        return Err("No hay una pregunta para enviar.".into());
+    }
+    let answer = ai_request(transport, settings, api_key, session_id, system, messages)?;
+    Ok(ChatAnswer {
+        provider: answer.provider,
+        model: answer.model,
+        content: answer.content,
+        cut_short: answer.cut_short,
     })
 }
 
@@ -1380,6 +1502,107 @@ mod tests {
         assert_eq!(result.sections.len(), 2);
         assert_eq!(result.sections[1].title, "Aviso");
         assert!(result.sections[1].body.contains("1536"));
+    }
+
+    #[test]
+    fn chat_multi_turno_openai_envia_historial() {
+        let transport = Mock::ok(r#"{"choices":[{"message":{"content":"ok"}}]}"#);
+        let settings = ConsultaSettings {
+            ai_provider: "openai".into(),
+            ..ConsultaSettings::default()
+        };
+        let answer = run_chat(
+            &transport,
+            &settings,
+            Some("clave"),
+            "sesion",
+            "Sos un tutor.",
+            &[
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Primera pregunta.".into(),
+                },
+                ChatMessage {
+                    role: ChatRole::Assistant,
+                    content: "Primera respuesta.".into(),
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Segunda pregunta.".into(),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(answer.content, "ok");
+        let body = transport.last_body.borrow();
+        assert!(body.contains("\"role\":\"system\""));
+        assert!(body.contains("Primera pregunta."));
+        assert!(body.contains("\"role\":\"assistant\""));
+        assert!(body.contains("Segunda pregunta."));
+    }
+
+    #[test]
+    fn chat_anthropic_coalesce_mensajes_del_mismo_rol() {
+        let transport = Mock::ok(r#"{"content":[{"type":"text","text":"ok"}]}"#);
+        let settings = ConsultaSettings {
+            ai_provider: "anthropic".into(),
+            ..ConsultaSettings::default()
+        };
+        run_chat(
+            &transport,
+            &settings,
+            Some("clave"),
+            "sesion",
+            "Sistema",
+            &[
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Uno.".into(),
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Dos.".into(),
+                },
+            ],
+        )
+        .unwrap();
+        let body = transport.last_body.borrow();
+        assert_eq!(body.matches("\"role\":\"user\"").count(), 1, "{body}");
+        assert!(body.contains("Uno.\\n\\nDos."));
+    }
+
+    #[test]
+    fn chat_gemini_mapea_assistant_a_model() {
+        let transport = Mock::ok(r#"{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}"#);
+        let settings = ConsultaSettings {
+            ai_provider: "gemini".into(),
+            ..ConsultaSettings::default()
+        };
+        run_chat(
+            &transport,
+            &settings,
+            Some("clave"),
+            "sesion",
+            "Sistema",
+            &[
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Pregunta.".into(),
+                },
+                ChatMessage {
+                    role: ChatRole::Assistant,
+                    content: "Respuesta.".into(),
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: "Otra.".into(),
+                },
+            ],
+        )
+        .unwrap();
+        let body = transport.last_body.borrow();
+        assert!(body.contains("\"role\":\"model\""));
+        assert!(body.contains("system_instruction"));
     }
 
     #[test]

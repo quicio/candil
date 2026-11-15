@@ -11,12 +11,15 @@ cuidada y cero dependencias del sistema para dibujar el texto: egui + un
 traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
 sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda dentro del contenido de la biblioteca con toggle, carpeta local de Google Drive, envío a Kobo o dispositivo, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
-previa y regreso, índice global, filtro de notas y export Markdown—,
+previa y regreso, índice global, filtro de notas, export Markdown, captura de
+citas como imagen (9:16, 4:5, 1:1, 3:4 y 16:9) con plantillas y muestra en
+Configuración → Compartir, y **modo estudio** con sesiones por libro, contexto
+explícito y chat de IA—,
 **Continuar leyendo** y refresco de la biblioteca al recuperar el foco,
 búsqueda dentro del libro, salto por porcentaje/capítulo, diccionario/traducción
 (MyMemory o Ollama local), análisis con IA multi-proveedor (una clave por proveedor) con Markdown renderizado, edición de
-metadatos/portada del EPUB, actualizaciones asistidas, respaldo/restauración
-local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
+metadatos/portada del EPUB, actualizaciones desde la app (instalación atómica en
+Linux), respaldo/restauración local de datos y enlaces externos con confirmación. Al iniciar, Candil retoma el
 último libro por defecto; se puede cambiar a biblioteca desde Configuración.
 
 Binario final (`dist`): **7.1 MiB** (7.450.864 B), arranque instantáneo, sin
@@ -362,8 +365,10 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - Editar un EPUB reescribe el archivo y deja un backup en `backups/`; no se puede
   borrar una portada existente ni editar series/editorial/fecha.
 - La actualización desde la app consulta GitHub a pedido, descarga el binario
-  correcto y verifica el SHA-256, pero **no lo instala**: el reemplazo sigue
-  siendo manual.
+  correcto y verifica el SHA-256. En Linux, si Candil vive en tu carpeta
+  personal, también lo instala con backup (`candil.bak`) y `rename` atómico, y
+  ofrece reiniciar. En macOS y Windows, y en instalaciones del sistema, el
+  reemplazo sigue siendo manual.
 - El progreso por fracción y las preferencias por libro están desde M3; el
   filtro “Terminados” del roadmap original quedó fuera de alcance.
 - La búsqueda dentro del libro sigue siendo substring sin regex/stemming. El
@@ -371,8 +376,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - El respaldo de datos incluye solo los JSON de usuario; no incluye EPUB,
   portadas ni claves. Al restaurarlo en otra Mac, las rutas de los libros pueden
   quedar faltantes hasta reindexar.
-- Exportación solo a Markdown; no hay PDF/DOCX ni sincronización entre
-  dispositivos.
+- Exportación de anotaciones a Markdown y de citas a PNG; no hay PDF/DOCX ni
+  sincronización entre dispositivos.
 - Diccionario y traducción usan Wiktionary/MyMemory (online); la traducción
   también puede usar Ollama local (sin API key y sin activar online). La IA admite
   OpenCode Go, OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek y
@@ -479,6 +484,10 @@ cargo run --release -- --shot out.png --screen library --library-path /tmp/libra
 cargo run --release -- --shot out.png --chapter 13 libro.epub   # captura del lector
 cargo run --release -- --shot out.png --anchor 6 libro.epub     # captura en un ancla
 cargo run --release -- --shot out.png --selection libro.epub    # selección de dos párrafos
+cargo run --release -- --shot out.png --panel share --selection libro.epub # ventana de compartir
+cargo run --release -- --shot out.png --screen library --panel share-config # muestra en ajustes
+cargo run --release -- --selection --share-save cita.png libro.epub        # PNG de la cita
+cargo run --release -- --shot out.png --study-demo libro.epub              # modo estudio con una sesión de muestra
 cargo run --release -- --shot out.png --link-preview libro.epub # vista previa de una nota
 cargo run --release -- --shot out.png --screen library --update-demo # UI de actualizaciones
 cargo run --release -- --shot out.png --panel settings libro.epub
@@ -490,9 +499,13 @@ cargo run --release -- --shot out.png --panel settings libro.epub
   historial de consultas viven en tu disco.
 - Las consultas online están **apagadas por defecto** y solo salen con una acción
   explícita.
+- Las sesiones de estudio viven en `studies.json`, entran en el respaldo y no
+  salen de tu disco hasta que mandás una pregunta con online activo. Podés
+  borrarlas por sesión o todas desde Configuración → Privacidad.
 - La comprobación de actualizaciones solo ocurre al pulsar “Buscar
   actualizaciones”; consulta `api.github.com` y no envía datos del libro ni de la
-  biblioteca.
+  biblioteca. En Linux, la instalación desde la UI re-verifica el hash antes de
+  tocar el binario.
 - Cada proveedor de IA guarda su propia clave en el llavero del sistema;
   `OPENCODE_API_KEY` solo funciona con OpenCode Go. Nunca se escribe en `config.json`, `consultas.json`, logs ni
   URLs.

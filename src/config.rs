@@ -26,6 +26,8 @@ pub struct Settings {
     pub line_height: f32,
     pub column_width: f32,
     pub paragraph_space: f32,
+    /// Atenúa el texto que se aleja de la línea central mientras se lee.
+    pub focus_mode: bool,
 }
 
 impl Default for Settings {
@@ -36,6 +38,7 @@ impl Default for Settings {
             line_height: 1.55,
             column_width: 660.0,
             paragraph_space: 0.75,
+            focus_mode: false,
         }
     }
 }
@@ -196,6 +199,7 @@ pub struct Config {
     /// Qué abrir al iniciar la app.
     pub startup: StartupMode,
     pub consulta: ConsultaSettings,
+    pub share: crate::share::ShareSettings,
     /// Compatibilidad: el progreso se migra a `library.json` en M2. No se
     /// vuelve a escribir acá.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -321,6 +325,8 @@ mod tests {
         let cfg = Config::load_from(&path);
         assert!((cfg.settings.font_size - 22.0).abs() < f32::EPSILON);
         assert_eq!(cfg.settings.theme, Settings::default().theme);
+        assert!(!cfg.settings.focus_mode);
+        assert_eq!(cfg.share, crate::share::ShareSettings::default());
         assert_eq!(cfg.startup, StartupMode::LastBook);
 
         let _ = std::fs::remove_dir_all(dir);

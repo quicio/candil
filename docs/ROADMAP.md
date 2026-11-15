@@ -48,6 +48,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M33 | Compartir citas | **Hecho** | [reading-workspace](../openspec/specs/reading-workspace/spec.md), [ADR-0031](../docs/adr/0031-compartir-citas-como-imagen.md) | Capturar guarda el destacado y genera un PNG 9:16/4:5/1:1/3:4/16:9 con plantillas Papel/Noche/Portada/Color/Imagen; muestra en Configuración → Compartir |
 | M34 | Modo estudio | **Hecho** | [study-workspace](../openspec/specs/study-workspace/spec.md), [ADR-0032](../docs/adr/0032-modo-estudio.md) | Varias sesiones por libro en `studies.json`, panel lector/chat, contexto visible y respuestas de IA con “Guardar nota” (`origin: ai`) |
 | M35 | Búsqueda avanzada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Búsqueda general por metadatos y ventana avanzada de contenido con modos, inclusión/exclusión de libros y progreso |
+| M36 | Caché de EPUB remotos | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0033](../docs/adr/0033-cache-local-epub-remotos.md) | Copia local descartable (1 GB, LRU) para montajes remotos, sin cambiar la ruta original; preparar offline y limpiar caché |
 
 ## M1 — Lector (terminado)
 
@@ -557,6 +558,21 @@ Cerrado el 2026-11-13:
 - Test de reutilización y evicción; ADR-0028.
 - Verificación: **160 unit (159 + 1 live ignorado) + 10 integración**; `dist`
   **7.450.864 B** arm64; **8.466.112 B** Intel.
+
+## M36 — Caché de EPUB remotos (terminado)
+
+Cerrado el 2026-11-15:
+
+- `src/book_cache.rs`: copia atómica a `~/.cache/candil/books`, índice
+  `index.json`, detección de montajes remotos en Linux y LRU de 1 GB.
+- `Book::open_from` abre la copia conservando la ruta original como identidad.
+- La apertura y la búsqueda avanzada reutilizan la caché y caen al original si
+  la copia falla.
+- **Preparar offline** copia en un hilo los libros remotos visibles, con
+  progreso y cancelación; **Limpiar caché** está en Configuración → Avanzado.
+- No entra en el respaldo ni cambia `library.json`, anotaciones o progreso;
+  ADR-0033 y escenarios nuevos en `library-experience`.
+- Tests de copia, reutilización, invalidación, LRU y `clear`.
 
 ## Consolidación UX/UI (2026-11-08)
 

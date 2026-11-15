@@ -222,6 +222,7 @@ src/
   epub_edit.rs edición segura de metadatos y portada, con backup
   consulta.rs diccionario/traducción/IA (HTTP ureq) e historial local
   covers.rs  miniaturas de portada, hash FNV y caché
+  book_cache.rs caché LRU de EPUB remotos (1 GB) e índice index.json
   store.rs   JSON atómico y backup de archivos corruptos
   theme.rs   presets de color
   config.rs  preferencias en config.json (progreso migrado a library.json)
@@ -407,6 +408,11 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - Google Drive se usa como **carpeta local** de Drive para escritorio: **Añadir
   Google Drive…** abre el selector en `My Drive` para elegir una subcarpeta.
   Candil no pide cuenta, no usa la API de Google ni guarda credenciales.
+- Los EPUB en montajes remotos se copian a `~/.cache/candil/books` (1 GB, LRU)
+  al abrirlos o buscarlos; la ruta original sigue siendo la identidad del libro.
+  **Preparar offline** desde el menú de la biblioteca copia los libros remotos
+  visibles y **Limpiar caché** está en Configuración → Avanzado. La caché no
+  entra en el respaldo y se puede borrar sin perder datos.
 - Si los EPUB están solo en la nube, Drive los descarga al escanearlos o abrirlos
   y puede consumir disco. Marcá la carpeta como **disponible sin conexión** para
   evitarlo. La integración por cuenta/API no está incluida.
@@ -471,6 +477,8 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
   Send to Kindle o conversión.
 - **M30 — Caché de búsqueda (cerrada):** índices full-text en memoria con tope de
   64 MB; la segunda búsqueda no vuelve a abrir los EPUB.
+- **M36 — Caché de EPUB remotos (cerrada):** copia local descartable con LRU de
+  1 GB, apertura/búsqueda aceleradas, preparación offline y limpieza manual.
 
 ## Modo diagnóstico
 

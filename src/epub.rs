@@ -62,6 +62,26 @@ impl Book {
         Self::open_impl(path.as_ref(), false)
     }
 
+    /// Abre el libro desde una copia local (caché) sin perder la identidad de
+    /// la ruta original.
+    pub fn open_from(identity: impl AsRef<Path>, source: impl AsRef<Path>) -> Result<Self, String> {
+        let identity = identity.as_ref().to_path_buf();
+        let source = source.as_ref();
+        let in_memory = std::fs::metadata(source)
+            .map(|meta| meta.len() <= MAX_IN_MEMORY_BYTES)
+            .unwrap_or(false);
+        let reader: Box<dyn ReadSeek> = if in_memory {
+            let bytes = std::fs::read(source)
+                .map_err(|e| format!("no pude leer {}: {e}", source.display()))?;
+            Box::new(Cursor::new(bytes))
+        } else {
+            let file = File::open(source)
+                .map_err(|e| format!("no pude leer {}: {e}", source.display()))?;
+            Box::new(file)
+        };
+        Self::from_source(identity, reader)
+    }
+
     fn open_impl(path: &Path, in_memory: bool) -> Result<Self, String> {
         let path = path.to_path_buf();
         let in_memory = in_memory
@@ -77,6 +97,10 @@ impl Book {
                 File::open(&path).map_err(|e| format!("no pude leer {}: {e}", path.display()))?;
             Box::new(file)
         };
+        Self::from_source(path, source)
+    }
+
+    fn from_source(path: PathBuf, source: Box<dyn ReadSeek>) -> Result<Self, String> {
         let mut archive =
             ZipArchive::new(source).map_err(|e| format!("no es un EPUB válido: {e}"))?;
 
@@ -762,6 +786,15 @@ mod tests {
         assert_eq!(entries[0].anchor.as_deref(), Some("a"));
         assert_eq!(entries[1].anchor.as_deref(), Some("b"));
         assert_eq!(entries[2].anchor, None);
+    }
+
+    #[test]
+    fn open_from_conserva_la_identidad_original() {
+        let source = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/mini.epub");
+        let identity = PathBuf::from("/tmp/libro-original.epub");
+        let book = Book::open_from(&identity, source).unwrap();
+        assert_eq!(book.path, identity);
+        assert!(book.chapter_count() > 0);
     }
 
     #[test]

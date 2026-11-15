@@ -450,3 +450,43 @@ The library SHALL let the user copy an EPUB to a mounted e-reader or folder with
 - **WHEN** no Kobo is mounted
 - **THEN** the dialog still allows choosing a folder or canceling
 
+
+### Requirement: Offline cache for remote EPUB
+
+Books stored on remote mounts SHALL be copied into a disposable local cache to keep opening, searching and reading responsive; the original path SHALL remain the book identity.
+
+#### Scenario: Open a remote book
+
+- **WHEN** the user opens an EPUB that lives on a remote mount
+- **THEN** Candil copies it to the local cache if needed and opens the cached copy
+- **AND** progress, annotations and library entries still use the original path
+
+#### Scenario: Reuse a valid copy
+
+- **WHEN** the cached copy matches the source size and modification time
+- **THEN** Candil opens it without reading the whole EPUB from the remote mount again
+
+#### Scenario: Source changed or cache full
+
+- **WHEN** the source size or modification time changes, or the cache exceeds its limit
+- **THEN** the stale entry is replaced or the least recently used entries are removed
+
+#### Scenario: Prepare visible books offline
+
+- **WHEN** the user chooses "Preparar offline" in the library
+- **THEN** Candil copies the remote EPUB among the visible books in the background, shows progress and allows cancelling
+
+#### Scenario: Clear the cache
+
+- **WHEN** the user chooses "Limpiar caché" in Configuración → Avanzado
+- **THEN** the cached files are deleted and the original EPUB and user data remain untouched
+
+#### Scenario: Local books and backups
+
+- **WHEN** a book is stored locally or a data backup is created
+- **THEN** local books are not copied into the cache and the cache is not included in the backup
+
+#### Scenario: Copy failure
+
+- **WHEN** a remote EPUB cannot be copied
+- **THEN** Candil falls back to the original path and reports the failure without losing the library entry

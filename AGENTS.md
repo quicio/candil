@@ -44,6 +44,10 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - No agregar motor CSS ni webview: el modelo `Block` es el contrato.
 - La biblioteca indexa rutas canónicas; no copiar ni mover los EPUB al
   directorio de datos (ADR-0007).
+- La caché de EPUB remotos vive en `~/.cache/candil/books` (1 GB, LRU), nunca en
+  datos ni en el respaldo. La ruta original sigue siendo la identidad del libro;
+  no cambies `Book.path` a la copia. `Book::open_from` abre la copia conservando
+  la identidad (ADR-0033).
 - No rasterizar SVG vectorial ni sumar `resvg` sin ADR: solo `<svg><image>`
   raster (ADR-0009).
 - `config.json` se escribe atómico (temporal + `rename`); no volver a `fs::write`.

@@ -1,8 +1,8 @@
 ---
 id: handoff
 status: vigente
-version: 1.31.0
-updated: 2026-11-14
+version: 1.32.0
+updated: 2026-11-15
 ---
 
 # Handoff — estado del proyecto y cómo seguir
@@ -72,7 +72,10 @@ múltiples por libro en `studies.json`, panel dividido lector/chat, bandeja de
 contexto (selección, página, destacado, marcador), conversación multi-turno y
 “Guardar nota” con `origin: ai` (ADR-0032). M35 separa la búsqueda general de
 metadatos de una búsqueda avanzada en el contenido, con modos de frase/palabras,
-inclusión/exclusión de libros y progreso/cancelación.
+inclusión/exclusión de libros y progreso/cancelación. M36 agrega una caché local
+descartable de EPUB en montajes remotos (`~/.cache/candil/books`, 1 GB, LRU):
+acelera apertura y búsqueda sin cambiar la ruta original, permite **Preparar
+offline** los libros visibles y **Limpiar caché** desde Configuración (ADR-0033).
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -168,6 +171,7 @@ src/update.rs  releases, asset por plataforma, descarga, SHA-256 e instalación 
 src/backup.rs  respaldo ZIP de datos, manifiesto, checksums e importación segura
 src/consulta.rs diccionario/traducción (MyMemory u Ollama local)/IA, HTTP ureq, parsers e historial
 src/covers.rs  miniatura de portada (sin upscaling), hash FNV y caché
+src/book_cache.rs  caché LRU de EPUB remotos (1 GB) e índice index.json
 src/store.rs   persistencia JSON atómica y backup de archivos corruptos
 src/theme.rs   presets de color
 src/config.rs  settings globales en config.json; `Progress` con ratio/ancla y offset legado
@@ -435,6 +439,11 @@ flotante tapando texto) solo aparecieron así.
     son texto y no abren paneles ni consultas; solo Escape sigue cerrando. El
     botón “Chat” de la selección guarda el destacado, abre el estudio con ese
     pasaje en la bandeja y enfoca el compositor sin enviar nada.
+49. **La caché de EPUB remotos es descartable y no cambia la identidad**: vive en
+    `~/.cache/candil/books` (1 GB, LRU), solo copia montajes remotos y se abre
+    con `Book::open_from` conservando la ruta original. **Preparar offline**
+    copia los visibles en un hilo; **Limpiar caché** está en Configuración. No
+    entra en el respaldo ni en `library.json` (ADR-0033).
 
 ## Definición de terminado (por tarea)
 
@@ -455,7 +464,8 @@ flotante tapando texto) solo aparecieron así.
 - No introducir SQLite para la biblioteca sin revisar ADR-0007 (el corpus es de
   cientos, no de millones).
 - No copiar ni mover los libros al directorio de datos: la biblioteca indexa
-  rutas (ADR-0007).
+  rutas (ADR-0007). La única copia permitida es la caché descartable de montajes
+  remotos (ADR-0033).
 - No agregar un watcher del sistema; la biblioteca se refresca al recuperar el
   foco o a mano (ADR-0018).
 - No implementar paginado por columnas: la decisión de M1 fue scroll continuo.

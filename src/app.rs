@@ -17,6 +17,7 @@ use eframe::egui::{
 use crate::ai;
 use crate::annotations::{Annotation, AnnotationOrigin, Annotations};
 use crate::backup;
+use crate::book_cache::BookCache;
 use crate::config::{self, Config, Progress, Settings};
 use crate::consulta::{
     self, AiPrompt, ConsultaEntry, ConsultaHistory, ConsultaKind, ConsultaRequest, ConsultaResponse,
@@ -313,6 +314,30 @@ impl Default for SearchCache {
     }
 }
 
+enum OfflineMsg {
+    Progress {
+        processed: usize,
+        total: usize,
+        failed: usize,
+        current: String,
+    },
+    Done {
+        processed: usize,
+        total: usize,
+        failed: usize,
+        cancelled: bool,
+    },
+}
+
+struct OfflineState {
+    rx: Receiver<OfflineMsg>,
+    cancel: Arc<AtomicBool>,
+    processed: usize,
+    total: usize,
+    failed: usize,
+    current: String,
+}
+
 fn cache_key(path: &Path) -> String {
     match std::fs::metadata(path) {
         Ok(metadata) => {
@@ -325,6 +350,28 @@ fn cache_key(path: &Path) -> String {
             format!("{}|{}|{}", path.display(), metadata.len(), mtime)
         }
         Err(_) => format!("{}|missing", path.display()),
+    }
+}
+
+/// Abre el libro desde la caché local cuando está en un montaje remoto, sin
+/// cambiar la ruta que lo identifica. Si la copia falla, usa el original.
+fn open_cached_book(cache: &BookCache, path: &Path) -> Result<Book, String> {
+    if let Some(cached) = cache.ensure(path) {
+        if let Ok(book) = Book::open_from(path, &cached) {
+            return Ok(book);
+        }
+    }
+    Book::open(path)
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let bytes = bytes as f64;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes / GB)
+    } else {
+        format!("{:.1} MB", bytes / MB)
     }
 }
 
@@ -875,6 +922,8 @@ pub struct Lector {
     library_filter: LibraryFilter,
     library_content: Option<LibraryContentSearch>,
     content_cache: Arc<Mutex<SearchCache>>,
+    book_cache: Arc<BookCache>,
+    offline: Option<OfflineState>,
     cfg: Config,
     ai_key: secrets::KeyState,
     ai_key_input: String,
@@ -1153,6 +1202,8 @@ impl Lector {
             library_filter: LibraryFilter::All,
             library_content: None,
             content_cache: Arc::new(Mutex::new(SearchCache::default())),
+            book_cache: Arc::new(BookCache::default()),
+            offline: None,
             cfg,
             ai_key,
             ai_key_input: String::new(),
@@ -1352,8 +1403,9 @@ impl Lector {
             action,
             rx,
         });
+        let cache = Arc::clone(&self.book_cache);
         std::thread::spawn(move || {
-            let result = Book::open(&path);
+            let result = open_cached_book(&cache, &path);
             let _ = tx.send(result);
         });
     }
@@ -3551,6 +3603,7 @@ impl Lector {
         let mut open_annotations = false;
         let mut export_all = false;
         let mut open_data = false;
+        let mut clear_book_cache = false;
         let mut reset_config = false;
         let mut clear_history = false;
         let mut clear_study = false;
@@ -4310,6 +4363,59 @@ impl Lector {
                                     }
                                     ui.add_space(theme::space::SM);
                                     ui.separator();
+                                    widgets::section_header(ui, th, "Caché de libros");
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                "Copia local de los EPUB que viven en montajes remotos. \
+                                                 Acelera la apertura y la búsqueda; se puede borrar sin \
+                                                 perder nada y no entra en el respaldo.",
+                                            )
+                                            .size(theme::text::META)
+                                            .color(th.dim),
+                                        )
+                                        .wrap(),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{}: {}",
+                                            truncate(
+                                                &self.book_cache.dir().to_string_lossy(),
+                                                70
+                                            ),
+                                            human_bytes(self.book_cache.total_bytes())
+                                        ))
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} libro{} · límite {}",
+                                            self.book_cache.entry_count(),
+                                            if self.book_cache.entry_count() == 1 {
+                                                ""
+                                            } else {
+                                                "s"
+                                            },
+                                            human_bytes(
+                                                crate::book_cache::DEFAULT_LIMIT_BYTES
+                                            )
+                                        ))
+                                        .size(theme::text::META)
+                                        .color(th.dim),
+                                    );
+                                    if widgets::button(
+                                        ui,
+                                        th,
+                                        "Limpiar caché",
+                                        widgets::ButtonKind::Secondary,
+                                    )
+                                    .clicked()
+                                    {
+                                        clear_book_cache = true;
+                                    }
+                                    ui.add_space(theme::space::SM);
+                                    ui.separator();
                                     widgets::section_header(ui, th, "Datos");
                                     ui.add(
                                         egui::Label::new(
@@ -4817,6 +4923,15 @@ impl Lector {
         }
         if open_data {
             open_path(&Config::data_dir().to_string_lossy());
+        }
+        if clear_book_cache {
+            match self.book_cache.clear() {
+                Ok(freed) => self.say(format!(
+                    "Caché de libros borrada ({} liberados).",
+                    human_bytes(freed)
+                )),
+                Err(error) => self.say(error),
+            }
         }
         if save_ai_key {
             match secrets::save(&self.cfg.consulta.ai_provider, &self.ai_key_input) {
@@ -6675,6 +6790,134 @@ impl Lector {
         ctx.request_repaint();
     }
 
+    fn start_offline(&mut self, ctx: &egui::Context) {
+        if self.offline.is_some() {
+            return;
+        }
+        let books: Vec<(PathBuf, String)> = self
+            .visible_books()
+            .into_iter()
+            .filter_map(|index| self.library.books.get(index))
+            .filter(|book| !book.missing && book.error.is_none())
+            .filter(|book| self.book_cache.is_remote(Path::new(&book.path)))
+            .map(|book| (PathBuf::from(&book.path), book.title.clone()))
+            .collect();
+        if books.is_empty() {
+            self.say("No hay libros remotos entre los visibles. Cambiá el filtro o la búsqueda.");
+            return;
+        }
+        let total = books.len();
+        let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_thread = Arc::clone(&cancel);
+        let cache = Arc::clone(&self.book_cache);
+        let repaint = ctx.clone();
+        self.offline = Some(OfflineState {
+            rx,
+            cancel,
+            processed: 0,
+            total,
+            failed: 0,
+            current: String::new(),
+        });
+        std::thread::spawn(move || {
+            let mut processed = 0usize;
+            let mut failed = 0usize;
+            let mut cancelled = false;
+            for (path, title) in books {
+                if cancel_thread.load(Ordering::Relaxed) {
+                    cancelled = true;
+                    break;
+                }
+                if cache.ensure(&path).is_some() {
+                    processed += 1;
+                } else {
+                    failed += 1;
+                    processed += 1;
+                }
+                let _ = tx.send(OfflineMsg::Progress {
+                    processed,
+                    total,
+                    failed,
+                    current: title,
+                });
+                repaint.request_repaint();
+            }
+            let _ = tx.send(OfflineMsg::Done {
+                processed,
+                total,
+                failed,
+                cancelled,
+            });
+            repaint.request_repaint();
+        });
+        self.say("Preparando libros para leer sin conexión…");
+    }
+
+    fn poll_offline(&mut self, ctx: &egui::Context) {
+        let mut messages = Vec::new();
+        let mut disconnected = false;
+        if let Some(state) = &self.offline {
+            loop {
+                match state.rx.try_recv() {
+                    Ok(message) => messages.push(message),
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        disconnected = true;
+                        break;
+                    }
+                }
+            }
+        }
+        for message in messages {
+            match message {
+                OfflineMsg::Progress {
+                    processed,
+                    total,
+                    failed,
+                    current,
+                } => {
+                    if let Some(state) = &mut self.offline {
+                        state.processed = processed;
+                        state.total = total;
+                        state.failed = failed;
+                        state.current = current;
+                    }
+                }
+                OfflineMsg::Done {
+                    processed,
+                    total,
+                    failed,
+                    cancelled,
+                } => {
+                    self.offline = None;
+                    if cancelled {
+                        self.say(format!(
+                            "Preparación cancelada: {processed}/{total} en caché."
+                        ));
+                    } else if failed > 0 {
+                        self.say(format!(
+                            "{processed}/{total} libros en caché; {failed} no se pudieron copiar."
+                        ));
+                    } else {
+                        self.say(format!(
+                            "{total} libro{} listo{} para leer sin conexión.",
+                            if total == 1 { "" } else { "s" },
+                            if total == 1 { "" } else { "s" }
+                        ));
+                    }
+                }
+            }
+        }
+        if disconnected && self.offline.is_some() {
+            self.offline = None;
+            self.say("La preparación offline se interrumpió.");
+        }
+        if self.offline.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
+    }
+
     fn start_advanced_search(&mut self, ctx: &egui::Context) {
         let Some(state) = &mut self.library_content else {
             return;
@@ -6725,6 +6968,7 @@ impl Lector {
         let repaint = ctx.clone();
         let query_thread = query.clone();
         let cache = Arc::clone(&self.content_cache);
+        let book_cache = Arc::clone(&self.book_cache);
         std::thread::spawn(move || {
             let mut scanned = 0usize;
             let mut failed = 0usize;
@@ -6740,7 +6984,7 @@ impl Lector {
                 let index = if let Some(index) = cached {
                     index
                 } else {
-                    match Book::open(&path) {
+                    match open_cached_book(&book_cache, &path) {
                         Ok(mut book) => {
                             let index = Arc::new(search::build(&mut book));
                             if let Ok(mut cache) = cache.lock() {
@@ -7471,6 +7715,7 @@ impl Lector {
         let mut edit: Option<usize> = None;
         let mut remove_folder: Option<String> = None;
         let mut advanced_search = false;
+        let mut prepare_offline = false;
         let mut send_device: Option<usize> = None;
 
         let missing_count = self.library.books.iter().filter(|b| b.missing).count();
@@ -7537,6 +7782,29 @@ impl Lector {
                                 .clicked()
                         {
                             self.cancel_scan();
+                        }
+                    } else if let Some(offline) = &self.offline {
+                        ui.add(egui::Spinner::new());
+                        ui.label(
+                            RichText::new(format!(
+                                "Preparando {}/{}…",
+                                offline.processed, offline.total
+                            ))
+                            .size(theme::text::META)
+                            .color(th.dim),
+                        );
+                        if !offline.current.is_empty() {
+                            ui.label(
+                                RichText::new(truncate(&offline.current, 34))
+                                    .size(theme::text::META)
+                                    .color(th.fg),
+                            );
+                        }
+                        if wide
+                            && widgets::button(ui, th, "Cancelar", widgets::ButtonKind::Ghost)
+                                .clicked()
+                        {
+                            offline.cancel.store(true, Ordering::Relaxed);
                         }
                     } else {
                         ui.label(
@@ -7698,6 +7966,24 @@ impl Lector {
                                     self.cancel_scan();
                                     ui.close();
                                 }
+                                if self.offline.is_some() {
+                                    if ui.button("Cancelar preparación offline").clicked() {
+                                        if let Some(offline) = &self.offline {
+                                            offline.cancel.store(true, Ordering::Relaxed);
+                                        }
+                                        ui.close();
+                                    }
+                                } else if ui
+                                    .button("Preparar offline")
+                                    .on_hover_text(
+                                        "Copia al disco los libros remotos visibles para abrirlos \
+                                         sin conexión. No modifica los originales.",
+                                    )
+                                    .clicked()
+                                {
+                                    prepare_offline = true;
+                                    ui.close();
+                                }
                                 if ui.button("Configuración").clicked() {
                                     self.show_config = true;
                                     self.config_tab = ConfigTab::Biblioteca;
@@ -7773,6 +8059,9 @@ impl Lector {
 
         if advanced_search {
             self.open_advanced_search(ctx, Some(self.library_search.clone()), false);
+        }
+        if prepare_offline {
+            self.start_offline(ctx);
         }
 
         if show_second_row {
@@ -11714,6 +12003,7 @@ impl eframe::App for Lector {
         self.poll_open(ctx);
         self.poll_scan(ctx);
         self.poll_library_content(ctx);
+        self.poll_offline(ctx);
         self.poll_consulta();
         self.poll_study(ctx);
         self.poll_update(ctx);

@@ -535,6 +535,12 @@ The reader SHALL offer an optional focus mode that keeps the line near the verti
 - **WHEN** the user scrolls while focus mode is active
 - **THEN** the clear band stays centered and the line crossing it becomes legible smoothly, while lines farther away fade toward the background
 
+#### Scenario: Chapter start or end
+
+- **WHEN** the reader is at the beginning or the end of a chapter in focus mode
+- **THEN** the edge without more content is not attenuated, so the first or last lines remain legible
+- **AND** the veil fades back in smoothly after scrolling away from that edge
+
 #### Scenario: Disable focus mode
 
 - **WHEN** the user turns focus mode off

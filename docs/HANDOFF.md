@@ -426,7 +426,9 @@ flotante tapando texto) solo aparecieron así.
 45. **El modo enfoque es un velo del tema, no un cambio de layout**: se guarda
     como `Settings.focus_mode` (global o por libro), la banda clara queda fija
     en el centro del viewport y el texto se atenúa hacia el color de fondo. No
-    mueve el contenido, no altera el progreso ni la selección.
+    mueve el contenido, no altera el progreso ni la selección. En el inicio y el
+    final del capítulo el borde sin más texto no se vela, para que las primeras
+    y últimas líneas se lean enfocadas.
 46. **Compartir una cita es local**: Capturar crea el destacado si falta y
     renderiza un PNG a 1080 px de ancho con `ab_glyph` + Literata. La imagen
     nunca se sube a una red social ni a un servidor; se guarda en Imágenes con

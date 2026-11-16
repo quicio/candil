@@ -11644,7 +11644,7 @@ impl Lector {
                 }
 
                 if s.focus_mode {
-                    paint_focus_mask(ui, th, &s);
+                    paint_focus_mask(ui, th, &s, *scroll, *max_scroll);
                 }
             });
 
@@ -13492,10 +13492,20 @@ fn focus_alpha(distance: f32, band: f32, fade: f32) -> f32 {
     t * t * (3.0 - 2.0 * t) * MAX_ALPHA
 }
 
+/// Peso del velo en un borde según cuánto contenido queda por recorrer. En el
+/// inicio o el final del capítulo no hay texto más allá, así que el velo se
+/// desactiva y las primeras/últimas líneas quedan enfocadas.
+fn focus_edge_weight(remaining: f32, fade: f32) -> f32 {
+    if fade <= 0.0 {
+        return 1.0;
+    }
+    (remaining / fade).clamp(0.0, 1.0)
+}
+
 /// Velo vertical sobre el texto: transparente en la banda central y cada vez
 /// más cercano al fondo hacia los bordes. Se recalcula por frame, así que la
 /// línea enfocada cambia suavemente con el scroll.
-fn paint_focus_mask(ui: &egui::Ui, th: &Theme, s: &Settings) {
+fn paint_focus_mask(ui: &egui::Ui, th: &Theme, s: &Settings, scroll: f32, max_scroll: f32) {
     const STEPS: usize = 48;
     let rect = ui.max_rect();
     if rect.height() <= 4.0 || rect.width() <= 1.0 {
@@ -13505,6 +13515,8 @@ fn paint_focus_mask(ui: &egui::Ui, th: &Theme, s: &Settings) {
     let band = line * 0.65;
     let fade = ((rect.height() * 0.5 - band) * 0.6).max(40.0);
     let center = rect.center().y;
+    let top_weight = focus_edge_weight(scroll.max(0.0), fade);
+    let bottom_weight = focus_edge_weight((max_scroll - scroll).max(0.0), fade);
     // Deja visible la barra de scroll: el texto nunca llega a ese margen.
     let right = (rect.right() - 14.0).max(rect.left() + 1.0);
 
@@ -13512,7 +13524,12 @@ fn paint_focus_mask(ui: &egui::Ui, th: &Theme, s: &Settings) {
     for step in 0..=STEPS {
         let t = step as f32 / STEPS as f32;
         let y = rect.top() + rect.height() * t;
-        let alpha = focus_alpha(y - center, band, fade);
+        let edge = if y < center {
+            top_weight
+        } else {
+            bottom_weight
+        };
+        let alpha = focus_alpha(y - center, band, fade) * edge;
         let color = Color32::from_rgba_unmultiplied(
             th.bg.r(),
             th.bg.g(),
@@ -13821,6 +13838,13 @@ mod tests {
         assert_eq!(focus_alpha(0.0, 20.0, 200.0), 0.0);
         assert!(focus_alpha(30.0, 20.0, 200.0) > 0.0);
         assert!((focus_alpha(400.0, 20.0, 200.0) - 0.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn enfoque_no_vela_el_inicio_ni_el_final_del_capitulo() {
+        assert_eq!(focus_edge_weight(0.0, 200.0), 0.0);
+        assert_eq!(focus_edge_weight(200.0, 200.0), 1.0);
+        assert!((focus_edge_weight(100.0, 200.0) - 0.5).abs() < 0.001);
     }
 
     #[test]

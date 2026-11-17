@@ -177,12 +177,15 @@
       updateAssets(latest);
       renderReleases(Array.isArray(recent) ? recent : [latest]);
     } catch {
-      setText("[data-release-date]", "GitHub no respondió");
+      setText("[data-release-date]", "Consulta las novedades en GitHub");
       if (list) {
         list.replaceChildren();
         const fallback = document.createElement("li");
         fallback.className = "release-placeholder";
-        fallback.textContent = "No pude consultar GitHub en este momento.";
+        const link = document.createElement("a");
+        link.href = `https://github.com/${repo}/releases`;
+        link.textContent = "Ver todas las versiones en GitHub";
+        fallback.append("No pude cargar las novedades en este momento. ", link);
         list.append(fallback);
       }
     }

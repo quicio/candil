@@ -3,9 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 cargo build --profile fast
 cargo run --profile fast -- --inspect tests/fixtures/mini.epub >/dev/null
 cargo run --profile fast -- --inspect tests/fixtures/edge.epub >/dev/null

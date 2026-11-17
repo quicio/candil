@@ -519,10 +519,7 @@ fn node_text(n: roxmltree::Node) -> String {
         .join(" ")
 }
 
-pub(crate) fn read_entry<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    name: &str,
-) -> Option<Vec<u8>> {
+pub fn read_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Option<Vec<u8>> {
     let candidates = [name.to_string(), format!("./{name}"), format!("/{name}")];
     let mut hit = None;
     for cand in &candidates {

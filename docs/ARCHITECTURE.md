@@ -1,11 +1,22 @@
 ---
 id: architecture
 status: vigente
-version: 1.9.0
-updated: 2026-11-06
+version: 1.10.0
+updated: 2026-11-16
 ---
 
 # Arquitectura
+
+## Monorepo
+
+```
+candil/                  escritorio egui
+crates/candil-core/      motor portable: epub, xhtml, search
+mobile/                  Flutter + mobile/rust (FFI C/JSON)
+```
+
+La dependencia apunta siempre al núcleo: escritorio y móvil lo consumen, y el
+núcleo no conoce ninguna de las dos UIs. Ver ADR-0034.
 
 ## Flujo de datos
 
@@ -38,11 +49,13 @@ render nunca ve HTML, y el parser nunca ve píxeles.
 
 | módulo | hace | no hace |
 |---|---|---|
-| `epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s, portada declarada y serie/posición del OPF | no decide estilos ni layout |
-| `xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
+| `crates/candil-core/src/epub.rs` | abre el zip, resuelve rutas, arma spine e índice con `#ancla`, entrega `Block`s, portada declarada y serie/posición del OPF | no decide estilos ni layout |
+| `crates/candil-core/src/xhtml.rs` | convierte XHTML/HTML en `Block`s; dos parsers; entidades, whitespace, pre/tablas y SVG raster | no abre archivos ni conoce el zip |
 | `library.rs` | índice de carpetas, escaneo incremental, metadatos, series, portadas y faltantes | no dibuja la UI |
 | `annotations.rs` | destacados/notas por libro: rangos multi-bloque, offsets, partes de cita y nota; `annotations.json` atómico v2 | no conoce píxeles ni la UI |
-| `search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
+| `crates/candil-core/src/search.rs` | índice efímero por bloques, normalización 1:1 y búsqueda substring | no persiste ni dibuja |
+| `mobile/` | Flutter Android/iOS; biblioteca, lector, anotaciones y respaldos | no reimplementa el parser |
+| `mobile/rust/` | adaptador FFI: JSON, handles y buffers | no conoce la UI |
 | `consulta.rs` | diccionario/traducción/IA, HTTP ureq, parsers e historial local | no conoce egui |
 | `covers.rs` | miniatura sin upscaling, hash FNV y escritura en `covers/` | no conoce la UI |
 | `store.rs` | JSON atómico, backup de corruptos y directorio de datos | no conoce el modelo |

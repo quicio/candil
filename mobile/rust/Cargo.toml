@@ -1,0 +1,16 @@
+[package]
+name = "candil-mobile-core"
+version = "0.1.0"
+edition = "2021"
+description = "Adaptador FFI de Candil Mobile sobre candil-core"
+license = "MIT"
+
+[lib]
+name = "candil_mobile_core"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+candil-core = { path = "../../crates/candil-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+

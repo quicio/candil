@@ -1,3 +1,6 @@
+[workspace]
+members = ["crates/candil-core", "mobile/rust"]
+
 [package]
 name = "candil"
 version = "0.28.2"
@@ -9,6 +12,7 @@ readme = "README.md"
 
 [dependencies]
 ab_glyph = "0.2"
+candil-core = { path = "crates/candil-core" }
 eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 zip = "9"
 roxmltree = "0.21"

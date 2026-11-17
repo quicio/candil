@@ -507,6 +507,7 @@ name = "candil"
 version = "0.28.2"
 dependencies = [
  "ab_glyph",
+ "candil-core",
  "dirs",
  "eframe",
  "image",
@@ -518,6 +519,24 @@ dependencies = [
  "sha2",
  "ureq",
  "zip",
+]
+
+[[package]]
+name = "candil-core"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "roxmltree",
+ "zip",
+]
+
+[[package]]
+name = "candil-mobile-core"
+version = "0.1.0"
+dependencies = [
+ "candil-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

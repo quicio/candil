@@ -15,8 +15,8 @@ Punto de entrada para cualquier agente que tome este repo. Leer en este orden:
 ## Comandos
 
 ```bash
-cargo test                                  # 189 unit (1 live ignorado) + 10 integración
-cargo clippy --all-targets -- -D warnings   # cero warnings
+cargo test --workspace                      # escritorio + núcleo + FFI móvil
+cargo clippy --workspace --all-targets -- -D warnings
 scripts/check.sh                            # fmt + clippy + tests + inspect
 openspec validate --specs --strict           # validar specs de OpenSpec
 cargo run --profile fast -- <libro.epub>    # iterar: ~3–6 s por cambio
@@ -26,11 +26,21 @@ cargo run --profile fast -- --resume        # reabrir el último libro
 cargo run --profile fast -- --scan ~/Libros # índice + portadas sin UI
 cargo run --profile fast -- --inspect <libro.epub>          # diagnóstico de parseo
 cargo run --profile fast -- --shot out.png --screen library  # captura de biblioteca
+cd mobile && flutter analyze && flutter test                # app Flutter
+cd mobile && source tool/env.sh && tool/run_android.sh      # emulador/APK
+python3 -m http.server 4174 --directory site                # landing local
 cargo run --profile fast -- --shot out.png --anchor 6 <libro.epub> # captura en un ancla
 cargo run --profile fast -- --shot out.png --chapter 13 <libro.epub>   # captura visual
 ```
 
 Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …`.
+
+## Estructura
+
+- Raíz `src/`: app de escritorio (egui).
+- `crates/candil-core/`: parser EPUB, bloques y búsqueda. Sin UI ni plataforma.
+- `mobile/`: Flutter + `mobile/rust` (adaptador C/JSON). Android/iOS.
+- `site/`: landing estática publicada por `.github/workflows/pages.yml`.
 
 ## Reglas duras
 
@@ -41,7 +51,13 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
   lleno, no código.
 - No subir `egui`/`eframe` sin ADR: 0.37 es una reescritura (`App::ui`, sin
   `TopBottomPanel`). Ver `docs/adr/0003`.
-- No agregar motor CSS ni webview: el modelo `Block` es el contrato.
+- No agregar motor CSS ni webview: el modelo `Block` es el contrato y vive en
+  `crates/candil-core`.
+- El núcleo portable no importa egui, Flutter, `dirs`, `keyring`, `rfd` ni rutas
+  de plataforma. Esa regla de dependencia es ADR-0034.
+- La app Flutter consume el FFI; no copia el parser ni la búsqueda.
+- La landing vive en `site/`, usa las descargas de la última release y no
+  promete funciones que no existan. GitHub Pages se despliega solo desde `main`.
 - La biblioteca indexa rutas canónicas; no copiar ni mover los EPUB al
   directorio de datos (ADR-0007).
 - La caché de EPUB remotos vive en `~/.cache/candil/books` (1 GB, LRU), nunca en

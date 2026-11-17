@@ -10,7 +10,7 @@ updated: 2026-11-06
 ## Código
 
 - `cargo fmt` es obligatorio; `cargo fmt --check` debe pasar.
-- Cero warnings: `cargo build` y `cargo clippy --all-targets -- -D warnings` sin
+- Cero warnings: `cargo build` y `cargo clippy --workspace --all-targets -- -D warnings` sin
   warnings. Un warning es deuda que después nadie limpia.
 - Sin `unwrap()`/`expect()` sobre datos del usuario (archivos, zip, XML). Sí en
   tests.

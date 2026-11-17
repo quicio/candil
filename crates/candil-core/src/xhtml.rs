@@ -1,4 +1,4 @@
-//! Modelo intermedio entre XHTML y egui.
+//! Modelo intermedio entre XHTML y la UI.
 //!
 //! Un capítulo es una secuencia plana de bloques; cada bloque es una secuencia
 //! de *runs* con estilo inline. Sin DOM, sin CSS: solo lo que un libro necesita.

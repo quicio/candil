@@ -1,14 +1,14 @@
 ---
 id: roadmap
 status: vigente
-version: 1.17.0
-updated: 2026-11-14
+version: 1.18.0
+updated: 2026-11-16
 ---
 
 # Roadmap
 
-Dieciséis milestones. Cada uno tiene criterio de salida **verificable**, no una
-lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
+Cada milestone tiene un criterio de salida **verificable**, no una lista de
+deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 
 | # | Milestone | Estado | Specs | Criterio de salida |
 |---|---|---|---|---|
@@ -49,6 +49,7 @@ lista de deseos. Un milestone no se cierra si su criterio no se puede mostrar.
 | M34 | Modo estudio | **Hecho** | [study-workspace](../openspec/specs/study-workspace/spec.md), [ADR-0032](../docs/adr/0032-modo-estudio.md) | Varias sesiones por libro en `studies.json`, panel lector/chat, contexto visible y respuestas de IA con “Guardar nota” (`origin: ai`) |
 | M35 | Búsqueda avanzada | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md) | Búsqueda general por metadatos y ventana avanzada de contenido con modos, inclusión/exclusión de libros y progreso |
 | M36 | Caché de EPUB remotos | **Hecho** | [library-experience](../openspec/specs/library-experience/spec.md), [ADR-0033](../docs/adr/0033-cache-local-epub-remotos.md) | Copia local descartable (1 GB, LRU) para montajes remotos, sin cambiar la ruta original; preparar offline y limpiar caché |
+| M37 | Monorepo y núcleo portable | **Hecho** | [ADR-0034](../docs/adr/0034-monorepo-nucleo-compartido.md) | Escritorio y móvil consumen `crates/candil-core`; una sola copia del parser y tests de workspace |
 
 ## M1 — Lector (terminado)
 

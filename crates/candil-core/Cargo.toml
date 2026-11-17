@@ -1,0 +1,16 @@
+[package]
+name = "candil-core"
+version = "0.1.0"
+edition = "2021"
+description = "Núcleo portable de Candil: EPUB, bloques y búsqueda"
+license = "MIT"
+repository = "https://github.com/quicio/candil"
+
+[lib]
+name = "candil_core"
+path = "src/lib.rs"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+roxmltree = "0.21"
+zip = "9"

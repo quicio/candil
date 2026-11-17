@@ -1,8 +1,8 @@
 ---
 id: handoff
 status: vigente
-version: 1.32.0
-updated: 2026-11-15
+version: 1.33.0
+updated: 2026-11-16
 ---
 
 # Handoff — estado del proyecto y cómo seguir
@@ -77,7 +77,9 @@ descartable de EPUB en montajes remotos (`~/.cache/candil/books`, 1 GB, LRU):
 acelera apertura y búsqueda sin cambiar la ruta original, permite **Preparar
 offline** los libros visibles y **Limpiar caché** desde Configuración (ADR-0033).
 La búsqueda avanzada construye los índices de hasta 4 libros en paralelo y
-conserva el orden, los topes y la cancelación.
+conserva el orden, los topes y la cancelación. M37 convierte el proyecto en un
+monorepo: `crates/candil-core` es el motor portable compartido por escritorio y
+móvil, y `mobile/` contiene Flutter más el adaptador FFI (ADR-0034).
 
 **Online está apagado por defecto**: se activa en Configuración o desde el panel
 Consulta. La traducción y la IA con Ollama local son la excepción: corren sin
@@ -130,8 +132,8 @@ el mismo):
 | capturas | 19 en `docs/img/` (biblioteca ×4, respaldo de datos, inicio, editor de EPUB, selección entre párrafos, enlace externo, tipografía, destacados, panel, nota, global, búsqueda, Ir a, consulta, configuración e historial), todas en Papel 19 px y con libros de dominio público | `scripts/captures.sh` (sandbox + Project Gutenberg) |
 | escaneo | 1.57 s primera vez; 0.02 s con caché | `/usr/bin/time` + `--scan` |
 | `covers/` | 4,2 MB (~98 KB/libro) | `du -sh` |
-| tests | 189 unit (188 + 1 live ignorado) + 10 integración | `cargo test` |
-| clippy | 0 warnings | `cargo clippy --all-targets -- -D warnings` |
+| tests | workspace (escritorio + núcleo + FFI) | `cargo test --workspace` |
+| clippy | 0 warnings | `cargo clippy --workspace --all-targets -- -D warnings` |
 | binario `dist` | 7.450.864 B arm64; 8.466.112 B Intel | `cargo build --profile dist` (2026-11-13) |
 | `target/` completo | ~1,4 GB (dev 836 MB + fast 589 MB) | `du -sh target` (2026-11-10) |
 | cambio de una línea | ~16 s | `cargo build --profile fast` (sin incremental) |
@@ -158,11 +160,12 @@ código.
 src/lib.rs     API pública (los tests de integración dependen de ella)
 src/main.rs    arranque, flags --inspect / --scan / --shot / --resume / --chapter / --panel
 src/app.rs     ventana, biblioteca, lector, barra, scroll, paneles, teclado
-src/epub.rs    zip → container.xml → OPF → spine + índice + portada declarada (con #ancla)
-src/xhtml.rs   XHTML/HTML → Vec<Block> (entidades, whitespace, pre/tablas, SVG raster, anclas)
+crates/candil-core/src/epub.rs   zip → container.xml → OPF → spine + índice + portada
+crates/candil-core/src/xhtml.rs  XHTML/HTML → Vec<Block> (entidades, pre/tablas, SVG raster)
+crates/candil-core/src/search.rs índice efímero por libro y búsqueda full-text
+mobile/        app Flutter + adaptador FFI en mobile/rust
 src/library.rs índice de carpetas, escaneo incremental, BookEntry
 src/annotations.rs destacados/notas: rangos multi-bloque, offsets + partes + origen, JSON atómico v3
-src/search.rs  índice efímero por libro; búsqueda interna y full-text de biblioteca
 src/share.rs   render local de citas como PNG (Literata + fondos + plantillas)
 src/study.rs   sesiones de estudio por libro, mensajes, contexto e historial de IA
 src/markdown.rs renderer Markdown mínimo para IA y notas, sin dependencias
@@ -451,9 +454,9 @@ flotante tapando texto) solo aparecieron así.
 
 ## Definición de terminado (por tarea)
 
-- [ ] `cargo test` verde y sin warnings nuevos.
+- [ ] `cargo test --workspace` verde y sin warnings nuevos.
 - [ ] `cargo fmt --check` limpio.
-- [ ] `cargo clippy --all-targets -- -D warnings` limpio.
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings` limpio.
 - [ ] Si tocó UI: captura con `--shot` revisada.
 - [ ] Si tocó parseo: `--inspect` sobre el fixture `edge.epub` y al menos 5 EPUB
       del corpus sin capítulos vacíos nuevos.

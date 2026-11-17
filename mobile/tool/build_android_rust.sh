@@ -4,11 +4,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/rust"
 
 if ! command -v cargo-ndk >/dev/null 2>&1; then
-  echo "Falta cargo-ndk. Instalalo con: cargo install cargo-ndk" >&2
+  echo "Falta cargo-ndk. Instálalo con: cargo install cargo-ndk" >&2
   exit 1
 fi
 if [[ -z "${ANDROID_NDK_HOME:-}" && -z "${ANDROID_NDK_ROOT:-}" ]]; then
-  echo "Definí ANDROID_NDK_HOME (o ANDROID_NDK_ROOT) antes de compilar." >&2
+  echo "Define ANDROID_NDK_HOME (o ANDROID_NDK_ROOT) antes de compilar." >&2
   exit 1
 fi
 

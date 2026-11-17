@@ -69,7 +69,7 @@ CSS, webview y paginado por columnas.
 ## Brand Commitments
 
 - Nombre: **Candil**. Repo `quicio/candil`.
-- Voz: sobria, cálida, literaria, en español rioplatense neutro.
+- Voz: sobria, cálida, literaria, en español neutro.
 - Lema: **“Leer despacio, sin ruido.”**
 - Identidad editorial: papel, noche, ámbar, tipografía Literata; nada de
   dashboards SaaS, gradientes decorativos ni estética genérica de IA.

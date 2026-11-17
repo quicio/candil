@@ -201,7 +201,7 @@ pub struct Config {
     pub consulta: ConsultaSettings,
     pub share: crate::share::ShareSettings,
     /// Compatibilidad: el progreso se migra a `library.json` en M2. No se
-    /// vuelve a escribir acá.
+    /// vuelve a escribir aquí.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub progress: BTreeMap<String, Progress>,
 }

@@ -66,7 +66,7 @@ pub fn default_name() -> String {
 /// Empaqueta los datos existentes en `target`.
 pub fn export(data_dir: &Path, target: &Path) -> Result<ExportResult, String> {
     if DATA_FILES.iter().any(|name| target.ends_with(name)) {
-        return Err("Elegí un archivo distinto de los datos de Candil.".into());
+        return Err("Elige un archivo distinto de los datos de Candil.".into());
     }
     let mut files = Vec::new();
     let mut contents = Vec::new();

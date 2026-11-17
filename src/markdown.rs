@@ -339,8 +339,8 @@ mod tests {
     #[test]
     fn inline_code_usa_monoespaciada() {
         let th = theme::theme(0);
-        let job = inline_job("usá `cargo test` ahora", 12.0, th.fg, false, false, &th);
-        assert_eq!(job.text, "usá cargo test ahora");
+        let job = inline_job("usa `cargo test` ahora", 12.0, th.fg, false, false, &th);
+        assert_eq!(job.text, "usa cargo test ahora");
         assert!(job
             .sections
             .iter()

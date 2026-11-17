@@ -114,7 +114,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Este libro todavía no está en el móvil'),
           content: const Text(
-            'Elegí el mismo EPUB para completar la entrada importada del '
+            'Elige el mismo EPUB para completar la entrada importada del '
             'escritorio. Candil conservará el progreso y las anotaciones.',
           ),
           actions: <Widget>[
@@ -418,8 +418,8 @@ class _EmptyLibrary extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               filtered
-                  ? 'Probá con otro título, autor o nombre de archivo.'
-                  : 'Importá uno o varios EPUB para empezar. También podés '
+                  ? 'Prueba con otro título, autor o nombre de archivo.'
+                  : 'Importa uno o varios EPUB para empezar. También puedes '
                         'restaurar un respaldo de Candil desde el menú.',
               textAlign: TextAlign.center,
               style: TextStyle(color: theme.dim, height: 1.45),

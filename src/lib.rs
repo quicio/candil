@@ -1,5 +1,5 @@
 //! API pública del lector. `main.rs` es solo un cascarón: toda la lógica vive
-//! acá para que los tests de integración puedan ejercitarla sin abrir ventana.
+//! aquí para que los tests de integración puedan ejercitarla sin abrir ventana.
 
 pub use candil_core::{epub, search, xhtml};
 

@@ -261,7 +261,7 @@ pub struct ConsultaHistory {
 - `K` abre/cierra el panel de consulta con la selección actual.
 - `Esc` cierra el panel; si hay una consulta en vuelo, se ignora la respuesta.
 - El panel es una ventana lateral no modal, con scroll y botón “Copiar”.
-- Si no hay selección, el panel muestra “Seleccioná una palabra o frase”.
+- Si no hay selección, el panel muestra “Selecciona una palabra o frase”.
 - Si el texto supera ~2.000 caracteres, se recorta para la petición y se avisa
   (la selección completa sigue visible).
 - Diccionario, traducción, IA e historial comparten el mismo panel; no se abren

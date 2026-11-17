@@ -25,5 +25,5 @@ xcodebuild -create-xcframework \
   -output "$ROOT/ios/Frameworks/CandilCore.xcframework"
 
 echo "Listo: ios/Frameworks/CandilCore.xcframework"
-echo "En Xcode: agregalo a Runner, marcá Embed & Sign y en Other Linker Flags"
-echo "agregá -force_load \$(PROJECT_DIR)/Frameworks/CandilCore.xcframework/ios-arm64/libcandil_mobile_core.a"
+echo "En Xcode: agrégalo a Runner, marca Embed & Sign y en Other Linker Flags"
+echo "agrega -force_load \$(PROJECT_DIR)/Frameworks/CandilCore.xcframework/ios-arm64/libcandil_mobile_core.a"

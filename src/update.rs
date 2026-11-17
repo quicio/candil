@@ -267,7 +267,7 @@ fn install_verified(downloaded: &Downloaded, target: &Path) -> Result<Installed,
 pub fn self_install_target() -> Result<PathBuf, String> {
     if !SELF_INSTALL_SUPPORTED {
         return Err(
-            "La autoinstalación está disponible en Linux; descargá el archivo y reemplazá el binario a mano."
+            "La autoinstalación está disponible en Linux; descarga el archivo y reemplaza el binario a mano."
                 .into(),
         );
     }
@@ -394,10 +394,10 @@ fn http_get(url: &str, max_bytes: u64, timeout_secs: u64) -> Result<Vec<u8>, Str
 fn http_error(error: ureq::Error) -> String {
     match error {
         ureq::Error::StatusCode(403) => {
-            "GitHub limitó las consultas. Probá más tarde o abrí la página del release.".into()
+            "GitHub limitó las consultas. Prueba más tarde o abre la página del release.".into()
         }
         ureq::Error::StatusCode(404) => "No encontré releases publicados.".into(),
-        ureq::Error::Timeout(_) => "La consulta tardó demasiado. Probá de nuevo.".into(),
+        ureq::Error::Timeout(_) => "La consulta tardó demasiado. Prueba de nuevo.".into(),
         other => format!("No pude conectar con GitHub: {other}"),
     }
 }

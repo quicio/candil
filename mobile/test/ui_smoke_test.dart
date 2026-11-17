@@ -29,7 +29,7 @@ void main() {
     expect(find.text('Tu biblioteca está vacía'), findsOneWidget);
     expect(
       find.text(
-        'Importá uno o varios EPUB para empezar. También podés restaurar un '
+        'Importa uno o varios EPUB para empezar. También puedes restaurar un '
         'respaldo de Candil desde el menú.',
       ),
       findsOneWidget,

@@ -356,7 +356,7 @@ flotante tapando texto) solo aparecieron así.
     reiniciar (ADR-0030); en macOS, Windows y paquetes del sistema solo se
     descarga el archivo y nunca se ejecuta ni se reemplaza nada (ADR-0016).
 25. **La entrega es automática**: no bumpees `Cargo.toml` ni crees tags a mano;
-    push a `main` y `auto-release` publica. Si falla, relanzá `release.yml` con
+    push a `main` y `auto-release` publica. Si falla, relanza `release.yml` con
     el tag existente (ADR-0017).
 26. **La biblioteca se refresca al recuperar el foco**, con debounce de 30 s y
     sin bloquear la UI; no es un watcher en tiempo real (ADR-0018). “Continuar

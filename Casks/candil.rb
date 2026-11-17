@@ -29,7 +29,7 @@ cask "candil" do
 
   caveats <<~EOS
     Candil se distribuye sin notarización de Apple. Este cask intenta quitar la
-    cuarentena; si macOS igual bloquea la primera apertura, usá clic derecho →
+    cuarentena; si macOS igual bloquea la primera apertura, usa clic derecho →
     Abrir sobre Candil.app.
   EOS
 end

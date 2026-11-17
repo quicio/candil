@@ -139,9 +139,9 @@ case ":$PATH:" in
   *":$prefix/bin:"*) ;;
   *)
     echo
-    echo "Ojo: $prefix/bin no está en tu PATH. Agregá esto a tu shell:"
+    echo "Ojo: $prefix/bin no está en tu PATH. Agrega esto a tu shell:"
     echo "  export PATH=\"$prefix/bin:\$PATH\""
     ;;
 esac
 echo
-echo "Abrilo con 'candil' o desde el menú de aplicaciones."
+echo "Ábrelo con 'candil' o desde el menú de aplicaciones."

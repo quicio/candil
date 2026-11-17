@@ -79,9 +79,9 @@ El tag puede existir aunque la release no:
 gh workflow run release.yml -f tag=vX.Y.Z
 ```
 
-Para forzar una nueva entrega, hacé un push de código a `main`; el
+Para forzar una nueva entrega, haz un push de código a `main`; el
 `auto-release` vuelve a evaluar los commits desde el último tag. No edites un
-tag publicado: creá una versión nueva.
+tag publicado: crea una versión nueva.
 
 Ambos comandos requieren permisos de escritura en el repo. El tag debe coincidir
 con `Cargo.toml`; si no, `release.yml` falla en “Verificar versión del tag”.

@@ -105,7 +105,7 @@ Decisiones que lo sostienen:
 
 Un `LayoutJob` por bloque, secciones por run, `wrap.max_width = ancho de columna`,
 `justify = true` en párrafos y citas. `line_height = None` significa "alto de
-fuente por defecto"; acá se usa `Some(size * line_height)` para control fino del
+fuente por defecto"; aquí se usa `Some(size * line_height)` para control fino del
 interlineado.
 
 Columna centrada: `ScrollArea` vertical → `horizontal_top` con `add_space(pad)` →
@@ -332,7 +332,7 @@ metadatos, `size`/`mtime`, progreso, estado `missing`, `settings` opcional
 (tema/tipografía solo para ese libro) y marcadores de posición con el mismo
 `Progress` que la lectura. Las portadas van a
 `covers/<fnv1a>.png` (ADR-0007/0008). El progreso de los libros indexados se
-escribe solo acá; `config.progress` se conserva para leer archivos viejos y se
+escribe solo aquí; `config.progress` se conserva para leer archivos viejos y se
 vacía a medida que `migrate_progress_from` encuentra sus libros. El arranque
 normal muestra la biblioteca; `--resume` reabre el último libro.
 

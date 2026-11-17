@@ -72,7 +72,7 @@ En esta máquina ya quedó instalado:
 - `cargo-ndk` y los targets Rust de Android e iOS.
 - AVD `candil` (Android 36 x86_64) y la app de prueba ya instalada.
 
-Abrí una terminal nueva o ejecutá:
+Abre una terminal nueva o ejecuta:
 
 ```bash
 source tool/env.sh
@@ -108,7 +108,7 @@ CANDIL_CORE_LIB="$PWD/../target/debug/libcandil_mobile_core.so" \
 ```bash
 source tool/env.sh
 tool/build_android_rust.sh
-flutter emulators --launch candil   # o conectá un dispositivo por USB
+flutter emulators --launch candil   # o conecta un dispositivo por USB
 flutter run
 # Atajo: compila el núcleo, levanta el AVD candil si hace falta y ejecuta:
 tool/run_android.sh

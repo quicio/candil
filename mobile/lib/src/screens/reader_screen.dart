@@ -278,7 +278,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               child: Text(
                                 busy
                                     ? 'Buscando…'
-                                    : 'Escribí al menos 2 caracteres.',
+                                    : 'Escribe al menos 2 caracteres.',
                                 style: TextStyle(color: theme.dim),
                               ),
                             )

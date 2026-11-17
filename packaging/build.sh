@@ -16,7 +16,7 @@ version="${VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 bin="target/dist/candil"
 stage=".packaging"
 
-[ -x "$bin" ] || { echo "falta $bin: corré 'cargo build --profile dist' primero" >&2; exit 1; }
+[ -x "$bin" ] || { echo "falta $bin: ejecuta 'cargo build --profile dist' primero" >&2; exit 1; }
 [ -n "$version" ] || { echo "no pude leer la versión de Cargo.toml" >&2; exit 1; }
 
 nfpm=$(command -v nfpm || true)
@@ -27,7 +27,7 @@ rm -rf "$out" "$stage"
 mkdir -p "$out" "$stage"
 
 # Las páginas de manual van comprimidas en Debian, Fedora y Arch; nfpm no
-# comprime solo, así que se prepara acá.
+# comprime solo, así que se prepara aquí.
 gzip -9nc packaging/candil.1 > "$stage/candil.1.gz"
 
 echo "· paquetes nativos"
@@ -62,7 +62,7 @@ Instalación por usuario, sin root:
 Dependencias en tiempo de ejecución: libwayland-client y libxkbcommon (Wayland)
 o libX11 y libXcursor (X11), más un libEGL/libGL del driver. Los diálogos de
 archivo usan xdg-desktop-portal. El llavero necesita gnome-keyring o KWallet;
-sin servicio de secretos, exportá CANDIL_NO_KEYRING=1.
+sin servicio de secretos, exporta CANDIL_NO_KEYRING=1.
 EOF
 # mtime = fecha del commit: el tarball sale reproducible, así el sha256 que usa
 # el PKGBUILD del AUR no cambia entre builds del mismo contenido.

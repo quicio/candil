@@ -1,4 +1,4 @@
-//! Componentes visuales compartidos. Viven acá para que biblioteca, lector y
+//! Componentes visuales compartidos. Viven aquí para que biblioteca, lector y
 //! paneles usen las mismas medidas, estados y colores en vez de repetir
 //! `egui::Button`/`Frame` con valores literales.
 

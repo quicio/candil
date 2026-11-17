@@ -44,7 +44,7 @@ class AnnotationsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Mantené pulsado un párrafo en el lector para '
+                          'Mantén pulsado un párrafo en el lector para '
                           'destacarlo o agregarle una nota.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: theme.dim, height: 1.4),
@@ -129,7 +129,7 @@ class AnnotationsScreen extends StatelessWidget {
           controller: controller,
           autofocus: true,
           maxLines: 5,
-          decoration: const InputDecoration(hintText: 'Escribí una nota'),
+          decoration: const InputDecoration(hintText: 'Escribe una nota'),
         ),
         actions: <Widget>[
           TextButton(

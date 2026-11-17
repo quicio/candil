@@ -2352,11 +2352,11 @@ impl Lector {
     fn study_online_gate(&self) -> Result<(), String> {
         let provider = self.cfg.consulta.ai_provider.as_str();
         if provider != "ollama" && !self.cfg.consulta.online_enabled {
-            return Err("Las consultas online están apagadas. Activalas en Configuración o usá Ollama local.".into());
+            return Err("Las consultas online están apagadas. Actívalas en Configuración o usa Ollama local.".into());
         }
         if ai::requires_key(provider) && self.ai_key.key.is_none() {
             return Err(format!(
-                "Falta la API key de {}: guardala en Configuración.",
+                "Falta la API key de {}: guárdala en Configuración.",
                 ai::provider(provider).label
             ));
         }
@@ -2525,7 +2525,7 @@ impl Lector {
                             self.study.scroll_hold = 4;
                             if cut_short {
                                 self.study.error = Some(format!(
-                                    "La respuesta se cortó por el límite de {} tokens. Subí «máx. tokens» en Configuración.",
+                                    "La respuesta se cortó por el límite de {} tokens. Sube «máx. tokens» en Configuración.",
                                     self.cfg.consulta.ai_max_tokens
                                 ));
                             }
@@ -3684,7 +3684,7 @@ impl Lector {
                                     widgets::section_header(ui, th, "Lectura");
                                     ui.label(
                                         RichText::new(
-                                            "Tipografía global. Para un libro concreto usá el panel Aa.",
+                                            "Tipografía global. Para un libro concreto usa el panel Aa.",
                                         )
                                         .size(theme::text::META)
                                         .color(th.dim),
@@ -3770,7 +3770,7 @@ impl Lector {
                                     } else {
                                         ui.label(
                                             RichText::new(
-                                                "Abrí un libro para editar su tipografía.",
+                                                "Abre un libro para editar su tipografía.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -3904,7 +3904,7 @@ impl Lector {
                                     } else {
                                         ui.label(
                                             RichText::new(
-                                                "Abrí un libro para ver sus destacados.",
+                                                "Abre un libro para ver sus destacados.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -4318,7 +4318,7 @@ impl Lector {
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(
-                                                "Las sesiones de estudio se guardan solo en tu disco y entran en el respaldo. No se envían a ningún proveedor hasta que mandás una pregunta con online activo.",
+                                                "Las sesiones de estudio se guardan solo en tu disco y entran en el respaldo. No se envían a ningún proveedor hasta que envías una pregunta con online activo.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -4473,10 +4473,10 @@ impl Lector {
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(
-                                                "Consulta la API pública de GitHub sólo cuando lo pedís. \
+                                                "Consulta la API pública de GitHub sólo cuando lo pides. \
                                                  No envía datos del libro ni de la biblioteca. En Linux, \
-                                                 si Candil vive en tu carpeta personal, también podés \
-                                                 instalar la actualización desde acá.",
+                                                 si Candil vive en tu carpeta personal, también puedes \
+                                                 instalar la actualización desde aquí.",
                                             )
                                             .size(theme::text::META)
                                             .color(th.dim),
@@ -5028,7 +5028,7 @@ impl Lector {
         };
         if !self.cfg.consulta.online_enabled && !local {
             self.consulta_error = Some(
-                "Las consultas online están desactivadas. Activalas o usá traducción local con Ollama."
+                "Las consultas online están desactivadas. Actívalas o usa traducción local con Ollama."
                     .into(),
             );
             return;
@@ -5221,7 +5221,7 @@ impl Lector {
             ui.spacing_mut().item_spacing.y = theme::space::SM;
             let Some(target) = &target else {
                 ui.label(
-                    RichText::new("Seleccioná una palabra o frase en el libro.")
+                    RichText::new("Selecciona una palabra o frase en el libro.")
                         .size(theme::text::BODY_SMALL)
                         .color(th.dim),
                 );
@@ -5435,7 +5435,7 @@ impl Lector {
                     } else {
                         ui.label(
                             RichText::new(format!(
-                                "Falta la API key de {}: guardala en Configuración.",
+                                "Falta la API key de {}: guárdala en Configuración.",
                                 provider.label
                             ))
                             .size(theme::text::META)
@@ -5689,7 +5689,7 @@ impl Lector {
             } else if self.consulta_tab != ConsultaTab::Historial {
                 ui.label(
                     RichText::new(format!(
-                        "Pulsá el botón para consultar {}.",
+                        "Pulsa el botón para consultar {}.",
                         self.consulta_provider_label()
                     ))
                     .size(theme::text::META)
@@ -5993,7 +5993,7 @@ impl Lector {
             let query_len = self.search_query.trim().chars().count();
             if query_len < 2 {
                 ui.label(
-                    RichText::new("Escribí al menos 2 letras.")
+                    RichText::new("Escribe al menos 2 letras.")
                         .size(theme::text::META)
                         .color(th.dim),
                 );
@@ -6011,7 +6011,7 @@ impl Lector {
             }
 
             let count = if self.search_truncated {
-                format!("Mostrando los primeros {total}; afiná la búsqueda.",)
+                format!("Mostrando los primeros {total}; afina la búsqueda.",)
             } else {
                 format!("{total} resultado(s)")
             };
@@ -6929,7 +6929,7 @@ impl Lector {
         let mode = state.mode;
         if query.chars().count() < CONTENT_SEARCH_MIN {
             state.error = Some(format!(
-                "Escribí al menos {CONTENT_SEARCH_MIN} caracteres para buscar."
+                "Escribe al menos {CONTENT_SEARCH_MIN} caracteres para buscar."
             ));
             return;
         }
@@ -7434,7 +7434,7 @@ impl Lector {
                     );
                 } else {
                     ui.label(
-                        RichText::new("Elegí el alcance y pulsá Buscar.")
+                        RichText::new("Elige el alcance y pulsa Buscar.")
                             .size(theme::text::META)
                             .color(th.dim),
                     );
@@ -7609,7 +7609,7 @@ impl Lector {
     fn add_google_drive_folder(&mut self, ctx: &egui::Context) {
         let Some(root) = google_drive_dir() else {
             self.say(
-                "No encontré Google Drive para escritorio. Instalalo o usá «Añadir carpeta» para elegir la carpeta sincronizada.",
+                "No encontré Google Drive para escritorio. Instálalo o usa «Añadir carpeta» para elegir la carpeta sincronizada.",
             );
             return;
         };
@@ -7626,7 +7626,7 @@ impl Lector {
         };
         if same_as_root {
             self.say(
-                "Elegí una subcarpeta de Google Drive, no la raíz: indexar todo Drive puede tardar mucho.",
+                "Elige una subcarpeta de Google Drive, no la raíz: indexar todo Drive puede tardar mucho.",
             );
             return;
         }
@@ -7637,7 +7637,7 @@ impl Lector {
         }
         self.start_scan(Some(dir), ctx);
         self.say(
-            "Indexando Google Drive… Si los EPUB no están descargados, Drive los baja al abrirlos; marcá la carpeta como disponible sin conexión.",
+            "Indexando Google Drive… Si los EPUB no están descargados, Drive los baja al abrirlos; marca la carpeta como disponible sin conexión.",
         );
     }
 
@@ -7669,7 +7669,7 @@ impl Lector {
             std::fs::canonicalize(&target_dir),
         ) {
             if source_dir == dest_dir {
-                self.say("Elegí la carpeta del dispositivo, no la carpeta de la biblioteca.");
+                self.say("Elige la carpeta del dispositivo, no la carpeta de la biblioteca.");
                 return;
             }
         }
@@ -7746,7 +7746,7 @@ impl Lector {
             }
             ui.label(
                 RichText::new(
-                    "El Kobo lee EPUB por USB. El Kindle normalmente no: usá Send to Kindle o un archivo convertido.",
+                    "El Kobo lee EPUB por USB. El Kindle normalmente no: usa Send to Kindle o un archivo convertido.",
                 )
                 .size(theme::text::META)
                 .color(th.dim),
@@ -8273,12 +8273,12 @@ impl Lector {
         let (empty_title, empty_subtitle) = if has_folders {
             (
                 "No hay EPUB en las carpetas vigiladas",
-                "Probá Refrescar o añadí otra carpeta.",
+                "Prueba Refrescar o añade otra carpeta.",
             )
         } else {
             (
                 "Tu biblioteca está vacía",
-                "Añadí una carpeta con archivos .epub.",
+                "Añade una carpeta con archivos .epub.",
             )
         };
 
@@ -8362,7 +8362,7 @@ impl Lector {
                         }
                         ui.add_space(18.0);
                         ui.label(
-                            RichText::new("o arrastrá un archivo .epub a esta ventana")
+                            RichText::new("o arrastra un archivo .epub a esta ventana")
                                 .size(theme::text::BODY_SMALL)
                                 .color(th.dim),
                         );
@@ -8401,7 +8401,7 @@ impl Lector {
                             ui.add_space(10.0);
                             ui.label(
                                 RichText::new(
-                                    "También podés buscar dentro del texto de los libros.",
+                                    "También puedes buscar dentro del texto de los libros.",
                                 )
                                 .size(theme::text::META)
                                 .color(th.dim),
@@ -9742,7 +9742,7 @@ impl Lector {
                         "Añadir marcador aquí",
                         widgets::ButtonKind::Secondary,
                     )
-                    .on_hover_text("También podés usar B para guardar sin etiqueta")
+                    .on_hover_text("También puedes usar B para guardar sin etiqueta")
                     .clicked()
                     {
                         add_here = true;
@@ -10265,7 +10265,7 @@ impl Lector {
                     }
                 } else {
                     ui.label(
-                        RichText::new("Seleccioná una frase y usá Destacar, Nota o Capturar.")
+                        RichText::new("Selecciona una frase y usa Destacar, Nota o Capturar.")
                             .size(theme::text::META)
                             .color(th.dim),
                     );
@@ -10904,7 +10904,7 @@ impl Lector {
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(
-                                                "Seleccioná un pasaje y preguntá. La conversación queda guardada en este libro.",
+                                                "Selecciona un pasaje y pregunta. La conversación queda guardada en este libro.",
                                             )
                                             .size(theme::text::BODY_SMALL)
                                             .color(th.dim),
@@ -10916,7 +10916,7 @@ impl Lector {
                                     match message.role {
                                         study::StudyRole::User => {
                                             ui.label(
-                                                RichText::new("Vos")
+                                                RichText::new("Tú")
                                                     .size(theme::text::META)
                                                     .strong()
                                                     .color(th.dim),
@@ -12352,7 +12352,7 @@ fn share_template_controls_ui(ui: &mut Ui, th: &Theme, state: &mut ShareState) -
             );
         } else {
             ui.label(
-                RichText::new("Elegí una imagen del disco.")
+                RichText::new("Elige una imagen del disco.")
                     .size(theme::text::META)
                     .color(th.dim),
             );

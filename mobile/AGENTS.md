@@ -27,7 +27,7 @@ CANDIL_CORE_LIB="$PWD/../target/debug/libcandil_mobile_core.so" \
   `library.json`, `annotations.json`, `consultas.json` y `studies.json`. Los
   campos desconocidos se conservan al guardar.
 - `origin_path` es la ruta de escritorio de un libro importado que todavía no
-  está en el móvil. Al importar el EPUB, actualizá `path` y reasigná las
+  está en el móvil. Al importar el EPUB, actualiza `path` y reasigna las
   anotaciones; no borres la entrada.
 - Importar copia el EPUB al sandbox (`books/<sha256>.epub`); no se guardan rutas
   externas como identidad permanente.

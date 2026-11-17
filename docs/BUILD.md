@@ -117,11 +117,11 @@ cargo build --profile dist
 Notas:
 
 - `rfd` usa **xdg-desktop-portal** para los diálogos. Si no abre el selector de
-  archivos, instalá `xdg-desktop-portal` y el backend de tu escritorio
+  archivos, instala `xdg-desktop-portal` y el backend de tu escritorio
   (`xdg-desktop-portal-gtk`, `-kde`, etc.).
 - Necesitás drivers OpenGL funcionando. Como último recurso:
   `LIBGL_ALWAYS_SOFTWARE=1 ./target/dist/candil`.
-- Funciona con X11 y Wayland; si el backend falla, probá desde una sesión X11.
+- Funciona con X11 y Wayland; si el backend falla, prueba desde una sesión X11.
 - El binario no incluye un `.desktop` ni un AppImage; se puede agregar después.
 
 ## Windows
@@ -143,7 +143,7 @@ cargo build --profile dist
 
 La app usa diálogos nativos de Windows y no necesita webview. El binario de
 release se abre con una consola porque el proyecto conserva los flags de
-diagnóstico (`--inspect`, `--scan`) que imprimen por stdout; si querés ocultarla,
+diagnóstico (`--inspect`, `--scan`) que imprimen por stdout; si quieres ocultarla,
 se puede agregar `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`
 en `src/main.rs`, a costa de perder esa salida en release.
 
@@ -160,8 +160,8 @@ setx OPENCODE_API_KEY "tu-clave"       # persistente, nuevas sesiones
 Linux o el acceso directo de Windows **no heredan** el entorno del shell. Por
 ahora:
 
-- ejecutá desde una terminal (`export OPENCODE_API_KEY=…` o `$env:…`), o
-- definí la variable en el entorno del usuario y reiniciá el lanzador.
+- ejecuta desde una terminal (`export OPENCODE_API_KEY=…` o `$env:…`), o
+- define la variable en el entorno del usuario y reinicia el lanzador.
 
 La integración con Keychain/libsecret queda para una etapa posterior.
 
@@ -172,7 +172,7 @@ La integración con Keychain/libsecret queda para una etapa posterior.
 - **macOS/Linux → Windows:** posible con `cargo-zigbuild` o una VM Windows, pero
   `ring` (TLS) y `eframe` pueden requerir toolchains adicionales. Para entregar,
   es más confiable compilar en Windows.
-- **macOS → Linux:** no se recomienda (glibc, X11/Wayland, GL). Usá una VM Linux,
+- **macOS → Linux:** no se recomienda (glibc, X11/Wayland, GL). Usa una VM Linux,
   Docker con `cross` o el job de CI.
 - **Tests:** no requieren red; el test live de Wiktionary/MyMemory está marcado
   `#[ignore]` y se corre a mano:
@@ -182,8 +182,8 @@ La integración con Keychain/libsecret queda para una etapa posterior.
 
 `.github/workflows/build.yml` compila y testea en `ubuntu-latest`,
 `macos-latest` y `windows-latest`, y sube el binario `dist` como artefacto.
-No configura claves ni corre el test live. Para builds de release, etiquetá un
-tag o descargá el artefacto del job.
+No configura claves ni corre el test live. Para builds de release, etiqueta un
+tag o descarga el artefacto del job.
 
 ## Dónde quedan los datos
 

@@ -117,8 +117,8 @@ y un contador de errores con tooltip.
 - Barra superior: buscador (título, autor, nombre de archivo), orden
   (`Reciente / Título / Autor / Añadido`), filtro (`Todos / Leyendo / Sin empezar /
   Faltantes`; "Terminados" queda para M3).
-- Estados vacíos: sin carpetas ("Añadí una carpeta"), carpeta sin EPUB ("No hay
-  libros acá"), búsqueda sin resultados ("Nada coincide con «x»").
+- Estados vacíos: sin carpetas ("Añade una carpeta"), carpeta sin EPUB ("No hay
+  libros aquí"), búsqueda sin resultados ("Nada coincide con «x»").
 - Progreso a la vista: barra fina bajo el autor; el % aparece solo si el libro
   empezó (el ratio exacto llega con M3).
 

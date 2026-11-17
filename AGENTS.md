@@ -72,7 +72,7 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Los destacados y notas se guardan como **offsets de caracteres + cita** en
   `annotations.json`; no los conviertas a píxeles ni los mezcles con
   `library.json`. El formato v3 admite rangos entre párrafos (`end_block` +
-  `parts`) y `origin` (`user`/`ai`); mantené la lectura de archivos v1/v2
+  `parts`) y `origin` (`user`/`ai`); mantén la lectura de archivos v1/v2
   (ADR-0014, ADR-0032).
 - Compartir una cita genera un PNG **local** con `ab_glyph` (ADR-0031). No lo
   subas a ninguna red ni servicio; guardalo con temporal + `rename`. La captura
@@ -94,14 +94,14 @@ Para capturas/pruebas sin tocar la config real: `HOME=$(mktemp -d) cargo run …
 - Editar un EPUB exige backup previo y validación con `Book::open`; si falla, el
   original no se toca (ADR-0013).
 - No bumpees la versión ni crees tags a mano: push a `main` y `auto-release`
-  publica. Si falla, relanzá `gh workflow run release.yml -f tag=vX.Y.Z`
+  publica. Si falla, relanza `gh workflow run release.yml -f tag=vX.Y.Z`
   (ADR-0017). macOS publica `Candil.app.zip` ad-hoc; no prometas doble clic sin
   Gatekeeper ni notarización.
 - La biblioteca se refresca al recuperar el foco (debounce 30 s); no agregues un
   watcher del sistema sin ADR (ADR-0018). “Continuar leyendo” usa `last_opened`,
   no el orden visible de la grilla.
 - La serie sale del OPF (`calibre:series`/`belongs-to-collection`), no del nombre
-  de archivo. Si cambia la extracción, subí `META_VERSION`; no reabras toda la
+  de archivo. Si cambia la extracción, sube `META_VERSION`; no reabras toda la
   biblioteca en cada arranque (ADR-0020).
 - Al iniciar manda `StartupMode`: último libro por defecto, biblioteca opcional;
   si falta el archivo, biblioteca. Los enlaces externos se abren solo con

@@ -134,7 +134,7 @@ cargo run --profile fast -- --version          # versión del binario
 scripts/check.sh                               # fmt + clippy + tests + inspect
 ```
 
-También se puede arrastrar un `.epub` sobre la ventana. La primera vez, usá
+También se puede arrastrar un `.epub` sobre la ventana. La primera vez, usa
 “Añadir carpeta…” en la biblioteca para indexar una carpeta con EPUB.
 
 ### Perfiles de compilación
@@ -275,7 +275,7 @@ libro** con el checkbox del panel `Aa`; el indicador `Aa·` avisa que ese libro
 tiene ajustes propios.
 
 M4 (extras) está cerrado con destacados/notas y búsqueda dentro del libro.
-Seleccioná una frase y usá `Destacar`/`H` o `Nota`/`N`; elegí entre tres colores
+Selecciona una frase y usa `Destacar`/`H` o `Nota`/`N`; elige entre tres colores
 (acento, ámbar, verde); el panel `D` lista, edita, recolorea y borra. Se guardan
 en `annotations.json` como offsets de caracteres + cita, así que sobreviven
 cambios de tipografía y se reanclan por texto si el bloque cambió. `⌘F` abre
@@ -287,11 +287,11 @@ una anotación de otro libro, y la exportación a Markdown desde el mismo panel.
 También suma `G` / click en el porcentaje para abrir “Ir a…”, con salto por
 porcentaje del libro o número de capítulo.
 
-M7 (IA configurable) está cerrado: elegí entre nueve proveedores y guardá una
+M7 (IA configurable) está cerrado: elige entre nueve proveedores y guarda una
 API key por proveedor en el llavero del sistema desde Configuración.
 `OPENCODE_API_KEY` solo aplica a OpenCode Go.
 
-M6 (consultas) está cerrado: seleccioná una palabra o frase y usá **Consultar**
+M6 (consultas) está cerrado: selecciona una palabra o frase y usa **Consultar**
 (o `K`) para Wiktionary, MyMemory o un proveedor de IA; `⇧K` abre Traducción y
 lanza la consulta directo. El panel tiene
 Diccionario, Traducción, IA e Historial; las consultas online están apagadas por
@@ -302,7 +302,7 @@ cuando la traducción es parcial. Cada proveedor guarda su **propia API key** en
 el **llavero del sistema** (Keychain/Secret Service/Credential Manager);
 `OPENCODE_API_KEY` solo aplica a OpenCode Go. El historial se guarda
 en `consultas.json` (local, con límite y borrado); desde el detalle del historial
-podés **Ir al texto** y volver a la frase. El centro **Configuración**
+puedes **Ir al texto** y volver a la frase. El centro **Configuración**
 (`⌘,` o Ajustes) reúne lectura, biblioteca, anotaciones, consultas, privacidad y
 avanzado.
 
@@ -350,7 +350,7 @@ avanzado.
 |---|---|---|---|
 | ![Editar metadatos y portada](docs/img/library-edit.png) | ![Diccionario integrado con definiciones](docs/img/reader-consulta.jpg) | ![Centro de configuración, sección Consultas](docs/img/reader-config.jpg) | ![Historial local de consultas](docs/img/reader-history.jpg) |
 
-Para editar, hacé clic derecho sobre una tarjeta y elegí **Editar metadatos y
+Para editar, haz clic derecho sobre una tarjeta y elige **Editar metadatos y
 portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 
 ## Limitaciones conocidas
@@ -524,7 +524,7 @@ cargo run --release -- --shot out.png --panel settings libro.epub
 - Las consultas online están **apagadas por defecto** y solo salen con una acción
   explícita.
 - Las sesiones de estudio viven en `studies.json`, entran en el respaldo y no
-  salen de tu disco hasta que mandás una pregunta con online activo. Podés
+  salen de tu disco hasta que envías una pregunta con online activo. Puedes
   borrarlas por sesión o todas desde Configuración → Privacidad.
 - La comprobación de actualizaciones solo ocurre al pulsar “Buscar
   actualizaciones”; consulta `api.github.com` y no envía datos del libro ni de la

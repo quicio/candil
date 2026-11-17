@@ -8,7 +8,13 @@
 
 Lector de EPUB minimalista en Rust. Una columna, scroll continuo, tipografía
 cuidada y cero dependencias del sistema para dibujar el texto: egui + un
-traductor propio de XHTML a bloques. Incluye una biblioteca que indexa carpetas
+traductor propio de XHTML a bloques.
+
+El repo es un monorepo: la app de escritorio vive en la raíz, el motor portable
+en `crates/candil-core` y la app Android/iOS en `mobile/` (Flutter + FFI sobre el
+mismo núcleo). Ver [ADR-0034](docs/adr/0034-monorepo-nucleo-compartido.md).
+
+Incluye una biblioteca que indexa carpetas
 sin copiar los libros, series/colecciones con filtro y encabezados de grupo, detección de posibles duplicados, marcadores de posición con etiqueta, búsqueda general y búsqueda avanzada en el contenido, carpeta local de Google Drive, envío a Kobo o dispositivo, anclas internas, progreso estable por bloque,
 destacados/notas —con colores, selección entre párrafos, notas al pie con vista
 previa y regreso, índice global, filtro de notas, export Markdown, captura de
@@ -24,6 +30,11 @@ Linux), respaldo/restauración local de datos y enlaces externos con confirmaci�
 
 Binario final (`dist`): **7.1 MiB** (7.450.864 B), arranque instantáneo, sin
 webview ni motor HTML.
+
+## Web
+
+Landing y descargas: **[quicio.github.io/candil](https://quicio.github.io/candil/)**.
+El sitio está en `site/` y se publica con GitHub Pages desde `main`.
 
 ## Documentación
 
@@ -480,6 +491,9 @@ portada…**. El EPUB original se respalda en `backups/` antes de reescribirse.
 - **M36 — Caché de EPUB remotos (cerrada):** copia local descartable con LRU de
   1 GB, apertura/búsqueda aceleradas, preparación offline y limpieza manual. La
   búsqueda avanzada indexa hasta 4 libros en paralelo.
+- **M37 — Monorepo y núcleo portable (cerrada):** escritorio y Android/iOS
+  comparten `crates/candil-core`; Flutter vive en `mobile/` y consume el núcleo
+  por FFI.
 
 ## Modo diagnóstico
 

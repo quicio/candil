@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Candil — Leer despacio, sin ruido</title>
+  <meta name="description" content="Candil es un lector de EPUB nativo para Linux, macOS y Windows. Biblioteca local, tipografía Literata, anotaciones y búsqueda, sin webview ni cuenta.">
+  <meta name="theme-color" content="#17110c">
+  <link rel="icon" href="assets/candil-icon.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/Literata-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/Literata-Italic.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="canonical" href="https://quicio.github.io/candil/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Candil — Leer despacio, sin ruido">
+  <meta property="og:description" content="Un lector de EPUB nativo, local y editorial para Linux, macOS y Windows.">
+  <meta property="og:url" content="https://quicio.github.io/candil/">
+  <meta property="og:image" content="https://quicio.github.io/candil/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+  <header class="site-header">
+    <a class="brand" href="#inicio" aria-label="Candil, inicio">
+      <img src="assets/candil-icon.svg" alt="" width="30" height="30">
+      <span>Candil</span>
+    </a>
+    <nav class="site-nav" aria-label="Principal">
+      <a href="#lectura">Lectura</a>
+      <a href="#funciones">Funciones</a>
+      <a href="#actualizaciones">Actualizaciones</a>
+    </nav>
+    <a class="button button-small" href="#descargar">Descargar</a>
+  </header>
+
+  <main id="contenido">
+    <section class="hero" id="inicio" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">Leer despacio,<br><span class="accent">sin ruido.</span></h1>
+        <p class="lede">Candil es un lector de EPUB nativo para Linux, macOS y Windows. Una columna, tipografía Literata y tus libros en tu máquina.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#descargar" data-primary-download>Descargar Candil <span class="button-note" data-platform-label>para tu sistema</span></a>
+          <a class="text-link" href="https://github.com/quicio/candil">Ver el código <span class="arrow" aria-hidden="true"></span></a>
+        </div>
+        <ul class="hero-facts" aria-label="Principios del producto">
+          <li>Sin webview</li>
+          <li>Sin cuenta</li>
+          <li>Sin telemetría</li>
+          <li>~7,1 MB</li>
+        </ul>
+      </div>
+
+      <figure class="hero-plate">
+        <img src="assets/reader.webp" alt="El lector de Candil mostrando Pride and Prejudice, con dos frases destacadas en ámbar y verde y una nota al margen." width="1400" height="1114" fetchpriority="high">
+        <figcaption>Pride and Prejudice · Jane Austen. Dos destacados y una nota al margen.</figcaption>
+      </figure>
+    </section>
+
+    <section class="manifesto" id="lectura" aria-labelledby="manifesto-title">
+      <div class="manifesto-copy">
+        <h2 id="manifesto-title">La lámpara alumbra la página.<br>No la reemplaza.</h2>
+        <p>Candil no convierte la lectura en una métrica. Abre un EPUB, elige una tipografía y deja que el resto desaparezca. La biblioteca, el progreso, las notas y las búsquedas viven en tu máquina; no hay una cuenta esperando del otro lado.</p>
+        <p>El parser es propio y el motor no es un navegador. Eso permite una columna limpia, un arranque instantáneo y un binario de siete megabytes, sin CSS ajeno decidiendo cómo se ve tu libro.</p>
+      </div>
+      <aside class="margin-note">
+        <span class="margin-rule" aria-hidden="true"></span>
+        <p>Una columna. Un scroll continuo. Ningún panel compite con el párrafo que estás leyendo.</p>
+      </aside>
+    </section>
+
+    <section class="features" id="funciones" aria-labelledby="features-title">
+      <div class="section-head">
+        <h2 id="features-title">Lo que hace falta para leer.</h2>
+        <p>Ni un dashboard ni una plataforma. Las funciones aparecen cuando las pedís y vuelven a retirarse.</p>
+      </div>
+
+      <article class="feature">
+        <div class="feature-copy">
+          <h3>La biblioteca se queda en tu casa</h3>
+          <p>Indexá carpetas locales, mirá las portadas reales, ordená por serie o por autor y encontrá un título por metadatos. Candil guarda rutas, no copias: tus EPUB siguen siendo tuyos y siguen donde los dejaste.</p>
+        </div>
+        <figure class="feature-plate">
+          <img src="assets/library.webp" alt="Biblioteca de Candil con cinco portadas de libros clásicos, buscador y filtros por orden y serie." width="1400" height="1114">
+          <figcaption>Biblioteca local · cinco clásicos de dominio público.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature feature-reverse">
+        <div class="feature-copy">
+          <h3>Anotá como si fuera papel</h3>
+          <p>Destacá una frase, un párrafo o un pasaje que cruza párrafos. Elegí un color, agregá una nota y volvé meses después: el texto se reancla por la cita, no por un píxel. Exportá todo a Markdown cuando quieras.</p>
+        </div>
+        <figure class="feature-plate">
+          <img src="assets/selection.webp" alt="Selección de texto en Candil con la barra de acciones para destacar, copiar y abrir el chat de estudio." width="1400" height="1114">
+          <figcaption>Selección entre párrafos · destacado, nota y estudio.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature">
+        <div class="feature-copy">
+          <h3>Encontrá el pasaje, no el archivo</h3>
+          <p>Buscá dentro de un libro o en el contenido de toda la biblioteca. La búsqueda avanzada entiende frase exacta, todas las palabras o cualquiera de ellas, y salta al pasaje con el resaltado puesto.</p>
+        </div>
+        <figure class="feature-plate">
+          <img src="assets/search.webp" alt="Panel de búsqueda en el contenido de la biblioteca con resultados, progreso y filtros." width="1400" height="1114">
+          <figcaption>Búsqueda en el contenido · capítulo y contexto.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature feature-reverse">
+        <div class="feature-copy">
+          <h3>Leer también es estudiar</h3>
+          <p>Consultá el diccionario, traducí un pasaje o abrí una sesión de estudio con una IA. Vos elegís el proveedor y el contexto; el historial es local y las consultas online están apagadas hasta que las actives.</p>
+        </div>
+        <figure class="feature-plate">
+          <img src="assets/notes.webp" alt="Panel de notas de Candil con anotaciones, citas y la opción de exportar a Markdown." width="1400" height="1114">
+          <figcaption>Notas y estudio · contexto explícito, historial local.</figcaption>
+        </figure>
+      </article>
+    </section>
+
+    <section class="ledger" aria-labelledby="ledger-title">
+      <div class="ledger-intro">
+        <h2 id="ledger-title">Debajo del papel.</h2>
+        <p>Un lector de escritorio hecho con las piezas justas.</p>
+      </div>
+      <dl class="ledger-list">
+        <div><dt>Motor</dt><dd>Rust + egui, parser XHTML propio</dd></div>
+        <div><dt>Interfaz</dt><dd>Sin webview ni motor CSS</dd></div>
+        <div><dt>Datos</dt><dd>Biblioteca, notas y progreso locales</dd></div>
+        <div><dt>Online</dt><dd>Apagado por defecto. Sin cuenta.</dd></div>
+        <div><dt>Plataformas</dt><dd>Linux · macOS · Windows</dd></div>
+        <div><dt>Arranque</dt><dd>Instantáneo; binario de ~7,1 MB</dd></div>
+      </dl>
+    </section>
+
+    <section class="updates" id="actualizaciones" aria-labelledby="updates-title">
+      <div class="section-head updates-head">
+        <h2 id="updates-title">Actualizaciones</h2>
+        <p>Cada cambio de código en <code>main</code> publica una versión nueva. Sin instaladores invisibles: descargás, verificás y decidís cuándo actualizar.</p>
+      </div>
+      <div class="release-meta">
+        <span>Última versión <strong data-version>—</strong></span>
+        <span data-release-date>Consultando releases…</span>
+        <a class="text-link" href="https://github.com/quicio/candil/releases">Todas las versiones <span class="arrow" aria-hidden="true"></span></a>
+      </div>
+      <ol class="release-list" id="release-list" aria-live="polite">
+        <li class="release-placeholder">Cargando las últimas versiones…</li>
+      </ol>
+      <noscript><p class="small-note">Las notas de versión están en <a href="https://github.com/quicio/candil/releases">GitHub Releases</a>.</p></noscript>
+    </section>
+
+    <section class="download" id="descargar" aria-labelledby="download-title">
+      <div class="download-copy">
+        <h2 id="download-title">Descargar Candil</h2>
+        <p>Elegí tu sistema. La descarga va siempre a la última release publicada.</p>
+        <p class="download-version">Versión <strong data-version>la última</strong> · <a href="https://github.com/quicio/candil/releases/latest/download/SHA256SUMS.txt">SHA-256</a></p>
+      </div>
+      <div class="download-list">
+        <a class="download-row" data-download="mac-arm" href="https://github.com/quicio/candil/releases/latest/download/candil-macos-arm64-app.zip">
+          <span><strong>macOS · Apple Silicon</strong><small>M1 en adelante · .zip</small></span>
+          <span class="download-arrow" aria-hidden="true"></span>
+        </a>
+        <a class="download-row" data-download="mac-intel" href="https://github.com/quicio/candil/releases/latest/download/candil-macos-x86_64-app.zip">
+          <span><strong>macOS · Intel</strong><small>x86_64 · .zip</small></span>
+          <span class="download-arrow" aria-hidden="true"></span>
+        </a>
+        <a class="download-row" data-download="windows" href="https://github.com/quicio/candil/releases/latest/download/candil-windows-x86_64.exe">
+          <span><strong>Windows</strong><small>x86_64 · .exe</small></span>
+          <span class="download-arrow" aria-hidden="true"></span>
+        </a>
+        <a class="download-row" data-download="linux" href="https://github.com/quicio/candil/releases/latest">
+          <span><strong>Linux</strong><small>x86_64 · tarball, deb, rpm o paquete Arch</small></span>
+          <span class="download-arrow" aria-hidden="true"></span>
+        </a>
+      </div>
+      <details class="linux-options">
+        <summary>Paquetes de Linux</summary>
+        <div class="linux-grid">
+          <div>
+            <p class="detail-label">Tarball portable</p>
+            <a data-linux-link="tarball" href="https://github.com/quicio/candil/releases/latest">candil-linux-x86_64.tar.gz</a>
+          </div>
+          <div>
+            <p class="detail-label">Debian / Ubuntu</p>
+            <a data-linux-link="deb" href="https://github.com/quicio/candil/releases/latest">candil_amd64.deb</a>
+          </div>
+          <div>
+            <p class="detail-label">Fedora / RPM</p>
+            <a data-linux-link="rpm" href="https://github.com/quicio/candil/releases/latest">candil-x86_64.rpm</a>
+          </div>
+          <div>
+            <p class="detail-label">Arch Linux</p>
+            <a data-linux-link="arch" href="https://github.com/quicio/candil/releases/latest">candil-x86_64.pkg.tar.zst</a>
+          </div>
+        </div>
+        <p class="small-note">También podés instalar sin root con el script de <a href="https://github.com/quicio/candil/blob/main/packaging/install.sh">packaging/install.sh</a>.</p>
+      </details>
+      <p class="small-note">macOS no está notarizado por Apple. La primera vez, abrí Candil con clic derecho → Abrir.</p>
+    </section>
+
+    <aside class="mobile-note" aria-labelledby="mobile-title">
+      <div>
+        <h2 id="mobile-title">También en el bolsillo</h2>
+        <p>Candil Mobile está en desarrollo dentro del mismo repositorio: Flutter para Android e iOS sobre el mismo núcleo Rust. La base ya importa EPUB, lee capítulos, guarda progreso y anotaciones.</p>
+      </div>
+      <span class="status-stamp">En desarrollo</span>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand">
+      <img src="assets/candil-icon.svg" alt="" width="26" height="26">
+      <span>Candil</span>
+    </div>
+    <p class="footer-line">Leer despacio, sin ruido. Hecho con Rust, sin webview.</p>
+    <nav aria-label="Enlaces del proyecto">
+      <a href="https://github.com/quicio/candil">GitHub</a>
+      <a href="https://github.com/quicio/candil/releases">Releases</a>
+      <a href="https://github.com/quicio/candil/blob/main/docs/HANDOFF.md">Documentación</a>
+      <a href="https://github.com/quicio/candil/blob/main/LICENSE">MIT</a>
+    </nav>
+    <p class="footer-fine">Esta página no usa cookies, analítica ni fuentes externas.</p>
+  </footer>
+</body>
+</html>

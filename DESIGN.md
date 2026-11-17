@@ -32,6 +32,11 @@ colors:
   contrast-muted: "#9A9A9A"
   contrast-accent: "#E8C547"
   contrast-error: "#BF5F55"
+  site-ink: "#17110C"
+  site-paper: "#F1E4C8"
+  site-paper-muted: "#C9B899"
+  site-amber: "#E0A33A"
+  site-copper: "#A96F3D"
 typography:
   display:
     fontFamily: "Literata, Georgia, serif"

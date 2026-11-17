@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Candil: libro abierto y llama. Paleta Papel/Noche/Ámbar. -->
+  <rect x="60" y="60" width="904" height="904" rx="210" fill="#14161A"/>
+  <rect x="64" y="64" width="896" height="896" rx="206" fill="none" stroke="#2A2E35" stroke-width="3"/>
+
+  <!-- Llama: se dibuja antes que el libro para que nazca del lomo. -->
+  <path d="M512 238
+           C 566 350, 626 438, 604 542
+           C 588 620, 548 664, 512 664
+           C 476 664, 436 620, 420 542
+           C 398 438, 458 350, 512 238 Z"
+        fill="#D9A441"/>
+  <path d="M512 356
+           C 544 430, 570 486, 556 548
+           C 547 592, 528 618, 512 618
+           C 496 618, 477 592, 468 548
+           C 454 486, 480 430, 512 356 Z"
+        fill="#F4ECD8"/>
+
+  <!-- Sombra/contratapa -->
+  <path d="M166 704
+           C 300 654, 430 668, 500 700
+           L 500 846
+           C 430 814, 300 800, 166 850 Z"
+        fill="#3B3226"/>
+  <path d="M858 704
+           C 724 654, 594 668, 524 700
+           L 524 846
+           C 594 814, 724 800, 858 850 Z"
+        fill="#3B3226"/>
+
+  <!-- Páginas -->
+  <path d="M188 684
+           C 322 636, 446 650, 500 682
+           L 500 814
+           C 446 782, 322 768, 188 816 Z"
+        fill="#F4ECD8"/>
+  <path d="M836 684
+           C 702 636, 578 650, 524 682
+           L 524 814
+           C 578 782, 702 768, 836 816 Z"
+        fill="#EADFC6"/>
+
+  <!-- Lomo -->
+  <path d="M500 682 C 512 690, 512 806, 500 814 L 524 814 C 512 806, 512 690, 524 682 Z"
+        fill="#9C8E72"/>
+
+  <!-- Filo de las páginas -->
+  <path d="M188 816 C 322 768, 446 782, 500 814" fill="none" stroke="#C5BCA6" stroke-width="6"/>
+  <path d="M836 816 C 702 768, 578 782, 524 814" fill="none" stroke="#C5BCA6" stroke-width="6"/>
+</svg>
